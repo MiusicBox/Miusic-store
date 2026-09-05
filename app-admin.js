@@ -20,17 +20,8 @@ let pendingPlaylistCoverFile = null, existingPlaylistCoverUrl = "";
 let pendingFullSongFile = null, existingFullFileUrl = "";
 let confirmAction = null;
 
-// จำกัดขนาดไฟล์เพลงเต็มสูงสุด (WAV หรือ MP3) — ปรับได้ตามแผน Cloudinary (ฟรีแพลนอัปโหลดสูงสุดไฟล์ละ 100MB)
-const MAX_FULL_SONG_SIZE_MB = 100;
-// นามสกุล/MIME type ที่อนุญาตสำหรับ "ไฟล์เพลงเต็ม" (ไฟล์จริงที่ส่งลูกค้าหลังชำระเงิน) — รองรับทั้ง WAV และ MP3
-const FULL_SONG_EXT_RE = /\.(wav|mp3)$/i;
-const FULL_SONG_MIME_OK = new Set([
-  "audio/wav", "audio/x-wav", "audio/wave", "audio/vnd.wave", "audio/x-pn-wav",
-  "audio/mpeg", "audio/mp3", "audio/mpeg3", "audio/x-mpeg-3"
-]);
-function isAllowedFullSongFile(f) {
-  return FULL_SONG_EXT_RE.test(f.name) || FULL_SONG_MIME_OK.has(f.type);
-}
+// จำกัดขนาดไฟล์ WAV สูงสุด (ปรับได้ตามแผน Cloudinary — ฟรีแพลนอัปโหลดสูงสุดไฟล์ละ 100MB)
+const MAX_FULL_WAV_SIZE_MB = 100;
 function formatFileSize(bytes) {
   if (!bytes && bytes !== 0) return "";
   const mb = bytes / (1024 * 1024);
@@ -341,16 +332,12 @@ function resetSongForm() {
   document.getElementById("coverFilePicker").textContent = "🖼️ แตะเพื่อเลือกรูปปก";
   document.getElementById("coverFilePicker").className = "file-picker";
   document.getElementById("fullSongFileInput").value = "";
-  document.getElementById("fullSongFilePicker").textContent = "🔒 แตะเพื่อเลือกไฟล์เพลงเต็ม (WAV/MP3)";
+  document.getElementById("fullSongFilePicker").textContent = "🔒 แตะเพื่อเลือกไฟล์ WAV เต็ม";
   document.getElementById("fullSongFilePicker").className = "file-picker";
   document.getElementById("fullSongFileMeta").style.display = "none";
   document.getElementById("fullSongFileMeta").textContent = "";
   document.getElementById("fullSongUploadProgressWrap").style.display = "none";
   document.getElementById("songUploadProgressWrap").style.display = "none";
-  document.getElementById("songUploadProgressText").style.display = "none";
-  document.getElementById("songUploadProgressText").textContent = "";
-  document.getElementById("fullSongUploadProgressText").style.display = "none";
-  document.getElementById("fullSongUploadProgressText").textContent = "";
 }
 function openAddSong() { resetSongForm(); document.getElementById("songFormBackdrop").classList.add("show"); }
 function openEditSong(id) {
@@ -402,16 +389,17 @@ document.getElementById("fullSongFileInput").addEventListener("change", (e) => {
   const f = e.target.files[0]; if (!f) return;
   const picker = document.getElementById("fullSongFilePicker");
   const meta = document.getElementById("fullSongFileMeta");
-  if (!isAllowedFullSongFile(f)) {
-    showToast("กรุณาเลือกไฟล์นามสกุล .wav หรือ .mp3 เท่านั้นสำหรับเพลงเต็ม", "error");
+  const isWav = /\.wav$/i.test(f.name) || f.type === "audio/wav" || f.type === "audio/x-wav";
+  if (!isWav) {
+    showToast("กรุณาเลือกไฟล์นามสกุล .wav เท่านั้นสำหรับเพลงเต็ม", "error");
     e.target.value = "";
     pendingFullSongFile = null;
     meta.style.display = "none";
     return;
   }
   const sizeMb = f.size / (1024 * 1024);
-  if (sizeMb > MAX_FULL_SONG_SIZE_MB) {
-    showToast(`ไฟล์ใหญ่เกินไป (${sizeMb.toFixed(1)} MB) — จำกัดไม่เกิน ${MAX_FULL_SONG_SIZE_MB} MB`, "error");
+  if (sizeMb > MAX_FULL_WAV_SIZE_MB) {
+    showToast(`ไฟล์ใหญ่เกินไป (${sizeMb.toFixed(1)} MB) — จำกัดไม่เกิน ${MAX_FULL_WAV_SIZE_MB} MB`, "error");
     e.target.value = "";
     pendingFullSongFile = null;
     meta.style.display = "none";
@@ -433,14 +421,8 @@ document.getElementById("songSaveBtn").addEventListener("click", async function 
     if (pendingSongFile) {
       document.getElementById("songUploadProgressWrap").style.display = "block";
       const prog = document.getElementById("songUploadProgress");
-      const progText = document.getElementById("songUploadProgressText");
-      progText.style.display = "block";
-      const res = await uploadToCloudinary(pendingSongFile, (pct, loaded, total) => {
-        prog.style.width = pct + "%";
-        if (loaded != null && total != null) progText.textContent = `${formatFileSize(loaded)} / ${formatFileSize(total)}`;
-      });
+      const res = await uploadToCloudinary(pendingSongFile, (pct) => { prog.style.width = pct + "%"; });
       fileUrl = res.url;
-      progText.style.display = "none";
     }
     if (pendingCoverFile) {
       const res = await uploadToCloudinary(pendingCoverFile);
@@ -449,17 +431,11 @@ document.getElementById("songSaveBtn").addEventListener("click", async function 
     if (pendingFullSongFile) {
       document.getElementById("fullSongUploadProgressWrap").style.display = "block";
       const prog = document.getElementById("fullSongUploadProgress");
-      const progText = document.getElementById("fullSongUploadProgressText");
-      progText.style.display = "block";
       btn.textContent = "กำลังอัปโหลดไฟล์เต็ม...";
-      const res = await uploadFullSong(pendingFullSongFile, (pct, loaded, total) => {
-        prog.style.width = pct + "%";
-        if (loaded != null && total != null) progText.textContent = `${formatFileSize(loaded)} / ${formatFileSize(total)}`;
-      });
+      const res = await uploadFullSong(pendingFullSongFile, (pct) => { prog.style.width = pct + "%"; });
       fullFileUrl = res.url;
       fullFilePublicId = res.publicId;
       fullFileName = pendingFullSongFile.name;
-      progText.style.display = "none";
       btn.textContent = "กำลังบันทึก...";
     }
     const djSel = document.getElementById("fDj");
@@ -720,7 +696,7 @@ async function openBulkUpload() {
   document.getElementById("bulkFilesPicker").textContent = "📁 แตะเพื่อเลือกไฟล์เพลงหลายไฟล์";
   document.getElementById("bulkFilesPicker").className = "file-picker";
   document.getElementById("bulkFullFilesInput").value = "";
-  document.getElementById("bulkFullFilesPicker").textContent = "🔒 แตะเพื่อเลือกไฟล์เพลงเต็มหลายไฟล์ (WAV/MP3)";
+  document.getElementById("bulkFullFilesPicker").textContent = "🔒 แตะเพื่อเลือกไฟล์ WAV เต็มหลายไฟล์";
   document.getElementById("bulkFullFilesPicker").className = "file-picker";
   document.getElementById("bulkFullFilesMeta").style.display = "none";
   document.getElementById("bulkFullFilesMeta").textContent = "";
@@ -756,11 +732,11 @@ document.getElementById("bulkFilesInput").addEventListener("change", (e) => {
 document.getElementById("bulkFullFilesInput").addEventListener("change", (e) => {
   const files = Array.from(e.target.files || []);
   const meta = document.getElementById("bulkFullFilesMeta");
-  const rejected = files.filter(f => !isAllowedFullSongFile(f));
-  if (rejected.length > 0) {
-    showToast("ไฟล์เพลงเต็มต้องเป็นนามสกุล .wav หรือ .mp3 เท่านั้น — ตัดไฟล์ที่ไม่รองรับออกแล้ว: " + rejected.map(f => f.name).join(", "), "error");
+  const nonWav = files.filter(f => !/\.wav$/i.test(f.name));
+  if (nonWav.length > 0) {
+    showToast("ไฟล์เพลงเต็มต้องเป็นนามสกุล .wav เท่านั้น — ตัดไฟล์ที่ไม่ใช่ WAV ออกแล้ว: " + nonWav.map(f => f.name).join(", "), "error");
   }
-  bulkFullFiles = files.filter(isAllowedFullSongFile);
+  bulkFullFiles = files.filter(f => /\.wav$/i.test(f.name));
   if (bulkFullFiles.length === 0) { meta.style.display = "none"; return; }
   document.getElementById("bulkFullFilesPicker").textContent = `🔒 เลือกแล้ว ${bulkFullFiles.length} ไฟล์`;
   document.getElementById("bulkFullFilesPicker").className = "file-picker filled";
@@ -832,13 +808,9 @@ document.getElementById("bulkUploadBtn").addEventListener("click", async functio
     for (let i = 0; i < bulkFiles.length; i++) {
       const file = bulkFiles[i];
       document.getElementById("bulkStatusText").textContent = `กำลังอัปโหลด ${i + 1}/${bulkFiles.length}: ${file.name}`;
-      const res = await uploadToCloudinary(file, (pct, loaded, total) => {
+      const res = await uploadToCloudinary(file, (pct) => {
         const overall = Math.round(((i + pct / 100) / bulkFiles.length) * 100);
         document.getElementById("bulkProgress").style.width = overall + "%";
-        if (loaded != null && total != null) {
-          document.getElementById("bulkStatusText").textContent =
-            `กำลังอัปโหลด ${i + 1}/${bulkFiles.length}: ${file.name} (${formatFileSize(loaded)} / ${formatFileSize(total)})`;
-        }
       });
 
       const songPayload = {
@@ -863,13 +835,9 @@ document.getElementById("bulkUploadBtn").addEventListener("click", async functio
         || (bulkFiles.length === 1 && bulkFullFiles.length === 1 ? bulkFullFiles[0] : null);
       if (matchedFull) {
         document.getElementById("bulkStatusText").textContent = `กำลังอัปโหลดไฟล์เต็ม ${i + 1}/${bulkFiles.length}: ${matchedFull.name}`;
-        const fullRes = await uploadFullSong(matchedFull, (pct, loaded, total) => {
+        const fullRes = await uploadFullSong(matchedFull, (pct) => {
           const overall = Math.round(((i + pct / 100) / bulkFiles.length) * 100);
           document.getElementById("bulkProgress").style.width = overall + "%";
-          if (loaded != null && total != null) {
-            document.getElementById("bulkStatusText").textContent =
-              `กำลังอัปโหลดไฟล์เต็ม ${i + 1}/${bulkFiles.length}: ${matchedFull.name} (${formatFileSize(loaded)} / ${formatFileSize(total)})`;
-          }
         });
         songPayload.full_file_url = fullRes.url;
         songPayload.full_file_public_id = fullRes.publicId;
