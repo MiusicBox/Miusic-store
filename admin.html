@@ -141,8 +141,6 @@
       #receiptBackdrop .receipt-items { padding:10px 0; }
       #receiptBackdrop .receipt-line { display:flex; justify-content:space-between; gap:12px; padding:8px 0; border-bottom:1px solid #eee; }
       #receiptBackdrop .receipt-line small { display:block; color:#666; margin-top:3px; }
-      #receiptBackdrop .receipt-sublist { padding:0 0 8px 14px; border-bottom:1px solid #eee; }
-      #receiptBackdrop .receipt-subline { font-size:12.5px; color:#666; padding:2px 0; }
       #receiptBackdrop .receipt-total { display:flex; justify-content:space-between; padding-top:14px; font-size:18px; }
       #receiptBackdrop .receipt-thanks { text-align:center; color:#666; margin-top:20px; font-size:12px; }
       #receiptBackdrop .receipt-empty { color:#666; text-align:center; padding:12px; }
@@ -262,9 +260,9 @@
         <input type="file" id="coverFileInput" accept="image/*" style="position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;">
       </div>
       <div class="field">
-        <label>ไฟล์เพลงเต็ม WAV (ส่งลูกค้าหลังชำระเงิน — ไม่แสดงบนเว็บ user)</label>
-        <label class="file-picker" id="fullSongFilePicker" for="fullSongFileInput">🔒 แตะเพื่อเลือกไฟล์ WAV เต็ม</label>
-        <input type="file" id="fullSongFileInput" accept="audio/*,.wav,.wave,audio/wav,audio/x-wav,audio/wave,audio/vnd.wave,audio/x-pn-wav" style="position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;">
+        <label>ไฟล์เพลงเต็ม WAV/MP3 (ส่งลูกค้าหลังชำระเงิน — ไม่แสดงบนเว็บ user)</label>
+        <label class="file-picker" id="fullSongFilePicker" for="fullSongFileInput">🔒 แตะเพื่อเลือกไฟล์เพลงเต็ม (WAV/MP3)</label>
+        <input type="file" id="fullSongFileInput" accept="audio/*,.wav,.wave,.mp3,audio/wav,audio/x-wav,audio/wave,audio/vnd.wave,audio/x-pn-wav,audio/mpeg,audio/mp3" style="position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;">
         <div id="fullSongFileMeta" style="font-size:12px;color:var(--text-dim);margin-top:4px;display:none;"></div>
         <div class="progress-outer" id="fullSongUploadProgressWrap" style="display:none;"><div class="progress-inner" id="fullSongUploadProgress"></div></div>
       </div>
@@ -365,9 +363,9 @@
       </div>
 
       <div class="field">
-        <label>ไฟล์เพลงเต็ม WAV (ไม่บังคับ — เลือกได้หลายไฟล์ ระบบจะจับคู่กับไฟล์ตัวอย่างด้านบนตามชื่อไฟล์ให้อัตโนมัติ)</label>
-        <label class="file-picker" id="bulkFullFilesPicker" for="bulkFullFilesInput">🔒 แตะเพื่อเลือกไฟล์ WAV เต็มหลายไฟล์</label>
-        <input type="file" id="bulkFullFilesInput" accept="audio/*,.wav,.wave,audio/wav,audio/x-wav,audio/wave,audio/vnd.wave,audio/x-pn-wav" multiple style="position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;">
+        <label>ไฟล์เพลงเต็ม WAV/MP3 (ไม่บังคับ — เลือกได้หลายไฟล์ ระบบจะจับคู่กับไฟล์ตัวอย่างด้านบนตามชื่อไฟล์ให้อัตโนมัติ)</label>
+        <label class="file-picker" id="bulkFullFilesPicker" for="bulkFullFilesInput">🔒 แตะเพื่อเลือกไฟล์เพลงเต็มหลายไฟล์ (WAV/MP3)</label>
+        <input type="file" id="bulkFullFilesInput" accept="audio/*,.wav,.wave,.mp3,audio/wav,audio/x-wav,audio/wave,audio/vnd.wave,audio/x-pn-wav,audio/mpeg,audio/mp3" multiple style="position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;">
         <div id="bulkFullFilesMeta" style="font-size:12px;color:var(--text-dim);margin-top:4px;display:none;"></div>
       </div>
 
