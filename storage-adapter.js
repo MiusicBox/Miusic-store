@@ -12,6 +12,13 @@
 // ===================================================
 import { CLOUDINARY_CLOUD_NAME, CLOUDINARY_UPLOAD_PRESET } from "./firebase-init.js";
 
+// สร้าง Error สำหรับกรณีอัปโหลดถูกยกเลิก (ให้ผู้เรียกเช็คได้ด้วย err.name === "AbortError")
+function makeAbortError() {
+  const err = new Error("อัปโหลดถูกยกเลิก");
+  err.name = "AbortError";
+  return err;
+}
+
 // ---------------- Cloudinary Provider (ใช้งานจริงตอนนี้) ----------------
 const CloudinaryProvider = {
   name: "cloudinary",
@@ -19,7 +26,8 @@ const CloudinaryProvider = {
   // folder: โฟลเดอร์ปลายทางใน Cloudinary
   // หมายเหตุ: ถ้า unsigned upload preset ตั้งค่า "Folder" เป็น Fixed/Disabled ไว้ พารามิเตอร์นี้จะถูกเมิน
   // และไฟล์จะถูกเก็บตาม path ที่ preset กำหนดแทน — เข้า Cloudinary Console > Upload presets เพื่อเช็ค/แก้ได้
-  async upload(file, { folder = "", resourceType = "auto" } = {}, onProgress) {
+  // signal (ไม่บังคับ): ส่ง AbortController().signal เข้ามาเพื่อยกเลิกอัปโหลดจริงกลางทางได้ (ยิง xhr.abort())
+  async upload(file, { folder = "", resourceType = "auto" } = {}, onProgress, signal) {
     return new Promise((resolve, reject) => {
       const url = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/${resourceType}/upload`;
       const formData = new FormData();
@@ -29,6 +37,12 @@ const CloudinaryProvider = {
 
       const xhr = new XMLHttpRequest();
       xhr.open("POST", url);
+
+      if (signal) {
+        if (signal.aborted) { reject(makeAbortError()); return; }
+        signal.addEventListener("abort", () => xhr.abort());
+      }
+
       xhr.upload.onprogress = (e) => {
         if (onProgress && e.lengthComputable) {
           // ส่งทั้งเปอร์เซ็นต์และจำนวนไบต์จริง (loaded/total) ให้ผู้เรียกใช้แสดงผลแบบ "2 MB / 6 MB" แบบเรียลไทม์ได้
@@ -51,6 +65,7 @@ const CloudinaryProvider = {
         "เชื่อมต่อ Cloudinary ไม่สำเร็จ — ตรวจสอบ Cloud Name, Upload Preset, CORS หรือการเชื่อมต่ออินเทอร์เน็ต"
       ));
       xhr.ontimeout = () => reject(new Error("Cloudinary ใช้เวลาตอบกลับนานเกินไป"));
+      xhr.onabort = () => reject(makeAbortError());
       xhr.timeout = 10 * 60 * 1000;
       xhr.send(formData);
     });
@@ -77,23 +92,25 @@ export function getStorageProvider() {
 }
 
 // อัปโหลดไฟล์เพลงตัวอย่าง/รูปภาพ (ใช้ folder เดิม หรือไม่ระบุก็ได้) — คงพฤติกรรมเดิมไว้ทุกประการ
-export async function uploadToStorage(file, onProgress, folder = "") {
-  return getStorageProvider().upload(file, { folder }, onProgress);
+// signal (ไม่บังคับ): ส่งเข้ามาเพื่อยกเลิกอัปโหลดจริงกลางทางได้
+export async function uploadToStorage(file, onProgress, folder = "", signal) {
+  return getStorageProvider().upload(file, { folder }, onProgress, signal);
 }
 
 // อัปโหลดไฟล์เพลงเต็ม WAV/MP3 — เก็บแยกโฟลเดอร์ "full-songs" ไม่ปนกับไฟล์ตัวอย่างที่โชว์บนเว็บ user
 // (โฟลเดอร์นี้ไม่ถูก reference จากหน้าเว็บ user เลย ใช้เฉพาะฝั่ง Admin เท่านั้น)
-export async function uploadFullSong(file, onProgress) {
-  return getStorageProvider().upload(file, { folder: "full-songs" }, onProgress);
+export async function uploadFullSong(file, onProgress, signal) {
+  return getStorageProvider().upload(file, { folder: "full-songs" }, onProgress, signal);
 }
 
 // อัปโหลด ZIP ที่ระบบสร้างจากไฟล์เต็มของออเดอร์
 // แยกโฟลเดอร์จากไฟล์เพลงเดิม เพื่อไม่กระทบลิงก์/ข้อมูลเพลงที่มีอยู่แล้ว
-export async function uploadOrderZip(file, onProgress) {
+export async function uploadOrderZip(file, onProgress, signal) {
   // ZIP เป็นไฟล์ archive ไม่ใช่รูป/วิดีโอ จึงส่งผ่าน raw/upload โดยเฉพาะ
   return getStorageProvider().upload(
     file,
     { folder: "order-zips", resourceType: "raw" },
-    onProgress
+    onProgress,
+    signal
   );
 }
