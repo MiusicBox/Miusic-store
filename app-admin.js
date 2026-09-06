@@ -384,7 +384,8 @@ function resetSongForm() {
   document.getElementById("coverFilePicker").textContent = "🖼️ แตะเพื่อเลือกรูปปก";
   document.getElementById("coverFilePicker").className = "file-picker";
   document.getElementById("fullSongFileInput").value = "";
-  document.getElementById("fullSongFilePicker").textContent = "🔒 แตะเพื่อเลือกไฟล์ WAV เต็ม";
+  // 🔒 ข้อความ placeholder ปรับให้ตรงกับที่รองรับจริง (WAV/MP3) — ไม่กระทบ logic ใดๆ
+  document.getElementById("fullSongFilePicker").textContent = "🔒 แตะเพื่อเลือกไฟล์เพลงเต็ม (WAV/MP3)";
   document.getElementById("fullSongFilePicker").className = "file-picker";
   document.getElementById("fullSongFileMeta").style.display = "none";
   document.getElementById("fullSongFileMeta").textContent = "";
@@ -447,13 +448,17 @@ document.getElementById("coverFileInput").addEventListener("change", (e) => {
   document.getElementById("coverFilePicker").className = "file-picker filled";
 });
 
+// 🔒🔒🔒 ห้าม AI แก้โค้ดส่วนนี้เองโดยไม่มีคำสั่งจากผู้ใช้โดยตรง (ประกาศจากผู้ใช้ 2026-09-06) 🔒🔒🔒
+// เงื่อนไขไฟล์เพลงเต็ม (ทีละไฟล์): อนุญาตทั้งนามสกุล .wav และ .mp3 — ห้ามแก้ให้เหลือรองรับแค่ชนิดเดียวโดยไม่มีคำสั่งผู้ใช้
 document.getElementById("fullSongFileInput").addEventListener("change", (e) => {
   const f = e.target.files[0]; if (!f) return;
   const picker = document.getElementById("fullSongFilePicker");
   const meta = document.getElementById("fullSongFileMeta");
   const isWav = /\.wav$/i.test(f.name) || f.type === "audio/wav" || f.type === "audio/x-wav";
-  if (!isWav) {
-    showToast("กรุณาเลือกไฟล์นามสกุล .wav เท่านั้นสำหรับเพลงเต็ม", "error");
+  const isMp3 = /\.mp3$/i.test(f.name) || f.type === "audio/mpeg" || f.type === "audio/mp3";
+  const isAllowed = isWav || isMp3;
+  if (!isAllowed) {
+    showToast("กรุณาเลือกไฟล์นามสกุล .wav หรือ .mp3 เท่านั้นสำหรับเพลงเต็ม", "error");
     e.target.value = "";
     pendingFullSongFile = null;
     meta.style.display = "none";
@@ -473,6 +478,7 @@ document.getElementById("fullSongFileInput").addEventListener("change", (e) => {
   meta.textContent = `ขนาดไฟล์: ${formatFileSize(f.size)}`;
   meta.style.display = "block";
 });
+// 🔒🔒🔒 จบส่วนที่ห้าม AI แก้เอง (ไฟล์เพลงเต็มทีละไฟล์) 🔒🔒🔒
 
 document.getElementById("songSaveBtn").addEventListener("click", async function () {
   const name = document.getElementById("fSongName").value.trim();
@@ -787,7 +793,8 @@ async function openBulkUpload() {
   document.getElementById("bulkFilesPicker").textContent = "📁 แตะเพื่อเลือกไฟล์เพลงหลายไฟล์";
   document.getElementById("bulkFilesPicker").className = "file-picker";
   document.getElementById("bulkFullFilesInput").value = "";
-  document.getElementById("bulkFullFilesPicker").textContent = "🔒 แตะเพื่อเลือกไฟล์ WAV เต็มหลายไฟล์";
+  // 🔒 ข้อความ placeholder ปรับให้ตรงกับที่รองรับจริง (WAV/MP3) — ไม่กระทบ logic ใดๆ
+  document.getElementById("bulkFullFilesPicker").textContent = "🔒 แตะเพื่อเลือกไฟล์เพลงเต็มหลายไฟล์ (WAV/MP3)";
   document.getElementById("bulkFullFilesPicker").className = "file-picker";
   document.getElementById("bulkFullFilesMeta").style.display = "none";
   document.getElementById("bulkFullFilesMeta").textContent = "";
@@ -827,20 +834,26 @@ document.getElementById("bulkFilesInput").addEventListener("change", (e) => {
   document.getElementById("bulkFilesPicker").textContent = `🎵 เลือกแล้ว ${bulkFiles.length} ไฟล์`;
   document.getElementById("bulkFilesPicker").className = "file-picker filled";
 });
+
+// 🔒🔒🔒 ห้าม AI แก้โค้ดส่วนนี้เองโดยไม่มีคำสั่งจากผู้ใช้โดยตรง (ประกาศจากผู้ใช้ 2026-09-06) 🔒🔒🔒
+// เงื่อนไขไฟล์เพลงเต็ม (แบบ Bulk หลายไฟล์): อนุญาตทั้งนามสกุล .wav และ .mp3 — ห้ามแก้ให้เหลือรองรับแค่ชนิดเดียวโดยไม่มีคำสั่งผู้ใช้
 document.getElementById("bulkFullFilesInput").addEventListener("change", (e) => {
   const files = Array.from(e.target.files || []);
   const meta = document.getElementById("bulkFullFilesMeta");
-  const nonWav = files.filter(f => !/\.wav$/i.test(f.name));
-  if (nonWav.length > 0) {
-    showToast("ไฟล์เพลงเต็มต้องเป็นนามสกุล .wav เท่านั้น — ตัดไฟล์ที่ไม่ใช่ WAV ออกแล้ว: " + nonWav.map(f => f.name).join(", "), "error");
+  const isAllowedFile = (f) => /\.(wav|mp3)$/i.test(f.name);
+  const notAllowed = files.filter(f => !isAllowedFile(f));
+  if (notAllowed.length > 0) {
+    showToast("ไฟล์เพลงเต็มต้องเป็นนามสกุล .wav หรือ .mp3 เท่านั้น — ตัดไฟล์ที่ไม่รองรับออกแล้ว: " + notAllowed.map(f => f.name).join(", "), "error");
   }
-  bulkFullFiles = files.filter(f => /\.wav$/i.test(f.name));
+  bulkFullFiles = files.filter(isAllowedFile);
   if (bulkFullFiles.length === 0) { meta.style.display = "none"; return; }
   document.getElementById("bulkFullFilesPicker").textContent = `🔒 เลือกแล้ว ${bulkFullFiles.length} ไฟล์`;
   document.getElementById("bulkFullFilesPicker").className = "file-picker filled";
   meta.textContent = "จะจับคู่กับไฟล์ตัวอย่างโดยเทียบชื่อไฟล์ (ไม่รวมนามสกุล) — เพลงที่จับคู่ไม่ได้จะยังไม่มีไฟล์เต็ม เพิ่มทีหลังได้ที่หน้าแก้ไขเพลง";
   meta.style.display = "block";
 });
+// 🔒🔒🔒 จบส่วนที่ห้าม AI แก้เอง (ไฟล์เพลงเต็มแบบ Bulk) 🔒🔒🔒
+
 document.getElementById("bulkCoverInput").addEventListener("change", (e) => {
   const f = e.target.files[0]; if (!f) return;
   pendingBulkCoverFile = f;
