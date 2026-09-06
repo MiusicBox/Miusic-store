@@ -144,12 +144,6 @@
       #receiptBackdrop .receipt-total { display:flex; justify-content:space-between; padding-top:14px; font-size:18px; }
       #receiptBackdrop .receipt-thanks { text-align:center; color:#666; margin-top:20px; font-size:12px; }
       #receiptBackdrop .receipt-empty { color:#666; text-align:center; padding:12px; }
-      @media print {
-        body * { visibility:hidden !important; }
-        #receiptContent, #receiptContent * { visibility:visible !important; }
-        #receiptContent { position:absolute; left:0; top:0; width:100%; }
-        #receiptContent .receipt-paper { max-width:none; border-radius:0; }
-      }
     </style>
     <div id="view-orders" class="view" style="display:none;">
       <div class="container" style="padding:14px 16px 6px;display:flex;gap:8px;align-items:center;">
@@ -440,7 +434,7 @@
       <div id="receiptContent"></div>
       <div style="display:flex;gap:8px;margin-top:14px;">
         <button class="btn secondary" id="receiptWhatsAppBtn" style="flex:1;">ส่งใบเสร็จทาง WhatsApp</button>
-        <button class="btn" id="receiptPrintBtn" style="flex:1;">พิมพ์ / บันทึกเป็น PDF</button>
+        <button class="btn" id="receiptDownloadImgBtn" style="flex:1;">ดาวน์โหลดใบเสร็จเป็นรูป</button>
       </div>
     </div>
   </div>
