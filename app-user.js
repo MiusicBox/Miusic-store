@@ -28,16 +28,6 @@ function escapeHtml(str) {
   return String(str == null ? "" : str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
-function safeHttpUrl(value) {
-  if (!value) return "";
-  try {
-    const url = new URL(String(value || ""), window.location.href);
-    return ["http:", "https:"].includes(url.protocol) ? escapeHtml(url.href) : "";
-  } catch (_) {
-    return "";
-  }
-}
-
 function formatPrice(v) { return Number(v || 0).toLocaleString("en-US") + " LAK"; }
 
 function formatTime(sec) {
@@ -70,12 +60,7 @@ async function init() {
     getDocs(collection(db, "playlists")),
     getDoc(doc(db, "settings", "main"))
   ]);
-  STATE.songs = songsSnap.docs.map(d => {
-    const { full_file_url, full_file_public_id, full_file_name, ...publicSongData } = d.data();
-    // ไม่เก็บข้อมูลไฟล์เต็มไว้ใน state ของหน้า user
-    // หมายเหตุ: การป้องกันระดับ network ยังต้องใช้ Firestore Rules/แยก collection
-    return { id: d.id, ...publicSongData };
-  }).filter(s => s.status !== "hidden");
+  STATE.songs = songsSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(s => s.status !== "hidden");
   STATE.categories = catSnap.docs.map(d => ({ id: d.id, ...d.data() }));
   STATE.djs = djSnap.docs.map(d => ({ id: d.id, ...d.data() }));
   STATE.playlists = playlistSnap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -109,7 +94,7 @@ function renderCategoryChips() {
   if (!wrap) return;
   let html = `<div class="chip${STATE.currentCategory === "all" ? " active" : ""}" data-cat="all">ทั้งหมด</div>`;
   STATE.categories.forEach(c => {
-    html += `<div class="chip${STATE.currentCategory === c.id ? " active" : ""}" data-cat="${escapeHtml(c.id)}">${escapeHtml(c.category_name)}</div>`;
+    html += `<div class="chip${STATE.currentCategory === c.id ? " active" : ""}" data-cat="${c.id}">${escapeHtml(c.category_name)}</div>`;
   });
   wrap.innerHTML = html;
   wrap.querySelectorAll(".chip").forEach(el => {
@@ -133,8 +118,8 @@ function renderDjRow() {
   const wrap = document.getElementById("djRow");
   if (!wrap) return;
   wrap.innerHTML = STATE.djs.map(d =>
-    `<div class="dj-item" data-dj="${escapeHtml(d.id)}">
-      <img class="dj-avatar" src="${safeHttpUrl(d.image_url)}">
+    `<div class="dj-item" data-dj="${d.id}">
+      <img class="dj-avatar" src="${d.image_url || ""}">
       <div class="dj-name">${escapeHtml(d.dj_name)}</div>
     </div>`
   ).join("");
@@ -209,7 +194,7 @@ function getFilteredSongs() {
   return STATE.songs.filter(s => {
     if (STATE.currentDj) {
       const dj = STATE.djs.find(d => d.id === STATE.currentDj);
-      if (!dj || (s.dj_id ? s.dj_id !== dj.id : s.dj_name !== dj.dj_name)) return false;
+      if (!dj || s.dj_name !== dj.dj_name) return false;
     }
     if (!songBelongsToCurrentCategory(s)) return false;
     if (STATE.search) {
@@ -242,17 +227,17 @@ function renderSongGrid() {
   }
   if (empty) empty.style.display = "none";
   grid.innerHTML = list.map(s => `
-     <div class="song-card" data-id="${escapeHtml(s.id)}">
+    <div class="song-card" data-id="${s.id}">
       <div class="song-cover">
-         <img src="${safeHttpUrl(s.cover_url)}">
-         <button class="play-btn" data-play="${escapeHtml(s.id)}"><svg width="16" height="16" viewBox="0 0 24 24" fill="#fff"><path d="M8 5v14l11-7z"/></svg></button>
+        <img src="${s.cover_url || ""}">
+        <button class="play-btn" data-play="${s.id}"><svg width="16" height="16" viewBox="0 0 24 24" fill="#fff"><path d="M8 5v14l11-7z"/></svg></button>
       </div>
       <div class="song-info">
         <div class="song-name">${escapeHtml(s.song_name)}</div>
         <div class="song-artist">${escapeHtml(s.artist || "")}</div>
         ${s.dj_name ? `<div class="song-dj">DJ: ${escapeHtml(s.dj_name)}</div>` : ""}
         <div class="song-footer" style="display: flex; justify-content: flex-end; align-items: center; margin-top: auto;">
-           <button class="cart-add-btn" type="button" data-add-cart="${escapeHtml(s.id)}" aria-label="เพิ่ม ${escapeHtml(s.song_name)} ลงตะกร้า">
+          <button class="cart-add-btn" type="button" data-add-cart="${s.id}" aria-label="เพิ่ม ${escapeHtml(s.song_name)} ลงตะกร้า">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
             ${formatPrice(s.price)}
           </button>
@@ -303,17 +288,17 @@ function renderPlaylists() {
     const isOpen = openPlaylists.has(pl.id) || (STATE.search && STATE.search.length > 0); // เปิดอัตโนมัติเมื่อกำลังค้นหา
     const cover = pl.cover_url || songs[0].cover_url || "";
     return `
-       <div class="playlist-block" data-playlist-id="${escapeHtml(pl.id)}">
-         <div class="playlist-folder-btn" data-toggle-playlist="${escapeHtml(pl.id)}">
+      <div class="playlist-block" data-playlist-id="${pl.id}">
+        <div class="playlist-folder-btn" data-toggle-playlist="${pl.id}">
           <div class="playlist-folder-cover">
-             <img src="${safeHttpUrl(cover)}">
+            <img src="${cover}">
           </div>
           <div class="playlist-folder-info">
             <div class="playlist-folder-name">${escapeHtml(pl.playlist_name)}</div>
             <div class="playlist-folder-count">${songs.length} เพลง</div>
           </div>
           <div style="display: flex; flex-direction: column; align-items: flex-end; justify-content: flex-end; margin-left: auto; padding-right: 8px;">
-             ${pl.price ? `<button type="button" class="cart-add-btn playlist-folder-price" data-add-cart-playlist="${escapeHtml(pl.id)}" aria-label="เพิ่มเพลย์ลิสต์ ${escapeHtml(pl.playlist_name)} ลงตะกร้า">
+            ${pl.price ? `<button type="button" class="cart-add-btn playlist-folder-price" data-add-cart-playlist="${pl.id}" aria-label="เพิ่มเพลย์ลิสต์ ${escapeHtml(pl.playlist_name)} ลงตะกร้า">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
               ${formatPrice(pl.price)}
             </button>` : ""}
@@ -323,10 +308,10 @@ function renderPlaylists() {
         <div class="playlist-row-wrap${isOpen ? "" : " is-closed"}">
           <div class="playlist-row">
             ${songs.map(s => `
-               <div class="playlist-song-row" data-id="${escapeHtml(s.id)}">
+              <div class="playlist-song-row" data-id="${s.id}">
                 <div class="playlist-cover">
-                   <img src="${safeHttpUrl(s.cover_url || pl.cover_url)}">
-                   <button class="playlist-play-btn" data-play="${escapeHtml(s.id)}">
+                  <img src="${s.cover_url || pl.cover_url || ""}">
+                  <button class="playlist-play-btn" data-play="${s.id}">
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="#fff"><path d="M8 5v14l11-7z"/></svg>
                   </button>
                 </div>
@@ -336,7 +321,7 @@ function renderPlaylists() {
                 </div>
                 <div class="playlist-item-price" style="display: flex; flex-direction: column; align-items: flex-end; justify-content: flex-end; position: absolute; right: 0; bottom: 0;">
                   <div style="display: inline-flex; align-items: center; gap: 4px;">
-                     <button class="cart-add-btn playlist-add-cart" type="button" data-add-cart-song="${escapeHtml(s.id)}" aria-label="เพิ่ม ${escapeHtml(s.song_name)} ลงตะกร้า">
+                    <button class="cart-add-btn playlist-add-cart" type="button" data-add-cart-song="${s.id}" aria-label="เพิ่ม ${escapeHtml(s.song_name)} ลงตะกร้า">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
                       ${formatPrice(s.price)}
                     </button>
@@ -539,8 +524,6 @@ function playSong(songId) {
   }
 
   AUDIO.pause();
-  const requestId = (playSong._requestId || 0) + 1;
-  playSong._requestId = requestId;
   STATE.currentPlayingId = songId;
   STATE.currentLoadingId = songId;
   updatePlayButtonsUI();
@@ -564,11 +547,9 @@ function playSong(songId) {
   AUDIO.src = song.file_url;
   AUDIO.load();
   AUDIO.play().then(() => {
-    if (requestId !== playSong._requestId) return;
     STATE.currentLoadingId = null;
     updatePlayButtonsUI();
   }).catch(() => {
-    if (requestId !== playSong._requestId) return;
     showToast("แตะปุ่มเล่นที่แถบด้านล่างอีกครั้ง");
     STATE.currentLoadingId = null;
     updatePlayButtonsUI();
