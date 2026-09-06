@@ -223,15 +223,11 @@ function confirmDeleteAdmin(id) {
 export function initAdminsView() {
   const addBtn = document.getElementById("addAdminBtn");
   if (addBtn) addBtn.style.display = isMainAdmin() ? "" : "none";
+  loadAdmins();
 
-  if (!listenersBound) {
-    // ตั้ง flag ก่อนเริ่มงาน async เพื่อกันการเปิด view ซ้ำเร็ว ๆ
-    // แล้วผูก listener ซ้ำจนบันทึก Admin หลายครั้ง
-    listenersBound = true;
-    document.getElementById("addAdminBtn").addEventListener("click", openAddAdmin);
-    document.getElementById("adminFormClose").addEventListener("click", () => document.getElementById("adminFormBackdrop").classList.remove("show"));
-    document.getElementById("adminSaveBtn").addEventListener("click", handleSaveAdmin);
-  }
-
-  return loadAdmins();
+  if (listenersBound) return;
+  document.getElementById("addAdminBtn").addEventListener("click", openAddAdmin);
+  document.getElementById("adminFormClose").addEventListener("click", () => document.getElementById("adminFormBackdrop").classList.remove("show"));
+  document.getElementById("adminSaveBtn").addEventListener("click", handleSaveAdmin);
+  listenersBound = true;
 }
