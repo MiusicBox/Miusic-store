@@ -761,7 +761,7 @@ async function copyReceiptDetails(order, receiptNumber, total, playlistName) {
   }
 }
 
-// แคปเฉพาะส่วนใบเสร็จสีขาว (.receipt-paper) เป็น canvas — ใช้ร่วมกันทั้งปุ่มดาวน์โหลดรูป และปุ่มแชร์ผ่าน WhatsApp
+// แคปเฉพาะส่วนใบเสร็จสีขาว (.receipt-paper) เป็น canvas — ใช้กับปุ่มดาวน์โหลดใบเสร็จเป็นรูป
 // เรนเดอร์ฝั่ง client ล้วนๆ ด้วย html2canvas ไม่มีการอัปโหลดรูปขึ้นเซิร์ฟเวอร์ใดๆ
 // โหลดไลบรารีแบบ dynamic import จาก CDN (ESM) เฉพาะตอนกดใช้งานจริง ไม่กระทบ bundle/perf ปกติ
 async function captureReceiptCanvas() {
@@ -793,51 +793,9 @@ async function downloadReceiptAsImage(receiptNumber) {
     document.body.appendChild(link);
     link.click();
     link.remove();
-    orderToast("ดาวน์โหลดใบเสร็จเป็นรูปแล้ว", "success");
+    orderToast("บันทึกรูปใบเสร็จสำเร็จ", "success");
   } catch (err) {
-    orderToast("บันทึกใบเสร็จเป็นรูปไม่สำเร็จ: " + err.message, "error");
-  }
-}
-
-// ส่งใบเสร็จเป็นรูปภาพเข้า WhatsApp — แคปรูปแล้วเปิดหน้าต่างแชร์ของเครื่อง (Web Share API)
-// ให้ผู้ใช้เลือกส่งเข้า WhatsApp เอง (รองรับ Android Chrome และ iOS Safari 15+ เป็นหลัก)
-// ถ้าเบราว์เซอร์ไม่รองรับการแชร์ไฟล์ (ส่วนใหญ่คือเดสก์ท็อป) จะดาวน์โหลดรูปลงเครื่องแทน
-// แล้วให้แอดมินแนบส่งเข้า WhatsApp เอง — ไม่ปล่อยให้ปุ่มไม่ทำงานเฉยๆ
-async function shareReceiptImageViaWhatsApp(receiptNumber) {
-  try {
-    const canvas = await captureReceiptCanvas();
-    if (!canvas) {
-      orderToast("ไม่พบใบเสร็จให้ส่ง", "error");
-      return;
-    }
-    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
-    if (!blob) {
-      orderToast("สร้างรูปใบเสร็จไม่สำเร็จ", "error");
-      return;
-    }
-    const fileName = `receipt-${receiptNumber || "order"}.png`;
-    const file = new File([blob], fileName, { type: "image/png" });
-
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      await navigator.share({
-        files: [file],
-        title: "ใบเสร็จ",
-        text: `ใบเสร็จ Order ${receiptNumber || ""}`,
-      });
-    } else {
-      // เบราว์เซอร์นี้ไม่รองรับการแชร์ไฟล์ผ่าน Web Share API — ดาวน์โหลดรูปให้แทน
-      const dataUrl = canvas.toDataURL("image/png");
-      const link = document.createElement("a");
-      link.href = dataUrl;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      orderToast("เบราว์เซอร์นี้ยังไม่รองรับหน้าต่างแชร์ไฟล์ — ดาวน์โหลดรูปให้แล้ว กรุณาแนบส่งเข้า WhatsApp เอง", "error");
-    }
-  } catch (err) {
-    if (err?.name === "AbortError") return; // ผู้ใช้กดยกเลิกหน้าต่างแชร์เอง ไม่ต้องแจ้ง error
-    orderToast("ส่งใบเสร็จไม่สำเร็จ: " + err.message, "error");
+    orderToast("บันทึกรูปใบเสร็จไม่สำเร็จ: " + err.message, "error");
   }
 }
 
@@ -963,7 +921,15 @@ async function openReceipt(orderId) {
   }
   const whatsappBtn = document.getElementById("receiptWhatsAppBtn");
   if (whatsappBtn) {
-    whatsappBtn.onclick = () => shareReceiptImageViaWhatsApp(receiptNumber);
+    whatsappBtn.onclick = () => {
+      const number = String(order.whatsapp || "").replace(/[^0-9]/g, "");
+      if (!number) {
+        orderToast("ออเดอร์นี้ไม่มีเบอร์ WhatsApp ของลูกค้า", "error");
+        return;
+      }
+      const text = "กรุณารอสักครู่ แอดมินกำลังสร้างออเดอร์และใบเสร็จให้ลูกค้าค่ะ/ครับ 🙏";
+      window.open(buildWhatsAppLink(number, text), "_blank", "noopener");
+    };
   }
   const downloadImgBtn = document.getElementById("receiptDownloadImgBtn");
   if (downloadImgBtn) {
