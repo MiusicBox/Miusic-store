@@ -89,8 +89,24 @@ function showToast(message, type) {
 function escapeHtml(str) {
   return String(str == null ? "" : str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
+function safeHttpUrl(value) {
+  if (!value) return "";
+  try {
+    const url = new URL(String(value), window.location.href);
+    return ["http:", "https:"].includes(url.protocol) ? escapeHtml(url.href) : "";
+  } catch (_) {
+    return "";
+  }
+}
 function formatPrice(v) { return Number(v || 0).toLocaleString("en-US") + " LAK"; }
 function debounce(fn, wait) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), wait); }; }
+function parseNonNegativePrice(value, label = "ราคา") {
+  const price = Number(value);
+  if (!Number.isFinite(price) || price < 0) {
+    throw new Error(`${label}ต้องเป็นตัวเลขตั้งแต่ 0 ขึ้นไป`);
+  }
+  return price;
+}
 
 // ---------------- ดึงชื่อเพลงจากชื่อไฟล์ ----------------
 // ตัดแค่นามสกุลไฟล์ออก (.mp3 / .wav ฯลฯ) ส่วนที่เหลือคงไว้ทุกตัวอักษรเหมือนชื่อไฟล์เดิม
@@ -279,7 +295,7 @@ async function loadSongs() {
 function populateSelect(id, items, valueKey, labelKey) {
   const sel = document.getElementById(id);
   const current = sel.value;
-  sel.innerHTML = '<option value="">— ไม่ระบุ —</option>' + items.map(it => `<option value="${it[valueKey]}">${escapeHtml(it[labelKey])}</option>`).join("");
+  sel.innerHTML = '<option value="">— ไม่ระบุ —</option>' + items.map(it => `<option value="${escapeHtml(it[valueKey])}">${escapeHtml(it[labelKey])}</option>`).join("");
   sel.value = current;
 }
 function renderSongList(list) {
@@ -288,13 +304,13 @@ function renderSongList(list) {
   if (list.length === 0) { wrap.innerHTML = '<div class="empty-state">ยังไม่มีเพลง</div>'; return; }
   wrap.innerHTML = list.map(s => `
     <div class="list-row">
-      ${songSelectMode ? `<input type="checkbox" class="song-select-chk" data-id="${s.id}" ${selectedSongIds.has(s.id) ? "checked" : ""} style="width:20px;height:20px;flex-shrink:0;">` : ""}
-      <img src="${s.cover_url || ""}">
+      ${songSelectMode ? `<input type="checkbox" class="song-select-chk" data-id="${escapeHtml(s.id)}" ${selectedSongIds.has(s.id) ? "checked" : ""} style="width:20px;height:20px;flex-shrink:0;">` : ""}
+      <img src="${safeHttpUrl(s.cover_url)}">
       <div class="info"><div class="n1">${escapeHtml(s.song_name)}</div>
       <div class="n2">${escapeHtml(s.dj_name || "-")} · ${escapeHtml(s.category_name || "-")} · ${formatPrice(s.price)}</div></div>
       <div class="row-actions">
-        <button class="icon-btn" data-edit="${s.id}">✎</button>
-        <button class="icon-btn danger" data-del="${s.id}">🗑</button>
+        <button class="icon-btn" data-edit="${escapeHtml(s.id)}">✎</button>
+        <button class="icon-btn danger" data-del="${escapeHtml(s.id)}">🗑</button>
       </div>
     </div>`).join("");
   wrap.querySelectorAll("[data-edit]").forEach(b => b.addEventListener("click", () => openEditSong(b.getAttribute("data-edit"))));
@@ -411,7 +427,7 @@ function openEditSong(id) {
   document.getElementById("fPrice").value = s.price || 0;
   document.getElementById("fDesc").value = s.description || "";
   document.getElementById("fStatus").value = s.status || "active";
-  const dj = CACHE.djs.find(d => d.dj_name === s.dj_name);
+  const dj = CACHE.djs.find(d => d.id === s.dj_id) || CACHE.djs.find(d => d.dj_name === s.dj_name);
   document.getElementById("fDj").value = dj ? dj.id : "";
   document.getElementById("fCategory").value = s.category_id || "";
   document.getElementById("fPlaylist").value = s.playlist_id || "";
@@ -483,6 +499,13 @@ document.getElementById("fullSongFileInput").addEventListener("change", (e) => {
 document.getElementById("songSaveBtn").addEventListener("click", async function () {
   const name = document.getElementById("fSongName").value.trim();
   if (!name) { showToast("กรุณากรอกชื่อเพลง", "error"); return; }
+  let songPrice;
+  try {
+    songPrice = parseNonNegativePrice(document.getElementById("fPrice").value, "ราคาเพลง");
+  } catch (err) {
+    showToast(err.message, "error");
+    return;
+  }
   const btn = this; btn.disabled = true; btn.textContent = "กำลังบันทึก...";
   const mySession = songUploadSession; // จำ session ปัจจุบัน กันไม่ให้ callback ไปเขียนทับฟอร์มที่ถูกรีเซ็ต/เปิดใหม่ระหว่างอัปโหลด
   const controller = new AbortController(); // ใช้กดยกเลิกอัปโหลดจริง (xhr.abort())
@@ -529,12 +552,13 @@ document.getElementById("songSaveBtn").addEventListener("click", async function 
     const payload = {
       song_name: name,
       artist: document.getElementById("fArtist").value.trim(),
+      dj_id: djSel.value || "",
       dj_name: djSel.value ? djSel.options[djSel.selectedIndex].text : "",
       category_id: catSel.value,
       category_name: catSel.value ? catSel.options[catSel.selectedIndex].text : "",
       playlist_id: plSel.value,
       playlist_name: plSel.value ? plSel.options[plSel.selectedIndex].text : "",
-      price: Number(document.getElementById("fPrice").value || 0),
+      price: songPrice,
       description: document.getElementById("fDesc").value.trim(),
       status: document.getElementById("fStatus").value,
       updated_at: new Date().toISOString()
@@ -651,10 +675,10 @@ async function loadDjs() {
   const wrap = document.getElementById("djList");
   if (CACHE.djs.length === 0) { wrap.innerHTML = '<div class="empty-state">ยังไม่มี DJ</div>'; return; }
   wrap.innerHTML = CACHE.djs.map(d => `
-    <div class="list-row"><img src="${d.image_url || ""}">
+    <div class="list-row"><img src="${safeHttpUrl(d.image_url)}">
     <div class="info"><div class="n1">${escapeHtml(d.dj_name)}</div><div class="n2">${escapeHtml(d.description || "")}</div></div>
-    <div class="row-actions"><button class="icon-btn" data-edit="${d.id}">✎</button>
-    <button class="icon-btn danger" data-del="${d.id}">🗑</button></div></div>`).join("");
+    <div class="row-actions"><button class="icon-btn" data-edit="${escapeHtml(d.id)}">✎</button>
+    <button class="icon-btn danger" data-del="${escapeHtml(d.id)}">🗑</button></div></div>`).join("");
   wrap.querySelectorAll("[data-edit]").forEach(b => b.addEventListener("click", () => openEditDj(b.getAttribute("data-edit"))));
   wrap.querySelectorAll("[data-del]").forEach(b => b.addEventListener("click", () => {
     openConfirm("ลบ DJ นี้หรือไม่?", async () => {
@@ -715,10 +739,10 @@ async function loadPlaylists() {
   const wrap = document.getElementById("playlistList");
   if (CACHE.playlists.length === 0) { wrap.innerHTML = '<div class="empty-state">ยังไม่มีเพลย์ลิสต์</div>'; return; }
   wrap.innerHTML = CACHE.playlists.map(p => `
-    <div class="list-row"><img src="${p.cover_url || ""}">
+    <div class="list-row"><img src="${safeHttpUrl(p.cover_url)}">
     <div class="info"><div class="n1">${escapeHtml(p.playlist_name)}</div><div class="n2">${escapeHtml(p.description || "")}${p.price ? ` · ${formatPrice(p.price)}` : ""}</div></div>
-    <div class="row-actions"><button class="icon-btn" data-edit="${p.id}">✎</button>
-    <button class="icon-btn danger" data-del="${p.id}">🗑</button></div></div>`).join("");
+    <div class="row-actions"><button class="icon-btn" data-edit="${escapeHtml(p.id)}">✎</button>
+    <button class="icon-btn danger" data-del="${escapeHtml(p.id)}">🗑</button></div></div>`).join("");
   wrap.querySelectorAll("[data-edit]").forEach(b => b.addEventListener("click", () => openEditPlaylist(b.getAttribute("data-edit"))));
   wrap.querySelectorAll("[data-del]").forEach(b => b.addEventListener("click", () => {
     openConfirm("ลบเพลย์ลิสต์นี้หรือไม่? (เพลงในเพลย์ลิสต์จะไม่ถูกลบ แค่ไม่ได้อยู่ในเพลย์ลิสต์นี้อีก)", async () => {
@@ -757,6 +781,13 @@ document.getElementById("playlistCoverInput").addEventListener("change", (e) => 
 document.getElementById("playlistSaveBtn").addEventListener("click", async function () {
   const name = document.getElementById("fPlaylistName").value.trim();
   if (!name) { showToast("กรุณากรอกชื่อเพลย์ลิสต์", "error"); return; }
+  let playlistPrice;
+  try {
+    playlistPrice = parseNonNegativePrice(document.getElementById("fPlaylistPrice").value, "ราคาเพลย์ลิสต์");
+  } catch (err) {
+    showToast(err.message, "error");
+    return;
+  }
   const btn = this; btn.disabled = true; btn.textContent = "กำลังบันทึก...";
   try {
     let coverUrl = existingPlaylistCoverUrl;
@@ -767,7 +798,7 @@ document.getElementById("playlistSaveBtn").addEventListener("click", async funct
     const payload = {
       playlist_name: name,
       description: document.getElementById("fPlaylistDesc").value.trim(),
-      price: Number(document.getElementById("fPlaylistPrice").value || 0),
+      price: playlistPrice,
       cover_url: coverUrl
     };
     if (editingPlaylistId) await updateDoc(doc(db, "playlists", editingPlaylistId), payload);
@@ -887,6 +918,13 @@ document.getElementById("bulkUploadBtn").addEventListener("click", async functio
 
   const plSel = document.getElementById("bulkPlaylist");
   const newPlaylistName = document.getElementById("bulkNewPlaylistName").value.trim();
+  let price;
+  try {
+    price = parseNonNegativePrice(document.getElementById("bulkPrice").value, "ราคาเพลงในชุด");
+  } catch (err) {
+    showToast(err.message, "error");
+    return;
+  }
 
   btn.disabled = true; btn.textContent = "กำลังอัปโหลด...";
   document.getElementById("bulkProgressWrap").style.display = "block";
@@ -913,7 +951,7 @@ document.getElementById("bulkUploadBtn").addEventListener("click", async functio
 
     const djSel = document.getElementById("bulkDj");
     const catSel = document.getElementById("bulkCategory");
-    const price = Number(document.getElementById("bulkPrice").value || 0);
+    const djId = djSel.value || "";
     const djName = djSel.value ? djSel.options[djSel.selectedIndex].text : "";
     const catId = catSel.value;
     const catName = catSel.value ? catSel.options[catSel.selectedIndex].text : "";
@@ -932,6 +970,7 @@ document.getElementById("bulkUploadBtn").addEventListener("click", async functio
       const songPayload = {
         song_name: cleanFileNameToSongName(file.name),
         artist: "",
+        dj_id: djId,
         dj_name: djName,
         category_id: catId,
         category_name: catName,
