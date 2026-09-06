@@ -19,6 +19,9 @@ let pendingSongFile = null, pendingCoverFile = null, pendingDjImageFile = null, 
 let pendingPlaylistCoverFile = null, existingPlaylistCoverUrl = "";
 let pendingFullSongFile = null, existingFullFileUrl = "";
 let confirmAction = null;
+let songUploadSession = 0; // กันไม่ให้ progress ของการอัปโหลดรอบเก่า (ที่ถูกปิด/รีเซ็ตฟอร์มไปแล้ว) มาเขียนทับ UI ของฟอร์มใหม่
+let songUploadController = null; // AbortController ของการอัปโหลดเพลงเดี่ยวที่กำลังทำงานอยู่ (ใช้กดยกเลิก)
+let bulkUploadController = null; // AbortController ของการอัปโหลดแบบ Bulk ที่กำลังทำงานอยู่ (ใช้กดยกเลิก)
 
 // จำกัดขนาดไฟล์ WAV สูงสุด (ปรับได้ตามแผน Cloudinary — ฟรีแพลนอัปโหลดสูงสุดไฟล์ละ 100MB)
 const MAX_FULL_WAV_SIZE_MB = 100;
@@ -27,8 +30,12 @@ function formatFileSize(bytes) {
   const mb = bytes / (1024 * 1024);
   return mb >= 1 ? `${mb.toFixed(1)} MB` : `${Math.round(bytes / 1024)} KB`;
 }
+function isAbortError(err) {
+  return !!(err && err.name === "AbortError");
+}
 
 // สร้าง/หา label แสดง "X MB / Y MB (Z%)" ต่อท้าย progress bar แบบไดนามิก (ไม่แก้ HTML เดิม)
+// จัดชิดซ้าย ตามที่ผู้ใช้ขอ (เดิมชิดขวา)
 function ensureProgressLabel(barId) {
   const bar = document.getElementById(barId);
   if (!bar) return null;
@@ -36,16 +43,40 @@ function ensureProgressLabel(barId) {
   if (!label) {
     label = document.createElement("div");
     label.id = barId + "Label";
-    label.style.cssText = "font-size:12px;color:#9aa0aa;margin-top:6px;text-align:right;";
+    label.style.cssText = "font-size:12px;color:#9aa0aa;margin-top:6px;text-align:left;";
     const track = bar.parentElement || bar;
     track.insertAdjacentElement("afterend", label);
   }
   return label;
 }
-function updateProgressLabel(label, totalBytes, pct) {
+// loadedBytes (ไม่บังคับ): ถ้ามีค่าจริงจาก xhr progress event จะใช้ค่านี้แทนการประมาณจาก pct
+function updateProgressLabel(label, totalBytes, pct, loadedBytes) {
   if (!label) return;
-  const uploaded = (totalBytes || 0) * (pct || 0) / 100;
+  const uploaded = (loadedBytes != null) ? loadedBytes : (totalBytes || 0) * (pct || 0) / 100;
   label.textContent = `${formatFileSize(uploaded)} / ${formatFileSize(totalBytes)} (${Math.round(pct)}%)`;
+}
+
+// สร้าง/หาปุ่ม "ยกเลิกอัปโหลด" ต่อท้าย progress wrap แบบไดนามิก (ไม่แก้ HTML เดิม)
+// onCancel จะถูกผูกใหม่ทุกครั้งที่เรียก เพราะแต่ละรอบอัปโหลดมี AbortController คนละตัว
+function ensureCancelButton(wrapId, onCancel) {
+  const wrap = document.getElementById(wrapId);
+  if (!wrap) return null;
+  let btn = document.getElementById(wrapId + "CancelBtn");
+  if (!btn) {
+    btn = document.createElement("button");
+    btn.id = wrapId + "CancelBtn";
+    btn.type = "button";
+    btn.textContent = "✕ ยกเลิกอัปโหลด";
+    btn.style.cssText = "margin-top:6px;padding:6px 14px;font-size:12px;border-radius:8px;border:1px solid #ff5a5a;background:transparent;color:#ff5a5a;cursor:pointer;display:block;text-align:left;";
+    wrap.insertAdjacentElement("afterend", btn);
+  }
+  btn.onclick = onCancel;
+  btn.style.display = "inline-block";
+  return btn;
+}
+function hideCancelButton(wrapId) {
+  const btn = document.getElementById(wrapId + "CancelBtn");
+  if (btn) btn.style.display = "none";
 }
 
 function showToast(message, type) {
@@ -340,6 +371,7 @@ searchInputEl.addEventListener("keydown", (e) => {
 });
 
 function resetSongForm() {
+  songUploadSession++; // ยกเลิก progress callback ของรอบอัปโหลดก่อนหน้า (ถ้ายังค้างอยู่เบื้องหลัง)
   editingSongId = null; pendingSongFile = null; pendingCoverFile = null;
   pendingFullSongFile = null; existingFullFileUrl = "";
   document.getElementById("songFormTitle").textContent = "เพิ่มเพลง";
@@ -362,6 +394,9 @@ function resetSongForm() {
   if (songLbl) songLbl.textContent = "";
   const fullLbl = document.getElementById("fullSongUploadProgressLabel");
   if (fullLbl) fullLbl.textContent = "";
+  hideCancelButton("songUploadProgressWrap");
+  hideCancelButton("fullSongUploadProgressWrap");
+  if (songUploadController) { songUploadController.abort(); songUploadController = null; } // เผื่อยังมีอัปโหลดค้างจากรอบก่อนหน้า ให้ยกเลิกจริงไปด้วยเลย
 }
 function openAddSong() { resetSongForm(); document.getElementById("songFormBackdrop").classList.add("show"); }
 function openEditSong(id) {
@@ -389,7 +424,10 @@ function openEditSong(id) {
   document.getElementById("songFormBackdrop").classList.add("show");
 }
 document.getElementById("addSongBtn").addEventListener("click", openAddSong);
-document.getElementById("songFormClose").addEventListener("click", () => document.getElementById("songFormBackdrop").classList.remove("show"));
+document.getElementById("songFormClose").addEventListener("click", () => {
+  if (songUploadController) { songUploadController.abort(); songUploadController = null; } // ปิดฟอร์มระหว่างอัปโหลด ต้องยกเลิกอัปโหลดจริงด้วย ไม่ปล่อยค้างเบื้องหลัง
+  document.getElementById("songFormBackdrop").classList.remove("show");
+});
 
 document.getElementById("songFileInput").addEventListener("change", (e) => {
   const f = e.target.files[0]; if (!f) return;
@@ -440,33 +478,40 @@ document.getElementById("songSaveBtn").addEventListener("click", async function 
   const name = document.getElementById("fSongName").value.trim();
   if (!name) { showToast("กรุณากรอกชื่อเพลง", "error"); return; }
   const btn = this; btn.disabled = true; btn.textContent = "กำลังบันทึก...";
+  const mySession = songUploadSession; // จำ session ปัจจุบัน กันไม่ให้ callback ไปเขียนทับฟอร์มที่ถูกรีเซ็ต/เปิดใหม่ระหว่างอัปโหลด
+  const controller = new AbortController(); // ใช้กดยกเลิกอัปโหลดจริง (xhr.abort())
+  songUploadController = controller;
   try {
     let fileUrl = null, coverUrl = null, fullFileUrl = null, fullFilePublicId = null, fullFileName = null;
     if (pendingSongFile) {
       document.getElementById("songUploadProgressWrap").style.display = "block";
       const prog = document.getElementById("songUploadProgress");
       const songProgLabel = ensureProgressLabel("songUploadProgress");
+      ensureCancelButton("songUploadProgressWrap", () => controller.abort());
       const songTotalBytes = pendingSongFile.size;
-      const res = await uploadToCloudinary(pendingSongFile, (pct) => {
+      const res = await uploadToCloudinary(pendingSongFile, (pct, loaded, total) => {
+        if (mySession !== songUploadSession) return; // ฟอร์มถูกรีเซ็ต/เปิดใหม่ไปแล้ว ไม่ต้องอัปเดต UI ต่อ
         prog.style.width = pct + "%";
-        updateProgressLabel(songProgLabel, songTotalBytes, pct);
-      });
+        updateProgressLabel(songProgLabel, total || songTotalBytes, pct, loaded);
+      }, controller.signal);
       fileUrl = res.url;
     }
     if (pendingCoverFile) {
-      const res = await uploadToCloudinary(pendingCoverFile);
+      const res = await uploadToCloudinary(pendingCoverFile, null, controller.signal);
       coverUrl = res.url;
     }
     if (pendingFullSongFile) {
       document.getElementById("fullSongUploadProgressWrap").style.display = "block";
       const prog = document.getElementById("fullSongUploadProgress");
       const fullProgLabel = ensureProgressLabel("fullSongUploadProgress");
+      ensureCancelButton("fullSongUploadProgressWrap", () => controller.abort());
       const fullTotalBytes = pendingFullSongFile.size;
       btn.textContent = "กำลังอัปโหลดไฟล์เต็ม...";
-      const res = await uploadFullSong(pendingFullSongFile, (pct) => {
+      const res = await uploadFullSong(pendingFullSongFile, (pct, loaded, total) => {
+        if (mySession !== songUploadSession) return; // เช่นเดียวกับด้านบน
         prog.style.width = pct + "%";
-        updateProgressLabel(fullProgLabel, fullTotalBytes, pct);
-      });
+        updateProgressLabel(fullProgLabel, total || fullTotalBytes, pct, loaded);
+      }, controller.signal);
       fullFileUrl = res.url;
       fullFilePublicId = res.publicId;
       fullFileName = pendingFullSongFile.name;
@@ -502,13 +547,25 @@ document.getElementById("songSaveBtn").addEventListener("click", async function 
       payload.created_at = new Date().toISOString();
       await addDoc(collection(db, "songs"), payload);
     }
+    hideCancelButton("songUploadProgressWrap");
+    hideCancelButton("fullSongUploadProgressWrap");
     showToast("บันทึกเพลงสำเร็จ", "success");
     document.getElementById("songFormBackdrop").classList.remove("show");
     loadSongs();
     loadDashboard();
   } catch (err) {
-    showToast("บันทึกไม่สำเร็จ: " + err.message, "error");
+    if (isAbortError(err)) {
+      // ผู้ใช้กดยกเลิกอัปโหลดเอง — ซ่อนแถบ progress/ปุ่มยกเลิก แต่คงฟอร์มไว้ให้แก้ไข/อัปโหลดใหม่ได้ตามที่สั่ง
+      document.getElementById("songUploadProgressWrap").style.display = "none";
+      document.getElementById("fullSongUploadProgressWrap").style.display = "none";
+      hideCancelButton("songUploadProgressWrap");
+      hideCancelButton("fullSongUploadProgressWrap");
+      showToast("ยกเลิกการอัปโหลดแล้ว");
+    } else {
+      showToast("บันทึกไม่สำเร็จ: " + err.message, "error");
+    }
   }
+  songUploadController = null;
   btn.disabled = false; btn.textContent = "บันทึกเพลง";
 });
 
@@ -738,6 +795,10 @@ async function openBulkUpload() {
   document.getElementById("bulkCoverPicker").className = "file-picker";
   document.getElementById("bulkProgressWrap").style.display = "none";
   document.getElementById("bulkStatusText").textContent = "";
+  const bulkLbl = document.getElementById("bulkProgressLabel");
+  if (bulkLbl) bulkLbl.textContent = "";
+  hideCancelButton("bulkProgressWrap");
+  if (bulkUploadController) { bulkUploadController.abort(); bulkUploadController = null; } // เผื่อยังมีอัปโหลดค้างจากรอบก่อนหน้า ให้ยกเลิกจริงไปด้วยเลย
 
   document.getElementById("bulkCategory").innerHTML = '<option value="">กำลังโหลด...</option>';
   document.getElementById("bulkDj").innerHTML = '<option value="">กำลังโหลด...</option>';
@@ -755,7 +816,10 @@ async function openBulkUpload() {
   populateSelect("bulkDj", CACHE.djs, "id", "dj_name");
   populateSelect("bulkPlaylist", CACHE.playlists, "id", "playlist_name");
 }
-document.getElementById("bulkUploadClose").addEventListener("click", () => document.getElementById("bulkUploadBackdrop").classList.remove("show"));
+document.getElementById("bulkUploadClose").addEventListener("click", () => {
+  if (bulkUploadController) { bulkUploadController.abort(); bulkUploadController = null; } // ปิดหน้าต่างระหว่างอัปโหลด ต้องยกเลิกอัปโหลดจริงด้วย ไม่ปล่อยค้างเบื้องหลัง
+  document.getElementById("bulkUploadBackdrop").classList.remove("show");
+});
 
 document.getElementById("bulkFilesInput").addEventListener("change", (e) => {
   bulkFiles = Array.from(e.target.files || []);
@@ -813,6 +877,10 @@ document.getElementById("bulkUploadBtn").addEventListener("click", async functio
 
   btn.disabled = true; btn.textContent = "กำลังอัปโหลด...";
   document.getElementById("bulkProgressWrap").style.display = "block";
+  const bulkProgLabel = ensureProgressLabel("bulkProgress");
+  const controller = new AbortController(); // ใช้กดยกเลิกอัปโหลดจริงทั้งคิว (xhr.abort())
+  bulkUploadController = controller;
+  ensureCancelButton("bulkProgressWrap", () => controller.abort());
 
   try {
     let playlistId = plSel.value;
@@ -825,7 +893,7 @@ document.getElementById("bulkUploadBtn").addEventListener("click", async functio
 
     let sharedCoverUrl = "";
     if (pendingBulkCoverFile) {
-      const coverRes = await uploadToCloudinary(pendingBulkCoverFile);
+      const coverRes = await uploadToCloudinary(pendingBulkCoverFile, null, controller.signal);
       sharedCoverUrl = coverRes.url;
       if (playlistId) await updateDoc(doc(db, "playlists", playlistId), { cover_url: sharedCoverUrl }).catch(() => {});
     }
@@ -842,10 +910,11 @@ document.getElementById("bulkUploadBtn").addEventListener("click", async functio
     for (let i = 0; i < bulkFiles.length; i++) {
       const file = bulkFiles[i];
       document.getElementById("bulkStatusText").textContent = `กำลังอัปโหลด ${i + 1}/${bulkFiles.length}: ${file.name}`;
-      const res = await uploadToCloudinary(file, (pct) => {
+      const res = await uploadToCloudinary(file, (pct, loaded, total) => {
         const overall = Math.round(((i + pct / 100) / bulkFiles.length) * 100);
         document.getElementById("bulkProgress").style.width = overall + "%";
-      });
+        updateProgressLabel(bulkProgLabel, total || file.size, pct, loaded);
+      }, controller.signal);
 
       const songPayload = {
         song_name: cleanFileNameToSongName(file.name),
@@ -869,10 +938,11 @@ document.getElementById("bulkUploadBtn").addEventListener("click", async functio
         || (bulkFiles.length === 1 && bulkFullFiles.length === 1 ? bulkFullFiles[0] : null);
       if (matchedFull) {
         document.getElementById("bulkStatusText").textContent = `กำลังอัปโหลดไฟล์เต็ม ${i + 1}/${bulkFiles.length}: ${matchedFull.name}`;
-        const fullRes = await uploadFullSong(matchedFull, (pct) => {
+        const fullRes = await uploadFullSong(matchedFull, (pct, loaded, total) => {
           const overall = Math.round(((i + pct / 100) / bulkFiles.length) * 100);
           document.getElementById("bulkProgress").style.width = overall + "%";
-        });
+          updateProgressLabel(bulkProgLabel, total || matchedFull.size, pct, loaded);
+        }, controller.signal);
         songPayload.full_file_url = fullRes.url;
         songPayload.full_file_public_id = fullRes.publicId;
         songPayload.full_file_name = matchedFull.name;
@@ -884,6 +954,7 @@ document.getElementById("bulkUploadBtn").addEventListener("click", async functio
       await addDoc(collection(db, "songs"), songPayload);
     }
 
+    hideCancelButton("bulkProgressWrap");
     document.getElementById("bulkProgress").style.width = "100%";
     const hasUnmatched = unmatchedNames.length > 0;
     const unmatchedNote = hasUnmatched
@@ -898,8 +969,18 @@ document.getElementById("bulkUploadBtn").addEventListener("click", async functio
       setTimeout(() => { document.getElementById("bulkUploadBackdrop").classList.remove("show"); }, 1200);
     }
   } catch (err) {
-    showToast("อัปโหลดไม่สำเร็จ: " + err.message, "error");
+    if (isAbortError(err)) {
+      // ผู้ใช้กดยกเลิก — หยุดทั้งคิวที่เหลือทันที (เพลงที่บันทึกไปแล้วก่อนหน้ายังอยู่ตามเดิม)
+      // ซ่อนแถบ progress/ปุ่มยกเลิก แต่คงหน้าต่าง Bulk Upload ไว้ให้แก้ไข/กดอัปโหลดใหม่ได้ตามที่สั่ง
+      document.getElementById("bulkProgressWrap").style.display = "none";
+      hideCancelButton("bulkProgressWrap");
+      document.getElementById("bulkStatusText").textContent = "ยกเลิกการอัปโหลดแล้ว";
+      showToast("ยกเลิกการอัปโหลดแล้ว");
+    } else {
+      showToast("อัปโหลดไม่สำเร็จ: " + err.message, "error");
+    }
   }
+  bulkUploadController = null;
   btn.disabled = false; btn.textContent = "เริ่มอัปโหลดทั้งหมด";
 });
 
