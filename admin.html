@@ -144,6 +144,12 @@
       #receiptBackdrop .receipt-total { display:flex; justify-content:space-between; padding-top:14px; font-size:18px; }
       #receiptBackdrop .receipt-thanks { text-align:center; color:#666; margin-top:20px; font-size:12px; }
       #receiptBackdrop .receipt-empty { color:#666; text-align:center; padding:12px; }
+      @media print {
+        body * { visibility:hidden !important; }
+        #receiptContent, #receiptContent * { visibility:visible !important; }
+        #receiptContent { position:absolute; left:0; top:0; width:100%; }
+        #receiptContent .receipt-paper { max-width:none; border-radius:0; }
+      }
     </style>
     <div id="view-orders" class="view" style="display:none;">
       <div class="container" style="padding:14px 16px 6px;display:flex;gap:8px;align-items:center;">
@@ -171,6 +177,7 @@
         <div class="type-toggle" id="ordTypeToggle">
           <button type="button" data-order-type="single" class="active">🎵 เพลงเดี่ยว</button>
           <button type="button" data-order-type="playlist">🎶 ยกเพลย์ลิสต์</button>
+          <button type="button" data-order-type="mixed">🛒 ผสม (เพลง+เพลย์ลิสต์)</button>
         </div>
 
         <div id="ordSingleSection">
@@ -189,6 +196,23 @@
           </div>
           <div id="ordPlaylistSelected"></div>
           <div id="ordPlaylistResults"></div>
+        </div>
+
+        <!-- โหมดผสม: เพลงเดี่ยว+เพลย์ลิสต์ในออเดอร์เดียวกัน (เหมือนตะกร้าฝั่งลูกค้า) -->
+        <div id="ordMixedSection" style="display:none;">
+          <div class="field">
+            <label>เพิ่มเพลงเดี่ยว</label>
+            <div class="search-box"><input id="ordMixedSongSearch" placeholder="ค้นหาเพลง ศิลปิน หรือ DJ..."></div>
+          </div>
+          <div id="ordMixedSongResults"></div>
+          <div class="field" style="margin-top:10px;">
+            <label>เพิ่มเพลย์ลิสต์ทั้งชุด</label>
+            <div class="search-box"><input id="ordMixedPlaylistSearch" placeholder="ค้นหาชื่อเพลย์ลิสต์..."></div>
+          </div>
+          <div id="ordMixedPlaylistResults"></div>
+          <div style="font-size:11px;color:var(--text-dim);margin-top:6px;">
+            เลือกได้ทั้งเพลงเดี่ยวและเพลย์ลิสต์ในออเดอร์เดียวกัน ระบบจะคำนวณยอดรวมให้อัตโนมัติ
+          </div>
         </div>
 
         <div style="margin:16px 0;">
@@ -408,6 +432,23 @@
         <div id="eOrdPlaylistResults"></div>
       </div>
 
+      <!-- โหมดผสม: แสดงเฉพาะตอนแก้ไขออเดอร์ที่เดิมเป็น order_type "mixed" (เพลงเดี่ยว+เพลย์ลิสต์ปนกัน) -->
+      <div id="eOrdMixedSection" style="display:none;">
+        <div class="field">
+          <label>เพิ่มเพลงเดี่ยว</label>
+          <div class="search-box"><input id="eOrdMixedSongSearch" placeholder="ค้นหาเพลง..."></div>
+        </div>
+        <div id="eOrdMixedSongResults"></div>
+        <div class="field" style="margin-top:10px;">
+          <label>เพิ่มเพลย์ลิสต์ทั้งชุด</label>
+          <div class="search-box"><input id="eOrdMixedPlaylistSearch" placeholder="ค้นหาชื่อเพลย์ลิสต์..."></div>
+        </div>
+        <div id="eOrdMixedPlaylistResults"></div>
+        <div style="font-size:11px;color:var(--text-dim);margin-top:6px;">
+          ออเดอร์นี้มีทั้งเพลงเดี่ยวและเพลย์ลิสต์รวมกัน — เพิ่ม/ลบรายการได้อิสระ ระบบจะคำนวณยอดรวมให้อัตโนมัติ
+        </div>
+      </div>
+
       <div style="margin:16px 0;">
         <div style="font-weight:700;font-size:13px;color:var(--text-dim);margin-bottom:6px;">เพลงในออเดอร์นี้</div>
         <div id="eOrderCartItems"></div>
@@ -432,10 +473,7 @@
         <button class="modal-close" id="receiptClose">✕</button>
       </div>
       <div id="receiptContent"></div>
-      <div style="display:flex;gap:8px;margin-top:14px;">
-        <button class="btn secondary" id="receiptWhatsAppBtn" style="flex:1;">ส่งใบเสร็จทาง WhatsApp</button>
-        <button class="btn" id="receiptDownloadImgBtn" style="flex:1;">ดาวน์โหลดใบเสร็จเป็นรูป</button>
-      </div>
+      <button class="btn" id="receiptPrintBtn" style="margin-top:14px;">พิมพ์ / บันทึกเป็น PDF</button>
     </div>
   </div>
 
@@ -447,7 +485,6 @@
       </div>
       <p style="color:var(--text-dim);font-size:13px;margin-top:0;">ดาวน์โหลดแล้วส่งให้ลูกค้าทาง WhatsApp ด้วยตัวเอง — ลิงก์นี้สำหรับ Admin เท่านั้น ห้ามส่งลิงก์นี้ตรงให้ลูกค้า</p>
       <div id="fullFilesContent"></div>
-      <button class="btn secondary" id="fullFilesWhatsAppBtn" style="margin-top:14px;width:100%;">เปิด WhatsApp คุยกับลูกค้า (แนบไฟล์ที่ดาวน์โหลดแล้วเอง)</button>
     </div>
   </div>
 
