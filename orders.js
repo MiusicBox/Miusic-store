@@ -361,7 +361,7 @@ function ensureReceiptElements() {
       <div style="display:flex;gap:8px;margin-top:14px;">
         <button class="btn secondary" id="receiptCopyBtn" type="button" style="flex:1;">คัดลอกรายละเอียด</button>
         <button class="btn secondary" id="receiptWhatsAppBtn" type="button" style="flex:1;">ส่งทาง WhatsApp</button>
-        <button class="btn" id="receiptPrintBtn" type="button" style="flex:1;">พิมพ์ / บันทึกเป็น PDF</button>
+        <button class="btn" id="receiptDownloadImgBtn" type="button" style="flex:1;">ดาวน์โหลดใบเสร็จเป็นรูป</button>
       </div>
     </div>
   `;
@@ -761,7 +761,158 @@ async function copyReceiptDetails(order, receiptNumber, total, playlistName) {
   }
 }
 
-function openReceipt(orderId) {
+// แคปเฉพาะส่วนใบเสร็จสีขาว (.receipt-paper) เป็น canvas — ใช้ร่วมกันทั้งปุ่มดาวน์โหลดรูป และปุ่มแชร์ผ่าน WhatsApp
+// เรนเดอร์ฝั่ง client ล้วนๆ ด้วย html2canvas ไม่มีการอัปโหลดรูปขึ้นเซิร์ฟเวอร์ใดๆ
+// โหลดไลบรารีแบบ dynamic import จาก CDN (ESM) เฉพาะตอนกดใช้งานจริง ไม่กระทบ bundle/perf ปกติ
+async function captureReceiptCanvas() {
+  const target = document.querySelector("#receiptContent .receipt-paper");
+  if (!target) return null;
+  const mod = await import("https://esm.sh/html2canvas@1.4.1");
+  const html2canvas = mod.default;
+  return html2canvas(target, {
+    backgroundColor: "#ffffff",
+    scale: 2,
+    useCORS: true,
+  });
+}
+
+// ดาวน์โหลดใบเสร็จเป็นไฟล์ PNG ลงเครื่องทันที
+// - ใช้ data URL + <a download> ซึ่งรองรับทั้ง Chrome/Android และ Safari บนมือถือ/iPad
+//   (บน iOS บางเวอร์ชันอาจเปิดรูปในแท็บใหม่แทนการดาวน์โหลดอัตโนมัติ ผู้ใช้กดค้างที่รูปเพื่อ "บันทึกลงรูปภาพ" ได้ตามปกติ)
+async function downloadReceiptAsImage(receiptNumber) {
+  try {
+    const canvas = await captureReceiptCanvas();
+    if (!canvas) {
+      orderToast("ไม่พบใบเสร็จให้บันทึก", "error");
+      return;
+    }
+    const dataUrl = canvas.toDataURL("image/png");
+    const link = document.createElement("a");
+    link.href = dataUrl;
+    link.download = `receipt-${receiptNumber || "order"}.png`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    orderToast("ดาวน์โหลดใบเสร็จเป็นรูปแล้ว", "success");
+  } catch (err) {
+    orderToast("บันทึกใบเสร็จเป็นรูปไม่สำเร็จ: " + err.message, "error");
+  }
+}
+
+// ส่งใบเสร็จเป็นรูปภาพเข้า WhatsApp — แคปรูปแล้วเปิดหน้าต่างแชร์ของเครื่อง (Web Share API)
+// ให้ผู้ใช้เลือกส่งเข้า WhatsApp เอง (รองรับ Android Chrome และ iOS Safari 15+ เป็นหลัก)
+// ถ้าเบราว์เซอร์ไม่รองรับการแชร์ไฟล์ (ส่วนใหญ่คือเดสก์ท็อป) จะดาวน์โหลดรูปลงเครื่องแทน
+// แล้วให้แอดมินแนบส่งเข้า WhatsApp เอง — ไม่ปล่อยให้ปุ่มไม่ทำงานเฉยๆ
+async function shareReceiptImageViaWhatsApp(receiptNumber) {
+  try {
+    const canvas = await captureReceiptCanvas();
+    if (!canvas) {
+      orderToast("ไม่พบใบเสร็จให้ส่ง", "error");
+      return;
+    }
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+    if (!blob) {
+      orderToast("สร้างรูปใบเสร็จไม่สำเร็จ", "error");
+      return;
+    }
+    const fileName = `receipt-${receiptNumber || "order"}.png`;
+    const file = new File([blob], fileName, { type: "image/png" });
+
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({
+        files: [file],
+        title: "ใบเสร็จ",
+        text: `ใบเสร็จ Order ${receiptNumber || ""}`,
+      });
+    } else {
+      // เบราว์เซอร์นี้ไม่รองรับการแชร์ไฟล์ผ่าน Web Share API — ดาวน์โหลดรูปให้แทน
+      const dataUrl = canvas.toDataURL("image/png");
+      const link = document.createElement("a");
+      link.href = dataUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      orderToast("เบราว์เซอร์นี้ยังไม่รองรับหน้าต่างแชร์ไฟล์ — ดาวน์โหลดรูปให้แล้ว กรุณาแนบส่งเข้า WhatsApp เอง", "error");
+    }
+  } catch (err) {
+    if (err?.name === "AbortError") return; // ผู้ใช้กดยกเลิกหน้าต่างแชร์เอง ไม่ต้องแจ้ง error
+    orderToast("ส่งใบเสร็จไม่สำเร็จ: " + err.message, "error");
+  }
+}
+
+// สร้างรายการเพลงในใบเสร็จ — ถ้าเป็นเพลย์ลิสต์ (ทั้งออเดอร์ทั้งใบ หรือรายการย่อยในออเดอร์ผสม)
+// ให้ขยายแสดงชื่อเพลงทุกเพลงในเพลย์ลิสต์นั้น แทนที่จะยุบเหลือบรรทัดเดียว
+async function buildReceiptItemRows(order, total) {
+  // กรณีออเดอร์ทั้งใบเป็นเพลย์ลิสต์เดียว (order_type "playlist"): items เป็นเพลงแต่ละเพลงอยู่แล้ว
+  if (order.order_type === "playlist") {
+    const items = order.items || [];
+    const playlist = order.playlist_id ? state.playlists.find((p) => p.id === order.playlist_id) : null;
+    const playlistName = order.playlist_name || getPlaylistName(playlist) || "เพลย์ลิสต์";
+    const songLines = items.map((item) => `
+      <div class="receipt-line" style="border-bottom:none;padding:4px 0 4px 14px;">
+        <small>• ${escapeHtml(item.title || "เพลง")}</small>
+      </div>
+    `).join("");
+    return `
+      <div class="receipt-line" style="flex-direction:column;align-items:stretch;gap:2px;">
+        <div style="display:flex;justify-content:space-between;">
+          <strong>🎶 ${escapeHtml(playlistName)}</strong>
+          <strong>${formatLAK(total)}</strong>
+        </div>
+        <small style="color:#666;">ยกเพลย์ลิสต์ · ${items.length} เพลง</small>
+      </div>
+      ${songLines}
+    `;
+  }
+
+  // กรณีเพลงเดี่ยว/ออเดอร์ผสม: แต่ละ item อาจเป็นเพลงเดี่ยว หรือ kind:"playlist" ที่ต้องขยายรายชื่อเพลงข้างใน
+  const items = order.items || [];
+  const rowGroups = await Promise.all(items.map(async (item) => {
+    if (item?.kind !== "playlist") {
+      return `
+        <div class="receipt-line">
+          <div><strong>${escapeHtml(item.title || "เพลง")}</strong></div>
+          <strong>${formatLAK(item.price)}</strong>
+        </div>
+      `;
+    }
+    // ดึงชื่อเพลงจาก song_ids ที่ snapshot ไว้ตอนสั่งซื้อ (เผื่อไม่มี ให้ query จาก playlist_id แทน เหมือน openFullFilesModal)
+    let songIds = Array.isArray(item.song_ids) ? item.song_ids : [];
+    if (songIds.length === 0 && item.playlist_id) {
+      try {
+        const songsSnap = await getDocs(query(collection(db, "songs"), where("playlist_id", "==", item.playlist_id)));
+        songIds = songsSnap.docs.map((d) => d.id);
+      } catch (_) { /* ปล่อยผ่าน แสดงแค่หัวข้อเพลย์ลิสต์ถ้า query ไม่สำเร็จ */ }
+    }
+    const songNames = await Promise.all(songIds.map(async (songId) => {
+      try {
+        const snap = await getDoc(doc(db, "songs", songId));
+        return snap.exists() ? (snap.data().song_name || "เพลง") : "เพลง";
+      } catch (_) {
+        return "เพลง";
+      }
+    }));
+    const songLines = songNames.map((name) => `
+      <div class="receipt-line" style="border-bottom:none;padding:4px 0 4px 14px;">
+        <small>• ${escapeHtml(name)}</small>
+      </div>
+    `).join("");
+    return `
+      <div class="receipt-line" style="flex-direction:column;align-items:stretch;gap:2px;">
+        <div style="display:flex;justify-content:space-between;">
+          <strong>🎶 ${escapeHtml(item.title || "เพลย์ลิสต์")}</strong>
+          <strong>${formatLAK(item.price)}</strong>
+        </div>
+        <small style="color:#666;">ยกเพลย์ลิสต์ · ${songNames.length} เพลง</small>
+      </div>
+      ${songLines}
+    `;
+  }));
+  return rowGroups.join("");
+}
+
+async function openReceipt(orderId) {
   const order = state.allOrders.find((o) => o.id === orderId);
   if (!order) return;
   ensureReceiptElements();
@@ -779,19 +930,7 @@ function openReceipt(orderId) {
     : date.toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" });
   const receiptNumber = order.receipt_number || getReceiptNumber(order.id, order.created_at);
 
-  const itemRows = order.order_type === "playlist"
-    ? `
-      <div class="receipt-line">
-        <div><strong>🎶 ${escapeHtml(playlistName)}</strong><small>ยกเพลย์ลิสต์ · ${(order.items || []).length} เพลง</small></div>
-        <strong>${formatLAK(total)}</strong>
-      </div>
-    `
-    : (order.items || []).map((item) => `
-      <div class="receipt-line">
-        <div><strong>${escapeHtml(item.title || "เพลง")}</strong></div>
-        <strong>${formatLAK(item.price)}</strong>
-      </div>
-    `).join("");
+  const itemRows = await buildReceiptItemRows(order, total);
 
   const content = document.getElementById("receiptContent");
   if (!content) return;
@@ -824,15 +963,11 @@ function openReceipt(orderId) {
   }
   const whatsappBtn = document.getElementById("receiptWhatsAppBtn");
   if (whatsappBtn) {
-    whatsappBtn.onclick = () => {
-      const number = String(order.whatsapp || "").replace(/[^0-9]/g, "");
-      if (!number) {
-        orderToast("ออเดอร์นี้ไม่มีเบอร์ WhatsApp ของลูกค้า", "error");
-        return;
-      }
-      const text = buildReceiptCopyText(order, receiptNumber, total, playlistName);
-      window.open(buildWhatsAppLink(number, text), "_blank", "noopener");
-    };
+    whatsappBtn.onclick = () => shareReceiptImageViaWhatsApp(receiptNumber);
+  }
+  const downloadImgBtn = document.getElementById("receiptDownloadImgBtn");
+  if (downloadImgBtn) {
+    downloadImgBtn.onclick = () => downloadReceiptAsImage(receiptNumber);
   }
 }
 
@@ -1555,8 +1690,7 @@ export async function initOrdersView() {
     document.getElementById("eOrdPlaylistSearch").addEventListener("input", debounce(handleEditPlaylistSearchInput, 200));
 
     document.getElementById("receiptClose").addEventListener("click", closeReceipt);
-    // ปุ่มคัดลอกถูกผูกกับ Order ที่เปิดอยู่ใน openReceipt()
-    document.getElementById("receiptPrintBtn").addEventListener("click", () => window.print());
+    // ปุ่มคัดลอก/WhatsApp/ดาวน์โหลดรูป ถูกผูกกับ Order ที่เปิดอยู่ใน openReceipt() แทน (ต้องใช้ข้อมูล order ของแต่ละครั้ง)
     document.getElementById("receiptBackdrop").addEventListener("click", (e) => {
       if (e.target.id === "receiptBackdrop") closeReceipt();
     });
