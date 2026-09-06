@@ -32,6 +32,11 @@ function toCloudinaryDownloadUrl(url) {
   return url.slice(0, idx + marker.length) + "fl_attachment/" + url.slice(idx + marker.length);
 }
 function formatLAK(v) { return Number(v || 0).toLocaleString("en-US") + " LAK"; }
+// เปิดแชท WhatsApp ไปหาเบอร์ที่ระบุ (รูปแบบเดียวกับ buildWhatsAppLink ใน app-user.js/app-cart.js)
+function buildWhatsAppLink(number, text) {
+  const clean = String(number || "").replace(/[^0-9]/g, "");
+  return "https://wa.me/" + clean + (text ? "?text=" + encodeURIComponent(text) : "");
+}
 function debounce(fn, wait) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), wait); }; }
 // แอดมินย่อยทำได้ทุกอย่างในหน้าออเดอร์ตามปกติ ยกเว้นลบประวัติออเดอร์ (สงวนไว้ให้แอดมินหลักเท่านั้น)
 // role ถูกตั้งค่าไว้ที่ window.__currentAdminRole โดย app-admin.js ตอนล็อกอินสำเร็จ
@@ -355,6 +360,7 @@ function ensureReceiptElements() {
       <div id="receiptContent"></div>
       <div style="display:flex;gap:8px;margin-top:14px;">
         <button class="btn secondary" id="receiptCopyBtn" type="button" style="flex:1;">คัดลอกรายละเอียด</button>
+        <button class="btn secondary" id="receiptWhatsAppBtn" type="button" style="flex:1;">ส่งทาง WhatsApp</button>
         <button class="btn" id="receiptPrintBtn" type="button" style="flex:1;">พิมพ์ / บันทึกเป็น PDF</button>
       </div>
     </div>
@@ -376,6 +382,7 @@ function ensureFullFilesElements() {
       </div>
        <p style="color:var(--text-dim);font-size:13px;margin-top:0;">ระบบจะสร้าง ZIP จาก WAV เต็มให้อัตโนมัติหลังยืนยันโอน — ลิงก์นี้สำหรับ Admin เท่านั้น ห้ามส่งลิงก์นี้ตรงให้ลูกค้า</p>
       <div id="fullFilesContent"></div>
+      <button class="btn secondary" id="fullFilesWhatsAppBtn" type="button" style="margin-top:14px;width:100%;">เปิด WhatsApp คุยกับลูกค้า (แนบไฟล์ที่ดาวน์โหลดแล้วเอง)</button>
     </div>
   `;
   document.body.appendChild(backdrop);
@@ -815,6 +822,18 @@ function openReceipt(orderId) {
   if (copyBtn) {
     copyBtn.onclick = () => copyReceiptDetails(order, receiptNumber, total, playlistName);
   }
+  const whatsappBtn = document.getElementById("receiptWhatsAppBtn");
+  if (whatsappBtn) {
+    whatsappBtn.onclick = () => {
+      const number = String(order.whatsapp || "").replace(/[^0-9]/g, "");
+      if (!number) {
+        orderToast("ออเดอร์นี้ไม่มีเบอร์ WhatsApp ของลูกค้า", "error");
+        return;
+      }
+      const text = buildReceiptCopyText(order, receiptNumber, total, playlistName);
+      window.open(buildWhatsAppLink(number, text), "_blank", "noopener");
+    };
+  }
 }
 
 function closeReceipt() {
@@ -885,10 +904,24 @@ async function openFullFilesModal(orderId) {
       </div>`
     : order.zip_status === "failed"
       ? `<div class="receipt-line" style="color:var(--danger);"><div><strong>⚠️ ยังสร้าง ZIP ไม่สำเร็จ</strong><small>${escapeHtml(order.zip_error || "ไม่ทราบสาเหตุ")}</small></div></div>`
-      : order.zip_status === "preparing"
-        ? `<div class="receipt-line" style="color:var(--accent);"><div><strong>⏳ กำลังสร้าง ZIP...</strong><small>ระบบกำลังดึงและบีบอัดไฟล์ WAV อยู่ กรุณารอสักครู่แล้วเปิดหน้าต่างนี้ใหม่</small></div></div>`
-        : "";
+      : "";
   content.innerHTML = zipRow + (rows.join("") || `<div class="empty-state">ไม่มีรายการเพลงในออเดอร์นี้</div>`);
+
+  const whatsappBtn = document.getElementById("fullFilesWhatsAppBtn");
+  if (whatsappBtn) {
+    whatsappBtn.onclick = () => {
+      const number = String(order.whatsapp || "").replace(/[^0-9]/g, "");
+      if (!number) {
+        orderToast("ออเดอร์นี้ไม่มีเบอร์ WhatsApp ของลูกค้า", "error");
+        return;
+      }
+      // จงใจไม่ใส่ลิงก์ดาวน์โหลดในข้อความ — แอดมินดาวน์โหลดไฟล์ลงเครื่องแล้วแนบส่งเอง
+      // เพื่อไม่ให้ลิงก์ตรง (ไม่มีการป้องกัน) หลุดไปถึงมือคนอื่นที่ไม่ได้ซื้อ
+      const receiptNumber = order.receipt_number || getReceiptNumber(order.id, order.created_at);
+      const text = `สวัสดีค่ะ/ครับ นี่คือไฟล์เพลงสำหรับ Order ${receiptNumber} ของคุณค่ะ/ครับ 🎵`;
+      window.open(buildWhatsAppLink(number, text), "_blank", "noopener");
+    };
+  }
 }
 
 function closeFullFilesModal() {
