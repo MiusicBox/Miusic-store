@@ -35,8 +35,17 @@ export const analytics = (() => {
 export const CLOUDINARY_CLOUD_NAME = "g4nmb7ho";
 export const CLOUDINARY_UPLOAD_PRESET = "music_store_unsigned";
 
+// สร้าง Error สำหรับกรณีอัปโหลดถูกยกเลิก (แยกจาก error ทั่วไป ให้ผู้เรียกเช็คได้ด้วย err.name === "AbortError")
+function makeAbortError() {
+  const err = new Error("อัปโหลดถูกยกเลิก");
+  err.name = "AbortError";
+  return err;
+}
+
 // อัปโหลดไฟล์ใดๆ (เพลง/รูปภาพ) ขึ้น Cloudinary แบบ unsigned — คืนค่า URL ที่ใช้เล่น/แสดงได้ทันที
-export async function uploadToCloudinary(file, onProgress) {
+// signal (ไม่บังคับ): ส่ง AbortController().signal เข้ามาเพื่อให้ยกเลิกอัปโหลดจริงกลางทางได้ (ยิง xhr.abort())
+// ผู้เรียกเดิมที่ไม่ส่ง signal มา จะทำงานเหมือนเดิมทุกประการ
+export async function uploadToCloudinary(file, onProgress, signal) {
   return new Promise((resolve, reject) => {
     const url = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`;
     const formData = new FormData();
@@ -45,6 +54,12 @@ export async function uploadToCloudinary(file, onProgress) {
 
     const xhr = new XMLHttpRequest();
     xhr.open("POST", url);
+
+    if (signal) {
+      if (signal.aborted) { reject(makeAbortError()); return; }
+      signal.addEventListener("abort", () => xhr.abort());
+    }
+
     xhr.upload.onprogress = (e) => {
       if (onProgress && e.lengthComputable) {
         // ส่งทั้งเปอร์เซ็นต์และจำนวนไบต์จริง (loaded/total) ให้ผู้เรียกใช้แสดงผลแบบ "2 MB / 6 MB" แบบเรียลไทม์ได้
@@ -68,6 +83,7 @@ export async function uploadToCloudinary(file, onProgress) {
     // ใส่ timeout ไว้กันปัญหานี้ (เท่ากับฝั่ง storage-adapter.js)
     xhr.onerror = () => reject(new Error("เชื่อมต่อ Cloudinary ไม่สำเร็จ — ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่"));
     xhr.ontimeout = () => reject(new Error("อัปโหลดไฟล์นานเกินไป (เกิน 10 นาที) — เน็ตอาจช้าหรือหลุดกลางทาง ลองใหม่อีกครั้ง"));
+    xhr.onabort = () => reject(makeAbortError());
     xhr.timeout = 10 * 60 * 1000;
     xhr.send(formData);
   });
