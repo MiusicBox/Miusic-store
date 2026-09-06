@@ -478,8 +478,6 @@ export function initCart({ state, showToast, escapeHtml, formatPrice, buildWhats
       return;
     }
 
-    // เปิดหน้าต่างจาก user gesture ก่อน await เพื่อไม่ให้ Safari/iOS บล็อก WhatsApp
-    const whatsappPopup = window.open("", "_blank", "noopener,noreferrer");
     submitting = true;
     const btn = document.getElementById("submitCartOrderBtn");
     if (btn) { btn.disabled = true; btn.textContent = "กำลังตรวจสอบและบันทึก..."; }
@@ -532,7 +530,6 @@ export function initCart({ state, showToast, escapeHtml, formatPrice, buildWhats
       order = builtOrder;
     } catch (err) {
       console.error("checkoutCart error:", err);
-      if (whatsappPopup && !whatsappPopup.closed) whatsappPopup.close();
       setCheckoutFeedback("บันทึก Order ไม่สำเร็จ: " + (err?.message || err));
       submitting = false;
       if (btn) { btn.disabled = false; btn.textContent = "ยืนยันสั่งซื้อ"; }
@@ -557,15 +554,8 @@ export function initCart({ state, showToast, escapeHtml, formatPrice, buildWhats
     const number = String(resolvedSettings.whatsapp_number || "").replace(/[^0-9]/g, "");
     if (number) {
       const text = buildAdminWhatsAppText(order, receiptNumber, order.store_name);
-      const whatsappUrl = buildWhatsAppLink(number, text);
-      if (whatsappPopup && !whatsappPopup.closed) {
-        whatsappPopup.location.href = whatsappUrl;
-      } else {
-        // fallback กรณี browser หรือ extension บล็อก popup
-        window.open(whatsappUrl, "_blank", "noopener");
-      }
+      window.open(buildWhatsAppLink(number, text), "_blank", "noopener");
     } else {
-      if (whatsappPopup && !whatsappPopup.closed) whatsappPopup.close();
       showToast("บันทึก Order แล้ว แต่ร้านยังไม่ได้ตั้งค่าเบอร์ WhatsApp", "error");
     }
     setTimeout(closeCheckout, 900);
