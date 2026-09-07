@@ -11,6 +11,9 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import { initOrdersView } from "./orders.js?v=20260905-fix1";
 import { resolveCurrentAdminRole, initAdminsView } from "./admin-roles.js";
+import {
+  analyzeSongFile, analyzeSongUrl, recalculateFromManualBar, BAR_SECONDS
+} from "./song-analyzer.js?v=20260907-autopreview1";
 
 const CACHE = { songs: [], categories: [], djs: [], playlists: [] };
 let currentAdminRole = null; // "main" | "sub" — ของบัญชีที่ล็อกอินอยู่ตอนนี้
@@ -18,6 +21,9 @@ let editingSongId = null, editingCatId = null, editingDjId = null, editingPlayli
 let pendingSongFile = null, pendingCoverFile = null, pendingDjImageFile = null, existingDjImageUrl = "";
 let pendingPlaylistCoverFile = null, existingPlaylistCoverUrl = "";
 let pendingFullSongFile = null, existingFullFileUrl = "";
+// ===== Auto Preview (Dance Section) — ไม่ตัดไฟล์ ไม่อัปโหลดไฟล์ใหม่ เก็บแค่วินาทีเริ่ม/จบ =====
+// pendingPreviewData: ผลวิเคราะห์ล่าสุด (จากไฟล์ที่เพิ่งเลือก หรือจากการวิเคราะห์ใหม่/แก้มือ) รอบันทึกตอนกด "บันทึกเพลง"
+let pendingPreviewData = null;
 let confirmAction = null;
 let songUploadSession = 0; // กันไม่ให้ progress ของการอัปโหลดรอบเก่า (ที่ถูกปิด/รีเซ็ตฟอร์มไปแล้ว) มาเขียนทับ UI ของฟอร์มใหม่
 let songUploadController = null; // AbortController ของการอัปโหลดเพลงเดี่ยวที่กำลังทำงานอยู่ (ใช้กดยกเลิก)
@@ -32,6 +38,51 @@ function formatFileSize(bytes) {
 }
 function isAbortError(err) {
   return !!(err && err.name === "AbortError");
+}
+
+// ---------------- Auto Preview UI helpers (ไม่ตัดไฟล์ — เก็บแค่วินาทีเริ่ม/จบไว้เล่นฝั่ง user) ----------------
+function formatSec(sec) {
+  if (sec == null || !isFinite(sec)) return "-";
+  const m = Math.floor(sec / 60), s = Math.round(sec % 60);
+  return m + ":" + (s < 10 ? "0" : "") + s;
+}
+function showPreviewBox() { document.getElementById("previewAnalysisBox").style.display = "block"; }
+function hidePreviewBox() { document.getElementById("previewAnalysisBox").style.display = "none"; }
+function setPreviewBadge(text, color) {
+  const el = document.getElementById("previewStatusBadge");
+  el.textContent = text;
+  el.style.background = color + "26"; // ~15% opacity
+  el.style.color = color;
+}
+function renderPreviewData(data) {
+  pendingPreviewData = data;
+  showPreviewBox();
+  const barField = document.getElementById("fDanceStartBar");
+  const info = document.getElementById("previewInfoText");
+  if (!data) {
+    setPreviewBadge("ยังไม่ได้วิเคราะห์", "#9aa0aa");
+    info.textContent = "";
+    return;
+  }
+  if (data.status === "analyzing") {
+    setPreviewBadge("⏳ กำลังวิเคราะห์...", "#3B9EFF");
+    info.textContent = "กำลังวิเคราะห์ Beat/Energy/Onset ของไฟล์เพลง...";
+    return;
+  }
+  if (data.status === "needs_review") {
+    setPreviewBadge("⚠️ NEEDS_REVIEW", "#ff9f43");
+    info.textContent = "ระบบหาช่วง Dance ที่มั่นใจไม่ได้ — กรุณากรอก Dance Start Bar เองแล้วกด \"แก้ไข / คำนวณ Preview ใหม่\"";
+    if (data.dance_start_bar != null) barField.value = data.dance_start_bar;
+    return;
+  }
+  // status === "ok"
+  setPreviewBadge("✅ พร้อมใช้งาน", "#28c76f");
+  barField.value = data.dance_start_bar;
+  const confText = data.confidence != null ? ` (ความมั่นใจ ${(data.confidence * 100).toFixed(0)}%)` : " (แก้ไขเอง)";
+  info.textContent =
+    `Dance: ห้อง ${data.dance_start_bar}–${data.preview_end_bar}${confText} · ` +
+    `Preview: ${formatSec(data.preview_start_sec)} – ${formatSec(data.preview_end_sec)} ` +
+    `(ห้อง ${data.preview_start_bar}–${data.preview_end_bar})`;
 }
 
 // สร้าง/หา label แสดง "X MB / Y MB (Z%)" ต่อท้าย progress bar แบบไดนามิก (ไม่แก้ HTML เดิม)
@@ -374,6 +425,9 @@ function resetSongForm() {
   songUploadSession++; // ยกเลิก progress callback ของรอบอัปโหลดก่อนหน้า (ถ้ายังค้างอยู่เบื้องหลัง)
   editingSongId = null; pendingSongFile = null; pendingCoverFile = null;
   pendingFullSongFile = null; existingFullFileUrl = "";
+  pendingPreviewData = null;
+  document.getElementById("fDanceStartBar").value = "";
+  hidePreviewBox();
   document.getElementById("songFormTitle").textContent = "เพิ่มเพลง";
   ["fSongName", "fArtist", "fPrice", "fDesc"].forEach(id => document.getElementById(id).value = "");
   document.getElementById("fDj").value = ""; document.getElementById("fCategory").value = ""; document.getElementById("fStatus").value = "active";
@@ -422,6 +476,26 @@ function openEditSong(id) {
     document.getElementById("fullSongFilePicker").textContent = `🔒✔ มีไฟล์เต็มอยู่แล้ว${s.full_file_name ? " (" + s.full_file_name + ")" : ""} — ไม่บังคับอัปโหลดใหม่`;
     document.getElementById("fullSongFilePicker").className = "file-picker filled";
   }
+  // Auto Preview: ถ้าเพลงนี้เคยวิเคราะห์ไว้แล้ว (หรือเคยแก้มือไว้) ให้โชว์สถานะเดิม — ยังไม่ต้องวิเคราะห์ซ้ำ
+  if (s.file_url) {
+    if (s.preview_status) {
+      renderPreviewData({
+        status: s.preview_status,
+        dance_start_bar: s.dance_start_bar,
+        preview_start_bar: s.preview_start_bar,
+        preview_end_bar: s.preview_end_bar,
+        preview_start_sec: s.preview_start_sec,
+        preview_end_sec: s.preview_end_sec,
+        confidence: s.preview_confidence,
+        duration_sec: s.preview_duration_sec
+      });
+    } else {
+      // เพลงเก่าก่อนมีระบบนี้ — ยังไม่เคยวิเคราะห์เลย
+      showPreviewBox();
+      setPreviewBadge("ยังไม่เคยวิเคราะห์", "#9aa0aa");
+      document.getElementById("previewInfoText").textContent = "เพลงนี้อัปโหลดไว้ก่อนมีระบบ Auto Preview — กด \"วิเคราะห์เสียงใหม่ทั้งหมด\" เพื่อสร้าง Preview ให้เพลงนี้";
+    }
+  }
   document.getElementById("songFormBackdrop").classList.add("show");
 }
 document.getElementById("addSongBtn").addEventListener("click", openAddSong);
@@ -440,6 +514,9 @@ document.getElementById("songFileInput").addEventListener("change", (e) => {
   if (!editingSongId && !nameField.value.trim()) {
     nameField.value = nameFromFile(f.name);
   }
+
+  // Auto Preview: วิเคราะห์ไฟล์ที่เพิ่งเลือกทันที (ทำในเบราว์เซอร์ ไม่ต้องรออัปโหลดขึ้น Cloudinary ก่อน)
+  runAnalysisOnFile(f);
 });
 document.getElementById("coverFileInput").addEventListener("change", (e) => {
   const f = e.target.files[0]; if (!f) return;
@@ -479,6 +556,65 @@ document.getElementById("fullSongFileInput").addEventListener("change", (e) => {
   meta.style.display = "block";
 });
 // 🔒🔒🔒 จบส่วนที่ห้าม AI แก้เอง (ไฟล์เพลงเต็มทีละไฟล์) 🔒🔒🔒
+
+// ---------------- Auto Preview: วิเคราะห์อัตโนมัติ + ปุ่มให้แอดมินแก้ไขเอง ----------------
+// mySession กันไม่ให้ผลวิเคราะห์ของไฟล์/ฟอร์มรอบเก่ามาเขียนทับฟอร์มที่เปิดใหม่ (แพทเทิร์นเดียวกับ songUploadSession)
+async function runAnalysisOnFile(file) {
+  const mySession = songUploadSession;
+  renderPreviewData({ status: "analyzing" });
+  try {
+    const result = await analyzeSongFile(file);
+    if (mySession !== songUploadSession) return; // ฟอร์มถูกรีเซ็ต/ปิดไปแล้วระหว่างวิเคราะห์
+    renderPreviewData(result);
+    if (result.status === "needs_review") {
+      showToast("วิเคราะห์ไม่พบช่วง Dance ที่มั่นใจพอ — กรุณากรอก Dance Start Bar เอง", "error");
+    }
+  } catch (err) {
+    if (mySession !== songUploadSession) return;
+    renderPreviewData({ status: "needs_review", dance_start_bar: null });
+    showToast("วิเคราะห์เสียงไม่สำเร็จ: " + (err.message || err) + " — กรอก Dance Start Bar เองได้", "error");
+  }
+}
+
+// ปุ่ม "แก้ไข / คำนวณ Preview ใหม่" — ใช้เลขห้องที่แอดมินกรอกเอง คำนวณช่วง Preview ใหม่ทันที ไม่ต้องวิเคราะห์เสียงซ้ำ
+document.getElementById("recalcPreviewBtn").addEventListener("click", () => {
+  const barVal = document.getElementById("fDanceStartBar").value;
+  if (barVal === "" || barVal == null) { showToast("กรุณากรอก Dance Start Bar ก่อน", "error"); return; }
+  // หาความยาวเพลง (วินาที) เท่าที่รู้ได้ ณ ตอนนี้ — จากผลวิเคราะห์ล่าสุด หรือจากข้อมูลเพลงเดิม (ตอนแก้ไขเพลง)
+  const existingSong = editingSongId ? CACHE.songs.find(x => x.id === editingSongId) : null;
+  const durationSec =
+    (pendingPreviewData && pendingPreviewData.duration_sec) ||
+    (existingSong && existingSong.preview_duration_sec) ||
+    null;
+  const result = recalculateFromManualBar(barVal, durationSec);
+  renderPreviewData(result);
+  showToast("คำนวณ Preview ใหม่จากเลขห้องที่กรอกแล้ว", "success");
+});
+
+// ปุ่ม "วิเคราะห์เสียงใหม่ทั้งหมด (AI)" — รันตัววิเคราะห์ใหม่ทั้งเพลง (ใช้ไฟล์ที่เพิ่งเลือกถ้ามี ไม่งั้นดึงจาก URL เดิม)
+document.getElementById("reanalyzePreviewBtn").addEventListener("click", async () => {
+  const btn = document.getElementById("reanalyzePreviewBtn");
+  const existingSong = editingSongId ? CACHE.songs.find(x => x.id === editingSongId) : null;
+  if (!pendingSongFile && !(existingSong && existingSong.file_url)) {
+    showToast("ยังไม่มีไฟล์เพลงให้วิเคราะห์ — กรุณาเลือกไฟล์เพลงก่อน", "error");
+    return;
+  }
+  btn.disabled = true; btn.textContent = "กำลังวิเคราะห์...";
+  renderPreviewData({ status: "analyzing" });
+  const mySession = songUploadSession;
+  try {
+    const result = pendingSongFile
+      ? await analyzeSongFile(pendingSongFile)
+      : await analyzeSongUrl(existingSong.file_url);
+    if (mySession !== songUploadSession) return;
+    renderPreviewData(result);
+    showToast(result.status === "ok" ? "วิเคราะห์ใหม่สำเร็จ" : "วิเคราะห์ไม่พบช่วง Dance ที่มั่นใจพอ — กรอกเองได้", result.status === "ok" ? "success" : "error");
+  } catch (err) {
+    if (mySession !== songUploadSession) return;
+    showToast("วิเคราะห์ไม่สำเร็จ: " + (err.message || err), "error");
+  }
+  btn.disabled = false; btn.textContent = "🔄 วิเคราะห์เสียงใหม่ทั้งหมด (AI)";
+});
 
 document.getElementById("songSaveBtn").addEventListener("click", async function () {
   const name = document.getElementById("fSongName").value.trim();
@@ -550,6 +686,17 @@ document.getElementById("songSaveBtn").addEventListener("click", async function 
       payload.full_file_url = fullFileUrl;
       payload.full_file_public_id = fullFilePublicId;
       payload.full_file_name = fullFileName;
+    }
+    // Auto Preview: บันทึกแค่วินาทีเริ่ม/จบ + สถานะ — ไม่มีการอัปโหลดไฟล์ preview แยกใดๆ ทั้งสิ้น
+    if (pendingPreviewData && pendingPreviewData.status !== "analyzing") {
+      payload.preview_status = pendingPreviewData.status;
+      payload.dance_start_bar = pendingPreviewData.dance_start_bar ?? null;
+      payload.preview_start_bar = pendingPreviewData.preview_start_bar ?? null;
+      payload.preview_end_bar = pendingPreviewData.preview_end_bar ?? null;
+      payload.preview_start_sec = pendingPreviewData.preview_start_sec ?? null;
+      payload.preview_end_sec = pendingPreviewData.preview_end_sec ?? null;
+      payload.preview_confidence = pendingPreviewData.confidence ?? null;
+      payload.preview_duration_sec = pendingPreviewData.duration_sec ?? null;
     }
 
     if (editingSongId) {
