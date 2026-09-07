@@ -10,6 +10,7 @@ const STATE = {
   currentView: "home",
   currentPlayingId: null,   // id ของเพลงที่กำลังเล่น/พักอยู่ในเครื่องเล่น
   currentLoadingId: null,   // id ของเพลงที่กำลังโหลดอยู่
+  currentPreview: null,     // { start, end } วินาที ของเพลงที่กำลังเล่นอยู่ ถ้ามี Auto Preview (ไม่มี = เล่นเต็มไฟล์แบบเดิม)
   cart: []
 };
 const AUDIO = new Audio();
@@ -526,6 +527,13 @@ function playSong(songId) {
   AUDIO.pause();
   STATE.currentPlayingId = songId;
   STATE.currentLoadingId = songId;
+  // Auto Preview: ถ้าเพลงนี้วิเคราะห์ไว้แล้ว (preview_status === "ok") ให้เล่น/ล็อกเฉพาะช่วง Preview เท่านั้น
+  // ไฟล์ที่ Cloudinary ยังเป็นไฟล์เต็มเหมือนเดิม แค่จำกัดช่วงเล่นตรงนี้ฝั่ง user เท่านั้น
+  // เพลงเก่าที่ยังไม่มีข้อมูล Preview จะเล่นเต็มไฟล์แบบเดิมทุกประการ (fallback ปลอดภัย ไม่พังของเดิม)
+  STATE.currentPreview =
+    song.preview_status === "ok" && song.preview_start_sec != null && song.preview_end_sec != null
+      ? { start: Number(song.preview_start_sec), end: Number(song.preview_end_sec) }
+      : null;
   updatePlayButtonsUI();
 
   const coverEl = document.getElementById("playerCover");
@@ -571,25 +579,52 @@ const seekEl = document.getElementById("playerSeek");
 
 AUDIO.addEventListener("loadedmetadata", () => {
   const durTimeEl = document.getElementById("playerDuration");
-  if (durTimeEl) durTimeEl.textContent = formatTime(AUDIO.duration);
-  if (seekEl) seekEl.max = AUDIO.duration || 0;
+  const preview = STATE.currentPreview;
+  if (preview) {
+    // จำกัด seek bar ให้อยู่แค่ช่วง Preview เท่านั้น — user ลากไปฟังส่วนอื่นของเพลงไม่ได้
+    if (seekEl) { seekEl.min = preview.start; seekEl.max = preview.end; }
+    if (durTimeEl) durTimeEl.textContent = formatTime(preview.end - preview.start);
+    AUDIO.currentTime = preview.start; // กระโดดไปเริ่มที่ (Dance − 24 ห้อง) ทันที
+  } else {
+    if (seekEl) { seekEl.min = 0; seekEl.max = AUDIO.duration || 0; }
+    if (durTimeEl) durTimeEl.textContent = formatTime(AUDIO.duration);
+  }
 });
 
 AUDIO.addEventListener("timeupdate", () => {
   if (isSeeking) return;
+  const preview = STATE.currentPreview;
   const currTimeEl = document.getElementById("playerCurrentTime");
-  if (currTimeEl) currTimeEl.textContent = formatTime(AUDIO.currentTime);
+
+  if (preview && AUDIO.currentTime >= preview.end) {
+    // ถึงท้ายห้องที่ 16 ของ Dance แล้ว — หยุดเล่นทันที ไม่ให้เล่นต่อไปยังส่วนอื่นของเพลงเต็ม
+    AUDIO.pause();
+    AUDIO.currentTime = preview.start;
+    if (currTimeEl) currTimeEl.textContent = formatTime(0);
+    if (seekEl) seekEl.value = preview.start;
+    STATE.currentPlayingId = null;
+    updatePlayButtonsUI();
+    return;
+  }
+
+  if (currTimeEl) currTimeEl.textContent = formatTime(preview ? AUDIO.currentTime - preview.start : AUDIO.currentTime);
   if (seekEl) seekEl.value = AUDIO.currentTime;
 });
 
 if (seekEl) {
   seekEl.addEventListener("input", () => {
     isSeeking = true;
+    const preview = STATE.currentPreview;
     const currTimeEl = document.getElementById("playerCurrentTime");
-    if (currTimeEl) currTimeEl.textContent = formatTime(Number(seekEl.value));
+    const shown = preview ? Number(seekEl.value) - preview.start : Number(seekEl.value);
+    if (currTimeEl) currTimeEl.textContent = formatTime(shown);
   });
   seekEl.addEventListener("change", () => {
-    AUDIO.currentTime = Number(seekEl.value);
+    const preview = STATE.currentPreview;
+    let target = Number(seekEl.value);
+    // กันเหนียวอีกชั้น เผื่อ input ช่วง min/max ถูกเลี่ยงมา (เช่น คีย์บอร์ดบางรุ่น) — clamp ให้อยู่ในช่วง Preview เสมอ
+    if (preview) target = Math.min(preview.end, Math.max(preview.start, target));
+    AUDIO.currentTime = target;
     isSeeking = false;
   });
 }
