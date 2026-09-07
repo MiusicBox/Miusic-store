@@ -55,17 +55,27 @@ const CloudinaryProvider = {
           if (xhr.status >= 200 && xhr.status < 300 && data.secure_url) {
             resolve({ url: data.secure_url, publicId: data.public_id, provider: "cloudinary" });
           } else {
+            // ปฏิเสธจาก Cloudinary เอง (เช่น format/preset ไม่อนุญาต) — ไม่ใช่ปัญหาเครือข่าย
+            // จึงไม่ติด retryable=true เพราะลองใหม่ไปก็จะพังซ้ำเหมือนเดิม
             reject(new Error(data.error ? data.error.message : `อัปโหลดไม่สำเร็จ (HTTP ${xhr.status})`));
           }
         } catch (err) {
           reject(err);
         }
       };
-      xhr.onerror = () => reject(new Error(
-        "เชื่อมต่อ Cloudinary ไม่สำเร็จ — ตรวจสอบ Cloud Name, Upload Preset, CORS หรือการเชื่อมต่ออินเทอร์เน็ต"
-      ));
-      xhr.ontimeout = () => reject(new Error("Cloudinary ใช้เวลาตอบกลับนานเกินไป"));
-      xhr.onabort = () => reject(makeAbortError());
+      xhr.onerror = () => {
+        const err = new Error(
+          "เชื่อมต่อ Cloudinary ไม่สำเร็จ — ตรวจสอบ Cloud Name, Upload Preset, CORS หรือการเชื่อมต่ออินเทอร์เน็ต"
+        );
+        err.retryable = true; // ปัญหาเครือข่าย — ลองใหม่ได้
+        reject(err);
+      };
+      xhr.ontimeout = () => {
+        const err = new Error("Cloudinary ใช้เวลาตอบกลับนานเกินไป");
+        err.retryable = true; // timeout — ลองใหม่ได้
+        reject(err);
+      };
+      xhr.onabort = () => reject(makeAbortError()); // ผู้ใช้กดยกเลิกเอง — ห้าม retry เด็ดขาด
       xhr.timeout = 10 * 60 * 1000;
       xhr.send(formData);
     });
@@ -97,10 +107,37 @@ export async function uploadToStorage(file, onProgress, folder = "", signal) {
   return getStorageProvider().upload(file, { folder }, onProgress, signal);
 }
 
+// ⚠️ retry เฉพาะจุดนี้ (เพลงเต็ม) ตามที่ผู้ใช้สั่งไว้เท่านั้น — ห้ามลาม/ย้ายไป apply กับ
+// uploadToStorage หรือ uploadOrderZip โดยไม่มีคำสั่งผู้ใช้เพิ่ม
+// จะ retry เฉพาะกรณี err.retryable === true (ปัญหาเครือข่าย/timeout เท่านั้น) — ไม่ retry
+// เมื่อผู้ใช้กดยกเลิก (AbortError) และไม่ retry เมื่อ Cloudinary ปฏิเสธไฟล์ (format ไม่ถูกต้อง ฯลฯ)
+// เพราะกรณีหลังลองใหม่ไปก็ไม่มีทางสำเร็จ มีแต่จะเสียเวลาผู้ใช้เปล่าๆ
+async function withUploadRetry(uploadFn, { maxRetries = 2, delayMs = 3000, onRetry } = {}) {
+  let lastErr;
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    try {
+      return await uploadFn();
+    } catch (err) {
+      lastErr = err;
+      const isAbort = err?.name === "AbortError";
+      const canRetry = !isAbort && err?.retryable === true && attempt < maxRetries;
+      if (!canRetry) throw err;
+      if (onRetry) onRetry(attempt + 1, maxRetries, err);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+  throw lastErr;
+}
+
 // อัปโหลดไฟล์เพลงเต็ม WAV/MP3 — เก็บแยกโฟลเดอร์ "full-songs" ไม่ปนกับไฟล์ตัวอย่างที่โชว์บนเว็บ user
 // (โฟลเดอร์นี้ไม่ถูก reference จากหน้าเว็บ user เลย ใช้เฉพาะฝั่ง Admin เท่านั้น)
-export async function uploadFullSong(file, onProgress, signal) {
-  return getStorageProvider().upload(file, { folder: "full-songs" }, onProgress, signal);
+// onRetry (ไม่บังคับ): callback(attemptNumber, maxRetries, err) — ให้ฝั่ง UI (app-admin.js) โชว์สถานะ
+// "กำลังลองใหม่..." ให้ผู้ใช้เห็นตอนอัปโหลดหลุด/timeout แล้วระบบกำลังลองซ้ำอัตโนมัติ
+export async function uploadFullSong(file, onProgress, signal, onRetry) {
+  return withUploadRetry(
+    () => getStorageProvider().upload(file, { folder: "full-songs" }, onProgress, signal),
+    { maxRetries: 2, delayMs: 3000, onRetry }
+  );
 }
 
 // อัปโหลด ZIP ที่ระบบสร้างจากไฟล์เต็มของออเดอร์
