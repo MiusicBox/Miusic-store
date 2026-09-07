@@ -245,6 +245,21 @@
         <input type="file" id="songFileInput" accept="audio/*,.wav,.mp3" style="position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;">
         <div class="progress-outer" id="songUploadProgressWrap" style="display:none;"><div class="progress-inner" id="songUploadProgress"></div></div>
       </div>
+
+      <!-- ===== Auto Preview: สถานะวิเคราะห์ + แก้ไข Dance Start Bar เอง ===== -->
+      <div class="field" id="previewAnalysisBox" style="display:none;border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:12px;background:rgba(255,255,255,.03);">
+        <label style="display:flex;align-items:center;justify-content:space-between;">
+          <span>🎯 Auto Preview (Dance Section)</span>
+          <span id="previewStatusBadge" style="font-size:12px;font-weight:700;padding:2px 10px;border-radius:999px;"></span>
+        </label>
+        <div id="previewInfoText" style="font-size:12px;color:var(--text-dim);margin:6px 0 10px;"></div>
+        <label style="font-size:13px;">Dance Start Bar (ห้องที่เริ่ม Dance — แก้เองได้ถ้าระบบเดาไม่ตรง)</label>
+        <input id="fDanceStartBar" type="number" min="0" step="1" placeholder="เช่น 100">
+        <button type="button" class="btn secondary" id="recalcPreviewBtn" style="margin-top:8px;width:100%;">✎ แก้ไข / คำนวณ Preview ใหม่</button>
+        <button type="button" class="btn secondary" id="reanalyzePreviewBtn" style="margin-top:8px;width:100%;">🔄 วิเคราะห์เสียงใหม่ทั้งหมด (AI)</button>
+      </div>
+      <!-- ===== /Auto Preview ===== -->
+
       <div class="field">
         <label>รูปปกเพลง</label>
         <label class="file-picker" id="coverFilePicker" for="coverFileInput">🖼️ แตะเพื่อเลือกรูปปก</label>
@@ -469,6 +484,6 @@
 
   <div class="toast" id="toast"></div>
 
-  <script type="module" src="app-admin.js?v=20260904-orderzip-loginfix"></script>
+  <script type="module" src="app-admin.js?v=20260907-autopreview1"></script>
 </body>
 </html>
