@@ -168,23 +168,20 @@
         <div class="field"><label>ชื่อลูกค้า *</label><input id="ordCustomerName" placeholder=""></div>
         <div class="field"><label>เบอร์ WhatsApp *</label><input id="ordCustomerWhatsapp" placeholder="20 5xxx xxxx"></div>
 
-        <div class="type-toggle" id="ordTypeToggle">
-          <button type="button" data-order-type="single" class="active">🎵 เพลงเดี่ยว</button>
-          <button type="button" data-order-type="playlist">🎶 ยกเพลย์ลิสต์</button>
-        </div>
+        <p style="font-size:12px;color:var(--text-dim);margin:0 0 10px;">เลือกได้ทั้งเพลงเดี่ยว (หลายเพลง) และเพลย์ลิสต์ (หลายรายการ) ผสมกันในออเดอร์เดียวได้</p>
 
         <div id="ordSingleSection">
           <div class="field">
-            <label>ค้นหาและเลือกเพลง</label>
+            <label>🎵 ค้นหาและเลือกเพลง</label>
             <div class="search-box"><input id="ordSongSearch" placeholder="ค้นหาเพลง ศิลปิน หรือ DJ..."></div>
           </div>
           <p id="ordSongsLoading" class="empty-state" style="padding:10px 0;">กำลังโหลดรายชื่อเพลง...</p>
           <div id="ordSearchResults"></div>
         </div>
 
-        <div id="ordPlaylistSection" style="display:none;">
+        <div id="ordPlaylistSection" style="margin-top:14px;">
           <div class="field">
-            <label>ค้นหาและเลือกเพลย์ลิสต์</label>
+            <label>🎶 ค้นหาและเลือกเพลย์ลิสต์ (เลือกได้หลายรายการ)</label>
             <div class="search-box"><input id="ordPlaylistSearch" placeholder="ค้นหาชื่อเพลย์ลิสต์ เช่น Sdk zzbee..."></div>
           </div>
           <div id="ordPlaylistSelected"></div>
@@ -386,22 +383,19 @@
       <div class="field"><label>ชื่อลูกค้า *</label><input id="eOrderCustomerName" placeholder="ชื่อ"></div>
       <div class="field"><label>เบอร์ WhatsApp *</label><input id="eOrderCustomerWhatsapp" placeholder="20xxxxxxxx"></div>
 
-      <div class="type-toggle" id="eOrdTypeToggle">
-        <button type="button" data-edit-order-type="single" class="active">🎵 เพลงเดี่ยว</button>
-        <button type="button" data-edit-order-type="playlist">🎶 ยกเพลย์ลิสต์</button>
-      </div>
+      <p style="font-size:12px;color:var(--text-dim);margin:0 0 10px;">เลือกได้ทั้งเพลงเดี่ยว (หลายเพลง) และเพลย์ลิสต์ (หลายรายการ) ผสมกันในออเดอร์เดียวได้</p>
 
       <div id="eOrdSingleSection">
         <div class="field">
-          <label>ค้นหาและเลือกเพลง</label>
+          <label>🎵 ค้นหาและเลือกเพลง</label>
           <div class="search-box"><input id="eOrderSongSearch" placeholder="ค้นหาเพลง..."></div>
         </div>
         <div id="eOrderSearchResults"></div>
       </div>
 
-      <div id="eOrdPlaylistSection" style="display:none;">
+      <div id="eOrdPlaylistSection" style="margin-top:14px;">
         <div class="field">
-          <label>ค้นหาและเลือกเพลย์ลิสต์</label>
+          <label>🎶 ค้นหาและเลือกเพลย์ลิสต์ (เลือกได้หลายรายการ)</label>
           <div class="search-box"><input id="eOrdPlaylistSearch" placeholder="ค้นหาชื่อเพลย์ลิสต์..."></div>
         </div>
         <div id="eOrdPlaylistSelected"></div>
