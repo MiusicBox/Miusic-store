@@ -23,8 +23,8 @@ let songUploadSession = 0; // กันไม่ให้ progress ของก�
 let songUploadController = null; // AbortController ของการอัปโหลดเพลงเดี่ยวที่กำลังทำงานอยู่ (ใช้กดยกเลิก)
 let bulkUploadController = null; // AbortController ของการอัปโหลดแบบ Bulk ที่กำลังทำงานอยู่ (ใช้กดยกเลิก)
 
-// จำกัดขนาดไฟล์ WAV สูงสุด (ปรับได้ตามแผน Cloudinary — ฟรีแพลนอัปโหลดสูงสุดไฟล์ละ 100MB)
-const MAX_FULL_WAV_SIZE_MB = 100;
+// จำกัดขนาดไฟล์เพลงเต็มสูงสุด (รองรับทั้ง .wav และ .mp3 — ปรับได้ตามแผน Cloudinary — ฟรีแพลนอัปโหลดสูงสุดไฟล์ละ 100MB)
+const MAX_FULL_SONG_SIZE_MB = 100;
 function formatFileSize(bytes) {
   if (!bytes && bytes !== 0) return "";
   const mb = bytes / (1024 * 1024);
@@ -465,8 +465,8 @@ document.getElementById("fullSongFileInput").addEventListener("change", (e) => {
     return;
   }
   const sizeMb = f.size / (1024 * 1024);
-  if (sizeMb > MAX_FULL_WAV_SIZE_MB) {
-    showToast(`ไฟล์ใหญ่เกินไป (${sizeMb.toFixed(1)} MB) — จำกัดไม่เกิน ${MAX_FULL_WAV_SIZE_MB} MB`, "error");
+  if (sizeMb > MAX_FULL_SONG_SIZE_MB) {
+    showToast(`ไฟล์ใหญ่เกินไป (${sizeMb.toFixed(1)} MB) — จำกัดไม่เกิน ${MAX_FULL_SONG_SIZE_MB} MB`, "error");
     e.target.value = "";
     pendingFullSongFile = null;
     meta.style.display = "none";
@@ -517,7 +517,12 @@ document.getElementById("songSaveBtn").addEventListener("click", async function 
         if (mySession !== songUploadSession) return; // เช่นเดียวกับด้านบน
         prog.style.width = pct + "%";
         updateProgressLabel(fullProgLabel, total || fullTotalBytes, pct, loaded);
-      }, controller.signal);
+      }, controller.signal, (attempt, maxRetries) => {
+        // อัปโหลดหลุด/timeout — ระบบกำลังลองใหม่อัตโนมัติ (สูงสุด 2 ครั้ง) ไม่ต้องให้ผู้ใช้กดเอง
+        if (mySession !== songUploadSession) return;
+        btn.textContent = `เชื่อมต่อหลุด กำลังลองใหม่ (${attempt}/${maxRetries})...`;
+        showToast(`อัปโหลดไฟล์เต็มมีปัญหา กำลังลองใหม่ (${attempt}/${maxRetries})...`, "error");
+      });
       fullFileUrl = res.url;
       fullFilePublicId = res.publicId;
       fullFileName = pendingFullSongFile.name;
@@ -881,9 +886,67 @@ function matchFullFile(previewFileName, fullFilesList) {
   return fullFilesList.find(f => normalizeForMatch(f.name) === key) || null;
 }
 
+// คำนวณคู่ไฟล์ตัวอย่าง<->ไฟล์เต็มล่วงหน้า (ใช้ตรรกะเดียวกับตอนอัปโหลดจริงเป๊ะๆ เพื่อให้ตารางที่โชว์
+// ตรงกับสิ่งที่จะเกิดขึ้นจริง 100% — ถ้าแก้ logic การจับคู่ ต้องแก้ทั้ง 2 จุดนี้ให้ตรงกันเสมอ)
+function computeBulkMatches() {
+  return bulkFiles.map((file) => {
+    const matchedFull = matchFullFile(file.name, bulkFullFiles)
+      || (bulkFiles.length === 1 && bulkFullFiles.length === 1 ? bulkFullFiles[0] : null);
+    return {
+      previewName: file.name,
+      songName: cleanFileNameToSongName(file.name),
+      fullName: matchedFull ? matchedFull.name : null,
+    };
+  });
+}
+
+// โชว์ตารางคู่ไฟล์ที่จับได้ให้แอดมินเช็คก่อนกดยืนยันครั้งเดียว (ตามที่ผู้ใช้เลือกไว้)
+// คืนค่าเป็น Promise<boolean> — true = กดยืนยันอัปโหลด, false = กดย้อนกลับไปแก้ไข
+function showBulkMatchConfirm(matches) {
+  return new Promise((resolve) => {
+    const content = document.getElementById("bulkMatchConfirmContent");
+    const backdrop = document.getElementById("bulkMatchConfirmBackdrop");
+    const matchedCount = matches.filter((m) => m.fullName).length;
+    const rows = matches.map((m) => {
+      const fullLabel = m.fullName
+        ? `✅ ${escapeHtml(m.fullName)}`
+        : `<span style="color:var(--text-dim);">— ไม่มีไฟล์เต็ม —</span>`;
+      return `
+        <div style="display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.08);">
+          <div><strong>${escapeHtml(m.songName)}</strong><small style="display:block;color:var(--text-dim);margin-top:3px;">${escapeHtml(m.previewName)}</small></div>
+          <div style="text-align:right;font-size:13px;white-space:nowrap;">${fullLabel}</div>
+        </div>`;
+    }).join("");
+    content.innerHTML =
+      `<p style="color:var(--text-dim);font-size:13px;margin-top:0;">พบไฟล์เต็มจับคู่ได้ ${matchedCount}/${matches.length} เพลง — ตรวจสอบให้ตรงก่อนอัปโหลดจริง ถ้าคู่ไหนผิดให้กด "ย้อนกลับไปแก้ไข" แล้วเลือกไฟล์ใหม่</p>` +
+      rows;
+    backdrop.classList.add("show");
+
+    const cancelBtn = document.getElementById("bulkMatchConfirmCancel");
+    const okBtn = document.getElementById("bulkMatchConfirmOk");
+    const cleanup = () => {
+      backdrop.classList.remove("show");
+      cancelBtn.removeEventListener("click", onCancel);
+      okBtn.removeEventListener("click", onOk);
+    };
+    const onCancel = () => { cleanup(); resolve(false); };
+    const onOk = () => { cleanup(); resolve(true); };
+    cancelBtn.addEventListener("click", onCancel);
+    okBtn.addEventListener("click", onOk);
+  });
+}
+
 document.getElementById("bulkUploadBtn").addEventListener("click", async function () {
   const btn = this;
   if (bulkFiles.length === 0) { showToast("กรุณาเลือกไฟล์เพลงก่อน", "error"); return; }
+
+  // ถ้ามีไฟล์เต็มที่เลือกไว้ ให้โชว์ตารางคู่ที่จับได้ให้เช็คก่อนเริ่มอัปโหลดจริง (กันจับคู่ผิดเพลง)
+  // ถ้าไม่ได้เลือกไฟล์เต็มเลย ก็ไม่มีอะไรต้องเช็ค ข้ามไปอัปโหลดตามปกติ
+  if (bulkFullFiles.length > 0) {
+    const matches = computeBulkMatches();
+    const proceed = await showBulkMatchConfirm(matches);
+    if (!proceed) return; // ผู้ใช้กดย้อนกลับไปแก้ไข — ยังไม่อัปโหลดอะไรทั้งสิ้น
+  }
 
   const plSel = document.getElementById("bulkPlaylist");
   const newPlaylistName = document.getElementById("bulkNewPlaylistName").value.trim();
@@ -955,7 +1018,11 @@ document.getElementById("bulkUploadBtn").addEventListener("click", async functio
           const overall = Math.round(((i + pct / 100) / bulkFiles.length) * 100);
           document.getElementById("bulkProgress").style.width = overall + "%";
           updateProgressLabel(bulkProgLabel, total || matchedFull.size, pct, loaded);
-        }, controller.signal);
+        }, controller.signal, (attempt, maxRetries) => {
+          // อัปโหลดหลุด/timeout — ระบบกำลังลองใหม่อัตโนมัติ (สูงสุด 2 ครั้ง)
+          document.getElementById("bulkStatusText").textContent =
+            `ไฟล์เต็ม "${matchedFull.name}" เชื่อมต่อหลุด กำลังลองใหม่ (${attempt}/${maxRetries})...`;
+        });
         songPayload.full_file_url = fullRes.url;
         songPayload.full_file_public_id = fullRes.publicId;
         songPayload.full_file_name = matchedFull.name;
