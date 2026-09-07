@@ -168,20 +168,23 @@
         <div class="field"><label>ชื่อลูกค้า *</label><input id="ordCustomerName" placeholder=""></div>
         <div class="field"><label>เบอร์ WhatsApp *</label><input id="ordCustomerWhatsapp" placeholder="20 5xxx xxxx"></div>
 
-        <p style="font-size:12px;color:var(--text-dim);margin:0 0 10px;">เลือกได้ทั้งเพลงเดี่ยว (หลายเพลง) และเพลย์ลิสต์ (หลายรายการ) ผสมกันในออเดอร์เดียวได้</p>
+        <div class="type-toggle" id="ordTypeToggle">
+          <button type="button" data-order-type="single" class="active">🎵 เพลงเดี่ยว</button>
+          <button type="button" data-order-type="playlist">🎶 ยกเพลย์ลิสต์</button>
+        </div>
 
         <div id="ordSingleSection">
           <div class="field">
-            <label>🎵 ค้นหาและเลือกเพลง</label>
+            <label>ค้นหาและเลือกเพลง</label>
             <div class="search-box"><input id="ordSongSearch" placeholder="ค้นหาเพลง ศิลปิน หรือ DJ..."></div>
           </div>
           <p id="ordSongsLoading" class="empty-state" style="padding:10px 0;">กำลังโหลดรายชื่อเพลง...</p>
           <div id="ordSearchResults"></div>
         </div>
 
-        <div id="ordPlaylistSection" style="margin-top:14px;">
+        <div id="ordPlaylistSection" style="display:none;">
           <div class="field">
-            <label>🎶 ค้นหาและเลือกเพลย์ลิสต์ (เลือกได้หลายรายการ)</label>
+            <label>ค้นหาและเลือกเพลย์ลิสต์</label>
             <div class="search-box"><input id="ordPlaylistSearch" placeholder="ค้นหาชื่อเพลย์ลิสต์ เช่น Sdk zzbee..."></div>
           </div>
           <div id="ordPlaylistSelected"></div>
@@ -383,19 +386,22 @@
       <div class="field"><label>ชื่อลูกค้า *</label><input id="eOrderCustomerName" placeholder="ชื่อ"></div>
       <div class="field"><label>เบอร์ WhatsApp *</label><input id="eOrderCustomerWhatsapp" placeholder="20xxxxxxxx"></div>
 
-      <p style="font-size:12px;color:var(--text-dim);margin:0 0 10px;">เลือกได้ทั้งเพลงเดี่ยว (หลายเพลง) และเพลย์ลิสต์ (หลายรายการ) ผสมกันในออเดอร์เดียวได้</p>
+      <div class="type-toggle" id="eOrdTypeToggle">
+        <button type="button" data-edit-order-type="single" class="active">🎵 เพลงเดี่ยว</button>
+        <button type="button" data-edit-order-type="playlist">🎶 ยกเพลย์ลิสต์</button>
+      </div>
 
       <div id="eOrdSingleSection">
         <div class="field">
-          <label>🎵 ค้นหาและเลือกเพลง</label>
+          <label>ค้นหาและเลือกเพลง</label>
           <div class="search-box"><input id="eOrderSongSearch" placeholder="ค้นหาเพลง..."></div>
         </div>
         <div id="eOrderSearchResults"></div>
       </div>
 
-      <div id="eOrdPlaylistSection" style="margin-top:14px;">
+      <div id="eOrdPlaylistSection" style="display:none;">
         <div class="field">
-          <label>🎶 ค้นหาและเลือกเพลย์ลิสต์ (เลือกได้หลายรายการ)</label>
+          <label>ค้นหาและเลือกเพลย์ลิสต์</label>
           <div class="search-box"><input id="eOrdPlaylistSearch" placeholder="ค้นหาชื่อเพลย์ลิสต์..."></div>
         </div>
         <div id="eOrdPlaylistSelected"></div>
@@ -442,6 +448,17 @@
       <p style="color:var(--text-dim);font-size:13px;margin-top:0;">ดาวน์โหลดแล้วส่งให้ลูกค้าทาง WhatsApp ด้วยตัวเอง — ลิงก์นี้สำหรับ Admin เท่านั้น ห้ามส่งลิงก์นี้ตรงให้ลูกค้า</p>
       <div id="fullFilesContent"></div>
       <button class="btn secondary" id="fullFilesWhatsAppBtn" style="margin-top:14px;width:100%;">เปิด WhatsApp คุยกับลูกค้า (แนบไฟล์ที่ดาวน์โหลดแล้วเอง)</button>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="bulkMatchConfirmBackdrop">
+    <div class="modal">
+      <div class="modal-header"><h3>ตรวจสอบคู่ไฟล์ก่อนอัปโหลด</h3></div>
+      <div id="bulkMatchConfirmContent"></div>
+      <div style="display:flex;gap:10px;margin-top:14px;">
+        <button class="btn secondary" id="bulkMatchConfirmCancel" style="flex:1;">ย้อนกลับไปแก้ไข</button>
+        <button class="btn" id="bulkMatchConfirmOk" style="flex:1;">ยืนยันและเริ่มอัปโหลด</button>
+      </div>
     </div>
   </div>
 
