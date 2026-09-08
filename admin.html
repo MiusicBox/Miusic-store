@@ -520,8 +520,15 @@
     <button type="button" id="songRowMenuDelete" style="display:flex;align-items:center;gap:9px;width:100%;padding:10px 12px;background:transparent;border:0;color:var(--danger,#ff6b6b);font-size:14px;text-align:left;border-radius:8px;cursor:pointer;">🗑 ลบเพลง</button>
   </div>
 
+  <!-- ===== เมนูดรอปดาวน์แบบใช้ร่วมกันสำหรับปุ่ม ⋮ ในแถวเพลงของหน้ารายละเอียด หมวดหมู่ / DJ / เพลย์ลิสต์ (แทนปุ่ม ✎➖🗑 ที่เรียงกันจนบังชื่อเพลงบนจอแคบ) ===== -->
+  <div id="detailSongRowMenu" style="display:none;position:fixed;z-index:200;background:#1c1c22;border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:6px;min-width:200px;box-shadow:0 10px 30px rgba(0,0,0,.45);">
+    <button type="button" id="detailRowMenuEdit" style="display:flex;align-items:center;gap:9px;width:100%;padding:10px 12px;background:transparent;border:0;color:#fff;font-size:14px;text-align:left;border-radius:8px;cursor:pointer;">✎ แก้ไขเพลง</button>
+    <button type="button" id="detailRowMenuRemove" style="display:flex;align-items:center;gap:9px;width:100%;padding:10px 12px;background:transparent;border:0;color:var(--danger,#ff6b6b);font-size:14px;text-align:left;border-radius:8px;cursor:pointer;">➖ นำออกจากรายการนี้</button>
+    <button type="button" id="detailRowMenuDelete" style="display:flex;align-items:center;gap:9px;width:100%;padding:10px 12px;background:transparent;border:0;color:var(--danger,#ff6b6b);font-size:14px;text-align:left;border-radius:8px;cursor:pointer;">🗑 ลบเพลงนี้ออกจากระบบจริง</button>
+  </div>
+
   <div class="toast" id="toast"></div>
 
-  <script type="module" src="app-admin.js?v=20260908-rowmenu1"></script>
+  <script type="module" src="app-admin.js?v=20260908-rowmenu2"></script>
 </body>
 </html>
