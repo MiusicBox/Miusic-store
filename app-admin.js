@@ -357,7 +357,7 @@ function renderSongList(list) {
   const wrap = document.getElementById("songList");
   if (list.length === 0) { wrap.innerHTML = '<div class="empty-state">ยังไม่มีเพลง</div>'; return; }
   wrap.innerHTML = list.map(s => `
-    <div class="list-row">
+    <div class="list-row" data-song-row="${s.id}" style="cursor:pointer;">
       ${songSelectMode ? `<input type="checkbox" class="song-select-chk" data-id="${s.id}" ${selectedSongIds.has(s.id) ? "checked" : ""} style="width:20px;height:20px;flex-shrink:0;">` : ""}
       <img src="${s.cover_url || ""}">
       <div class="info"><div class="n1">${escapeHtml(s.song_name)}</div>
@@ -370,6 +370,18 @@ function renderSongList(list) {
     e.stopPropagation();
     toggleSongRowMenu(b, b.getAttribute("data-menu"));
   }));
+  // ===== เพิ่มใหม่ (additive): แตะที่ตัวแถวเพลง → เปิด popup รายละเอียด =====
+  // ไม่กระทบปุ่ม ⋮ (มี stopPropagation ด้านบน) และไม่กระทบ checkbox ในโหมดเลือกหลายเพลง
+  wrap.querySelectorAll("[data-song-row]").forEach(row => {
+    row.addEventListener("click", (e) => {
+      // ถ้าอยู่ในโหมดเลือกหลายเพลง หรือแตะที่ checkbox / ปุ่มเมนู ไม่เปิด popup
+      if (songSelectMode) return;
+      if (e.target.closest(".song-select-chk")) return;
+      if (e.target.closest("[data-menu]")) return;
+      const id = row.getAttribute("data-song-row");
+      if (id) openSongDetailPopup(id);
+    });
+  });
   wrap.querySelectorAll(".song-select-chk").forEach(chk => chk.addEventListener("change", () => {
     const id = chk.getAttribute("data-id");
     if (chk.checked) selectedSongIds.add(id); else selectedSongIds.delete(id);
@@ -1078,7 +1090,7 @@ function renderDetailSongsList() {
   if (songs.length === 0) { wrap.innerHTML = '<div class="empty-state">ยังไม่มีเพลงในรายการนี้</div>'; return; }
   const removeLabel = { category: "นำออกจากหมวดหมู่นี้ (ไม่ลบเพลง)", playlist: "นำออกจากเพลย์ลิสต์นี้ (ไม่ลบเพลง)", dj: "นำออกจาก DJ นี้ (ไม่ลบเพลง)" }[type];
   wrap.innerHTML = songs.map(s => `
-    <div class="list-row">
+    <div class="list-row" data-detail-song-row="${s.id}" style="cursor:pointer;">
       <img src="${s.cover_url || ""}">
       <div class="info"><div class="n1">${escapeHtml(s.song_name)}</div>
       <div class="n2">${escapeHtml(s.dj_name || "-")} · ${escapeHtml(s.category_name || "-")} · ${formatPrice(s.price)}</div></div>
@@ -1090,6 +1102,15 @@ function renderDetailSongsList() {
     e.stopPropagation();
     toggleDetailRowMenu(b, b.getAttribute("data-detail-menu"));
   }));
+  // ===== เพิ่มใหม่ (additive): แตะที่ตัวแถวเพลง → เปิด popup รายละเอียด =====
+  // ไม่กระทบปุ่ม ⋮ ในหน้านี้ (มี stopPropagation ด้านบน)
+  wrap.querySelectorAll("[data-detail-song-row]").forEach(row => {
+    row.addEventListener("click", (e) => {
+      if (e.target.closest("[data-detail-menu]")) return;
+      const sid = row.getAttribute("data-detail-song-row");
+      if (sid) openSongDetailPopup(sid);
+    });
+  });
 }
 
 // เมนูดรอปดาวน์ ⋮ สำหรับแถวเพลงในหน้ารายละเอียด หมวดหมู่ / DJ / เพลย์ลิสต์ (เดิมเป็นปุ่ม ✎➖🗑 เรียงกันจนบังชื่อเพลงบนจอแคบ)
@@ -1558,3 +1579,319 @@ document.getElementById("confirmOk").addEventListener("click", async () => {
 // ให้ admin-roles.js เรียกใช้ toast/confirm modal ตัวเดียวกับหน้านี้ได้ (ไม่ต้องสร้างซ้ำ)
 window.__showToast = showToast;
 window.__openConfirm = openConfirm;
+
+// ====================================================================
+// ===== Popup รายละเอียดเพลง (เพิ่มใหม่ — additive, ไม่กระทบระบบเดิม) =====
+// ====================================================================
+// ทำงานเหมือนฝั่ง user (openSongModal) — แต่ใช้ Audio ของตัวเอง ไม่ปนกับ user
+// มีปุ่มกระโดดช่วงเพลง: ต้นเพลง / Dance-Preview / ท้ายเพลง
+// ปิด popup → เสียงหยุดทันที (กำหนดตามข้อตกลง)
+
+const DETAIL_AUDIO = new Audio();
+DETAIL_AUDIO.preload = "metadata";
+
+// state ของ popup ปัจจุบัน — เก็บ song ที่กำลังเปิดอยู่ + ช่วง preview ถ้ามี
+let detailPopupSong = null;
+let detailPopupPreview = null; // { start, end } วินาที ถ้ามี Auto Preview
+let detailAudioUnlocked = false;
+let detailIsSeeking = false;
+let detailCurrentSection = null; // "intro" | "preview" | "outro" — track ว่ากำลังอยู่ช่วงไหน (เพื่อ highlight ปุ่ม)
+
+// format เวลาเหมือนฝั่ง user
+function detailFormatTime(sec) {
+  if (!isFinite(sec) || sec < 0) return "0:00";
+  const m = Math.floor(sec / 60), s = Math.floor(sec % 60);
+  return m + ":" + (s < 10 ? "0" : "") + s;
+}
+
+// ไอคอนเล่น/หยุด (เหมือนฝั่ง user)
+function detailPlayIconSvg() { return '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg>'; }
+function detailStopIconSvg() { return '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14"></rect><rect x="14" y="5" width="4" height="14"></rect></svg>'; }
+
+function setDetailPlayBtnUI(state) {
+  // state: "play" | "pause" | "loading"
+  const btn = document.getElementById("songDetailPlayBtn");
+  if (!btn) return;
+  const ico = btn.querySelector(".play-ico");
+  const label = btn.querySelector(".play-label");
+  btn.classList.remove("loading");
+  if (state === "loading") {
+    btn.classList.add("loading");
+    return;
+  }
+  if (state === "pause") {
+    if (ico) ico.innerHTML = detailStopIconSvg();
+    if (label) label.textContent = "หยุดเพลง";
+  } else {
+    if (ico) ico.innerHTML = detailPlayIconSvg();
+    if (label) label.textContent = "ฟังเพลง";
+  }
+}
+
+function setDetailJumpActive(section) {
+  detailCurrentSection = section;
+  ["jumpToIntro", "jumpToPreview", "jumpToOutro"].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.toggle("active", id === {
+      intro: "jumpToIntro",
+      preview: "jumpToPreview",
+      outro: "jumpToOutro"
+    }[section]);
+  });
+}
+
+function updateDetailSeekUI() {
+  const seekEl = document.getElementById("songDetailSeek");
+  const currEl = document.getElementById("songDetailCurrTime");
+  const durEl = document.getElementById("songDetailDurTime");
+  if (!seekEl) return;
+  // ถ้ามี preview: แสดงความคืบหน้าเป็น "เวลาสัมพัทธ์" เหมือนฝั่ง user (0:00 → preview length)
+  // ถ้าไม่มี preview: แสดงเวลาจริงของเพลงเต็ม
+  if (detailPopupPreview) {
+    seekEl.min = detailPopupPreview.start;
+    seekEl.max = detailPopupPreview.end;
+    if (!detailIsSeeking) seekEl.value = DETAIL_AUDIO.currentTime;
+    if (currEl) currEl.textContent = detailFormatTime(Math.max(0, DETAIL_AUDIO.currentTime - detailPopupPreview.start));
+    if (durEl) durEl.textContent = detailFormatTime(detailPopupPreview.end - detailPopupPreview.start);
+  } else {
+    seekEl.min = 0;
+    seekEl.max = DETAIL_AUDIO.duration || 0;
+    if (!detailIsSeeking) seekEl.value = DETAIL_AUDIO.currentTime;
+    if (currEl) currEl.textContent = detailFormatTime(DETAIL_AUDIO.currentTime);
+    if (durEl) durEl.textContent = detailFormatTime(DETAIL_AUDIO.duration || 0);
+  }
+}
+
+// เปิด popup รายละเอียดเพลง
+function openSongDetailPopup(songId) {
+  const s = CACHE.songs.find(x => x.id === songId);
+  if (!s) { showToast("ไม่พบข้อมูลเพลงนี้", "error"); return; }
+
+  detailPopupSong = s;
+  // เตรียมช่วง preview ถ้ามี — เหมือนฝั่ง user
+  detailPopupPreview =
+    s.preview_status === "ok" && s.preview_start_sec != null && s.preview_end_sec != null
+      ? { start: Number(s.preview_start_sec), end: Number(s.preview_end_sec) }
+      : null;
+
+  // แสดงข้อมูลเพลง
+  const coverEl = document.getElementById("songDetailCover");
+  if (coverEl) coverEl.src = s.cover_url || "";
+  document.getElementById("songDetailName").textContent = s.song_name || "(ไม่มีชื่อ)";
+  document.getElementById("songDetailArtist").textContent = s.artist || "";
+
+  // badges: DJ / หมวดหมู่ / เพลย์ลิสต์
+  const badges = [];
+  if (s.dj_name) badges.push(`<span class="badge dj">🎧 ${escapeHtml(s.dj_name)}</span>`);
+  if (s.category_name) badges.push(`<span class="badge cat">🗂️ ${escapeHtml(s.category_name)}</span>`);
+  if (s.playlist_name) badges.push(`<span class="badge pl">🎶 ${escapeHtml(s.playlist_name)}</span>`);
+  document.getElementById("songDetailBadges").innerHTML = badges.join("") || '<span style="font-size:12px;color:var(--text-dim);">— ไม่ได้จัดเข้ารายการใด —</span>';
+
+  document.getElementById("songDetailDesc").textContent = s.description || "";
+  document.getElementById("songDetailPrice").textContent = formatPrice(s.price);
+
+  // meta line: แสดงข้อมูล preview ถ้ามี
+  const metaLine = document.getElementById("songDetailMetaLine");
+  if (detailPopupPreview) {
+    const bars = (s.preview_start_bar != null && s.preview_end_bar != null)
+      ? ` · ห้อง ${s.preview_start_bar}–${s.preview_end_bar}` : "";
+    metaLine.innerHTML = `🎯 เล่นช่วงตัวอย่าง ${detailFormatTime(detailPopupPreview.start)}–${detailFormatTime(detailPopupPreview.end)}${bars}<br>ใช้ปุ่มด้านบนเพื่อข้ามไปฟังส่วนต่าง ๆ ของเพลง`;
+  } else {
+    metaLine.innerHTML = `เล่นเต็มไฟล์ (เพลงนี้ยังไม่ได้วิเคราะห์ช่วง Preview) · ใช้ปุ่มด้านบนเพื่อข้ามไปฟังส่วนต่าง ๆ ของเพลง`;
+  }
+
+  // reset UI
+  setDetailPlayBtnUI("play");
+  setDetailJumpActive(null);
+  const seekEl = document.getElementById("songDetailSeek");
+  if (seekEl) { seekEl.value = 0; seekEl.min = 0; seekEl.max = 0; }
+  document.getElementById("songDetailCurrTime").textContent = "0:00";
+  document.getElementById("songDetailDurTime").textContent = "0:00";
+
+  // ปิดเมนูดรอปดาวน์ ⋮ ที่อาจเปิดอยู่ (กันบัง popup)
+  hideSongRowMenu();
+  hideDetailRowMenu();
+
+  // โหลดไฟล์เพลง (ยังไม่เล่น — ตามกฎ: ไม่กดฟัง ไม่เด้งอะไรขึ้นมา สั้น ๆ คือโหลดไว้เฉย ๆ)
+  if (s.file_url) {
+    DETAIL_AUDIO.src = s.file_url;
+    DETAIL_AUDIO.load();
+  } else {
+    DETAIL_AUDIO.src = "";
+  }
+
+  // แสดง popup
+  document.getElementById("songDetailBackdrop").classList.add("show");
+}
+
+// ปิด popup และหยุดเสียงทันที
+function closeSongDetailPopup() {
+  document.getElementById("songDetailBackdrop").classList.remove("show");
+  // หยุด + คืน memory ทันที (ตามข้อตกลง: ปิด popup → เสียงหยุด)
+  DETAIL_AUDIO.pause();
+  DETAIL_AUDIO.removeAttribute("src");
+  DETAIL_AUDIO.load();
+  detailPopupSong = null;
+  detailPopupPreview = null;
+  detailCurrentSection = null;
+  setDetailJumpActive(null);
+  setDetailPlayBtnUI("play");
+}
+
+// ปุ่มปิด popup
+document.getElementById("songDetailClose").addEventListener("click", closeSongDetailPopup);
+// แตะพื้นหลังนอก popup → ปิด
+document.getElementById("songDetailBackdrop").addEventListener("click", (e) => {
+  if (e.target === e.currentTarget) closeSongDetailPopup();
+});
+
+// ปุ่มเล่น/หยุดหลัก
+document.getElementById("songDetailPlayBtn").addEventListener("click", () => {
+  if (!detailPopupSong || !detailPopupSong.file_url) { showToast("ไม่พบไฟล์เพลง", "error"); return; }
+  // unlock audio สำหรับ mobile (เหมือนฝั่ง user)
+  if (!detailAudioUnlocked) {
+    DETAIL_AUDIO.play().catch(() => {}).finally(() => {
+      DETAIL_AUDIO.pause();
+      detailAudioUnlocked = true;
+    });
+  }
+  // ถ้ากำลังเล่นอยู่ → กดหยุด
+  if (!DETAIL_AUDIO.paused) {
+    DETAIL_AUDIO.pause();
+    return;
+  }
+  // ถ้าหยุดอยู่และยังไม่เคยข้ามช่วง → เริ่มที่ preview (ถ้ามี) หรือที่ 0
+  if (detailPopupPreview && (DETAIL_AUDIO.currentTime < detailPopupPreview.start || DETAIL_AUDIO.currentTime >= detailPopupPreview.end)) {
+    DETAIL_AUDIO.currentTime = detailPopupPreview.start;
+    setDetailJumpActive("preview");
+  } else if (!detailPopupPreview && detailCurrentSection === null) {
+    DETAIL_AUDIO.currentTime = 0;
+    setDetailJumpActive("intro");
+  }
+  setDetailPlayBtnUI("loading");
+  DETAIL_AUDIO.play().then(() => {
+    setDetailPlayBtnUI("pause");
+  }).catch(() => {
+    setDetailPlayBtnUI("play");
+    showToast("ไม่สามารถเล่นเพลงได้ ลองแตะปุ่มอีกครั้ง", "error");
+  });
+});
+
+// ปุ่มกระโดดช่วงเพลง
+document.getElementById("jumpToIntro").addEventListener("click", () => {
+  if (!detailPopupSong || !detailPopupSong.file_url) return;
+  setDetailJumpActive("intro");
+  DETAIL_AUDIO.currentTime = 0;
+  // ถ้าหยุดอยู่ → เล่นทันที
+  if (DETAIL_AUDIO.paused) {
+    setDetailPlayBtnUI("loading");
+    DETAIL_AUDIO.play().then(() => setDetailPlayBtnUI("pause")).catch(() => setDetailPlayBtnUI("play"));
+  }
+});
+document.getElementById("jumpToPreview").addEventListener("click", () => {
+  if (!detailPopupSong || !detailPopupSong.file_url) return;
+  if (!detailPopupPreview) {
+    showToast("เพลงนี้ยังไม่ได้วิเคราะห์ช่วง Preview — กระโดดไปช่วงต้นแทน", "info");
+    document.getElementById("jumpToIntro").click();
+    return;
+  }
+  setDetailJumpActive("preview");
+  DETAIL_AUDIO.currentTime = detailPopupPreview.start;
+  if (DETAIL_AUDIO.paused) {
+    setDetailPlayBtnUI("loading");
+    DETAIL_AUDIO.play().then(() => setDetailPlayBtnUI("pause")).catch(() => setDetailPlayBtnUI("play"));
+  }
+});
+document.getElementById("jumpToOutro").addEventListener("click", () => {
+  if (!detailPopupSong || !detailPopupSong.file_url) return;
+  // ท้ายเพลง = เวลา 90% ของความยาวรวม หรือ (preview.end + 30s) แล้วแต่ตัวไหนใกล้ท้ายกว่า
+  const dur = DETAIL_AUDIO.duration || 0;
+  if (!dur) { showToast("กำลังโหลดข้อมูลเพลง...", "info"); return; }
+  const outroTarget = detailPopupPreview
+    ? Math.min(dur - 5, detailPopupPreview.end + 30)
+    : Math.max(0, dur - 15);
+  setDetailJumpActive("outro");
+  DETAIL_AUDIO.currentTime = outroTarget;
+  if (DETAIL_AUDIO.paused) {
+    setDetailPlayBtnUI("loading");
+    DETAIL_AUDIO.play().then(() => setDetailPlayBtnUI("pause")).catch(() => setDetailPlayBtnUI("play"));
+  }
+});
+
+// Audio events
+DETAIL_AUDIO.addEventListener("loadedmetadata", () => {
+  // ถ้ามี preview — เซ็ต seek bar ให้อยู่ในช่วง preview เหมือนฝั่ง user
+  updateDetailSeekUI();
+});
+DETAIL_AUDIO.addEventListener("timeupdate", () => {
+  // ถ้าอยู่ในโหมด preview และถึงท้ายช่วง preview → หยุด (เหมือนฝั่ง user)
+  if (detailPopupPreview && DETAIL_AUDIO.currentTime >= detailPopupPreview.end) {
+    DETAIL_AUDIO.pause();
+    DETAIL_AUDIO.currentTime = detailPopupPreview.start;
+    setDetailPlayBtnUI("play");
+    updateDetailSeekUI();
+    return;
+  }
+  // อัปเดต highlight ของปุ่มกระโดดช่วง ตามตำแหน่งปัจจุบัน
+  if (!detailIsSeeking) {
+    const t = DETAIL_AUDIO.currentTime;
+    if (detailPopupPreview) {
+      if (t >= detailPopupPreview.start && t < detailPopupPreview.end) setDetailJumpActive("preview");
+      else if (t < detailPopupPreview.start) setDetailJumpActive("intro");
+      else setDetailJumpActive("outro");
+    } else {
+      const dur = DETAIL_AUDIO.duration || 0;
+      if (t < dur * 0.7) setDetailJumpActive("intro");
+      else setDetailJumpActive("outro");
+    }
+  }
+  updateDetailSeekUI();
+});
+DETAIL_AUDIO.addEventListener("play", () => setDetailPlayBtnUI("pause"));
+DETAIL_AUDIO.addEventListener("pause", () => setDetailPlayBtnUI("play"));
+DETAIL_AUDIO.addEventListener("waiting", () => setDetailPlayBtnUI("loading"));
+DETAIL_AUDIO.addEventListener("playing", () => setDetailPlayBtnUI("pause"));
+DETAIL_AUDIO.addEventListener("ended", () => {
+  setDetailPlayBtnUI("play");
+  setDetailJumpActive(null);
+});
+DETAIL_AUDIO.addEventListener("error", () => {
+  setDetailPlayBtnUI("play");
+  showToast("เกิดข้อผิดพลาดในการโหลดไฟล์เพลง", "error");
+});
+
+// Seek bar
+const detailSeekEl = document.getElementById("songDetailSeek");
+if (detailSeekEl) {
+  detailSeekEl.addEventListener("input", () => {
+    detailIsSeeking = true;
+    const currEl = document.getElementById("songDetailCurrTime");
+    if (detailPopupPreview) {
+      if (currEl) currEl.textContent = detailFormatTime(Math.max(0, Number(detailSeekEl.value) - detailPopupPreview.start));
+    } else {
+      if (currEl) currEl.textContent = detailFormatTime(Number(detailSeekEl.value));
+    }
+  });
+  detailSeekEl.addEventListener("change", () => {
+    let target = Number(detailSeekEl.value);
+    if (detailPopupPreview) {
+      // clamp ให้อยู่ในช่วง preview (เหมือนฝั่ง user)
+      target = Math.min(detailPopupPreview.end, Math.max(detailPopupPreview.start, target));
+    }
+    DETAIL_AUDIO.currentTime = target;
+    detailIsSeeking = false;
+  });
+}
+
+// ปิด popup ถ้ากด Esc
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && document.getElementById("songDetailBackdrop").classList.contains("show")) {
+    closeSongDetailPopup();
+  }
+});
+
+// หยุดเสียงทันทีถ้าผู้ใช้ logout หรือออกจากหน้า
+window.addEventListener("beforeunload", () => {
+  try { DETAIL_AUDIO.pause(); } catch (_) {}
+});
