@@ -3,12 +3,20 @@
 // ระบบ Auto Preview: วิเคราะห์ไฟล์เพลงหา "ช่วง Dance" 16 ห้อง แล้วคำนวณช่วง Preview
 //
 // [อัปเดตกติกา Preview — เปลี่ยนตามคำสั่งผู้ใช้]
-//   เดิม: Preview = 24 ห้องก่อนหน้า Dance + Dance 16 ห้อง (นับถอยหลังจาก Dance)
-//   ใหม่: ทุกเพลง Preview ต้องเริ่มเล่นจาก "ห้องที่ 1" ของเพลงเสมอ แล้วเล่นยาวต่อเนื่อง
-//         ไปจนถึง "ห้องที่ 8 ของช่วง Dance" (Dance Start Bar + 8) แล้วหยุด
-//   หมายเหตุ: อัลกอริทึมหาช่วง Dance 16 ห้อง (findDanceWindow/analyzeFrames/FFT ด้านล่าง)
-//   ไม่มีการเปลี่ยนแปลงใดๆ — ยังคงสแกนหาช่วง 16 ห้องที่พลังงาน/onset สูงต่อเนื่องเหมือนเดิมทุกประการ
-//   สิ่งที่เปลี่ยนคือ "วิธีตัดช่วง Preview จากผลที่หาได้" เท่านั้น (ฟังก์ชัน computePreviewWindow)
+//   เดิม (v1): Preview = 24 ห้องก่อนหน้า Dance + Dance 16 ห้อง (นับถอยหลังจาก Dance)
+//   เดิม (v2): ทุกเพลง Preview เริ่มเล่นจาก "ห้องที่ 1" ของเพลงเสมอ แล้วเล่นยาวต่อเนื่อง
+//              ไปจนถึง "ห้องที่ 8 ของช่วง Dance" (Dance Start Bar + 8) แล้วหยุด
+//   ล่าสุด (v3 — แก้ปัญหาเพลงที่มี 2 ท่อนแดน เช่น ร้อง-แดน-ร้อง-แดน):
+//     1) จุดเริ่มเล่น Preview เปลี่ยนจาก "ห้องที่ 1" เป็น "ห้องที่ 6" ของทุกเพลง (คงที่ ไม่ผูกกับ Dance)
+//     2) อัลกอริทึมค้นหาช่วง Dance 16 ห้อง (findDanceWindow) ถูกจำกัดขอบเขตให้ค้นหา
+//        เฉพาะ "ครึ่งแรกของเพลง" เท่านั้น เพื่อให้จับ "ท่อนแดนแรก" เสมอ ไม่ไปเจอท่อนแดนที่ 2
+//        ที่อาจมีพลังงาน/onset สูงกว่าและถูกเลือกผิดช่วงถ้าสแกนทั้งเพลง
+//     3) จุดหยุดเล่นยังคงเป็น "ห้องที่ 8 ของช่วง Dance ที่เจอ" (Dance Start Bar + 8) เหมือนเดิม
+//     4) ผลลัพธ์: Preview ทุกเพลง = ห้อง 6 → (Dance Start Bar + 8) เท่านั้น ไม่โชว์ส่วนอื่นของเพลง
+//        ในหน้า user เว้นแต่แอดมินจะตั้งค่าเองผ่าน manualPreviewWindow()
+//   หมายเหตุ: ตัวสูตร/เกณฑ์การให้คะแนนภายใน findDanceWindow (RMS, Spectral Flux, Onset,
+//   sustainedBonus, threshold ยอมรับผล) ไม่มีการเปลี่ยนแปลงใดๆ — เปลี่ยนแค่ "ขอบเขตที่สแกน"
+//   กับ "จุดเริ่ม Preview" เท่านั้น (ฟังก์ชัน findDanceWindow + computePreviewWindow)
 //
 //   เพิ่มเติม: เพิ่มฟังก์ชัน manualPreviewWindow() ใหม่ ให้แอดมินกำหนด "ห้องเริ่มเล่น" และ
 //   "ห้องหยุดเล่น" ของ Preview ได้เองแบบอิสระ (ไม่ผูกกับสูตร Dance ด้านบนเลย) — ใช้เสริมจากระบบเดิม
@@ -35,8 +43,9 @@ export const BEATS_PER_BAR = 4;
 export const BAR_SECONDS = (60 / BPM) * BEATS_PER_BAR; // = 1.6 วินาทีต่อห้อง (คงที่ทั้งระบบ)
 
 export const DANCE_BARS = 16;                // ความยาวช่วงที่ใช้ "ค้นหา" Dance Section (อัลกอริทึมตรวจจับ — ไม่เปลี่ยน)
-export const PREVIEW_START_BAR = 0;          // Preview ทุกเพลงเริ่มที่ห้องที่ 1 (index 0) เสมอ ตามกติกาใหม่
+export const PREVIEW_START_BAR = 5;          // Preview ทุกเพลงเริ่มที่ห้องที่ 6 (index 5) เสมอ ตามกติกาล่าสุด
 export const DANCE_STOP_OFFSET_BARS = 8;     // เล่นต่อเนื่องไปจนถึงห้องที่ 8 ของช่วง Dance ที่เจอ แล้วหยุด
+export const DANCE_SEARCH_RANGE_RATIO = 0.5; // จำกัดขอบเขตค้นหา Dance ไว้แค่ "ครึ่งแรกของเพลง" เพื่อจับท่อนแดนแรกเสมอ
 
 // ---------------- แปลงห้อง <-> วินาที ----------------
 export function barToSec(bar) { return bar * BAR_SECONDS; }
@@ -46,8 +55,9 @@ export function secToBar(sec) { return sec / BAR_SECONDS; }
 //   เริ่มเสมอที่ห้องที่ 1 (index 0) ของเพลง → หยุดที่ห้องที่ 8 ของ Dance (danceStartBar + 8)
 // คลิปตามความยาวเพลงจริงเสมอ (กันค่าเกินความยาวเพลง)
 export function computePreviewWindow(danceStartBar, songDurationSec) {
-  const rawStartBar = PREVIEW_START_BAR; // = 0 เสมอ ทุกเพลง (ห้องที่ 1)
-  const rawEndBar = danceStartBar + DANCE_STOP_OFFSET_BARS; // ห้องที่ 8 ของช่วง Dance
+  const rawStartBar = PREVIEW_START_BAR; // = 5 เสมอ ทุกเพลง (ห้องที่ 6)
+  // ห้องที่ 8 ของช่วง Dance — กันเคสขอบ (Dance ถูกจับได้เร็วมากจนน้อยกว่าห้องเริ่ม Preview)
+  const rawEndBar = Math.max(rawStartBar + 1, danceStartBar + DANCE_STOP_OFFSET_BARS);
   const startSec = barToSec(rawStartBar);
   const endSec = Math.min(
     songDurationSec != null ? songDurationSec : Infinity,
@@ -215,12 +225,18 @@ function findDanceWindow(bars) {
   const n = bars.length;
   if (n < DANCE_BARS) return { danceStartBar: null, confidence: 0, passesThreshold: false };
 
+  // จำกัดขอบเขตค้นหาไว้แค่ "ครึ่งแรกของเพลง" เท่านั้น เพื่อให้จับ "ท่อนแดนแรก" เสมอ
+  // (เพลงที่มีโครงสร้าง ร้อง-แดน-ร้อง-แดน จะได้ไม่ไปเจอแดนท่อนที่ 2 ที่อาจคะแนนสูงกว่า)
+  // ถ้าเพลงสั้นเกินกว่าจะแบ่งครึ่งได้ (ครึ่งแรกไม่พอ 16 ห้อง) ให้กลับไปสแกนทั้งเพลงแทน
+  let searchLimit = Math.floor(n * DANCE_SEARCH_RANGE_RATIO);
+  if (searchLimit < DANCE_BARS) searchLimit = n;
+
   const maxRms = Math.max(...bars.map(b => b.avgRms), 1e-9);
   const maxOnset = Math.max(...bars.map(b => b.onsetCount), 1);
 
   let best = { score: -Infinity, startBar: null, meanEnergy: 0, meanOnset: 0, stdDev: 1 };
 
-  for (let start = 0; start <= n - DANCE_BARS; start++) {
+  for (let start = 0; start <= searchLimit - DANCE_BARS; start++) {
     const win = bars.slice(start, start + DANCE_BARS);
     const energies = win.map(b => b.avgRms / maxRms);
     const onsets = win.map(b => b.onsetCount / maxOnset);
