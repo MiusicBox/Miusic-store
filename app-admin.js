@@ -80,8 +80,11 @@ function renderPreviewData(data) {
     // ค่าที่แอดมินกำหนดช่วง Preview เองตรงๆ — ไม่ได้อิงสูตร Dance เลย
     setPreviewBadge("🎛 กำหนดเอง", "#3B9EFF");
     barField.value = data.dance_start_bar ?? "";
-    document.getElementById("fPreviewStartBarManual").value = data.preview_start_bar;
-    document.getElementById("fPreviewEndBarManual").value = data.preview_end_bar;
+    // ใช้ null-check กันไว้ — ถ้า admin.html รุ่นที่ deploy จริงยังไม่มีช่องนี้ (เช่น deploy หลุดจังหวะ) จะไม่ทำให้สคริปต์ทั้งไฟล์พัง
+    const sManualEl1 = document.getElementById("fPreviewStartBarManual");
+    const eManualEl1 = document.getElementById("fPreviewEndBarManual");
+    if (sManualEl1) sManualEl1.value = data.preview_start_bar;
+    if (eManualEl1) eManualEl1.value = data.preview_end_bar;
     info.textContent =
       `Preview (กำหนดเอง): ${formatSec(data.preview_start_sec)} – ${formatSec(data.preview_end_sec)} ` +
       `(ห้อง ${data.preview_start_bar}–${data.preview_end_bar})`;
@@ -90,8 +93,10 @@ function renderPreviewData(data) {
   setPreviewBadge("✅ พร้อมใช้งาน", "#28c76f");
   barField.value = data.dance_start_bar;
   // เติมค่าห้องเริ่ม/ห้องหยุดปัจจุบันไว้ในช่อง "กำหนดเอง" ด้วย เผื่อแอดมินอยากปรับต่อจากค่านี้
-  document.getElementById("fPreviewStartBarManual").value = data.preview_start_bar ?? "";
-  document.getElementById("fPreviewEndBarManual").value = data.preview_end_bar ?? "";
+  const sManualEl2 = document.getElementById("fPreviewStartBarManual");
+  const eManualEl2 = document.getElementById("fPreviewEndBarManual");
+  if (sManualEl2) sManualEl2.value = data.preview_start_bar ?? "";
+  if (eManualEl2) eManualEl2.value = data.preview_end_bar ?? "";
   const confText = data.confidence != null ? ` (ความมั่นใจ ${(data.confidence * 100).toFixed(0)}%)` : " (แก้ไขเอง)";
   info.textContent =
     `Dance: ห้อง ${data.dance_start_bar}–${data.preview_end_bar}${confText} · ` +
@@ -441,8 +446,10 @@ function resetSongForm() {
   pendingFullSongFile = null; existingFullFileUrl = "";
   pendingPreviewData = null;
   document.getElementById("fDanceStartBar").value = "";
-  document.getElementById("fPreviewStartBarManual").value = "";
-  document.getElementById("fPreviewEndBarManual").value = "";
+  const sManualElReset = document.getElementById("fPreviewStartBarManual");
+  const eManualElReset = document.getElementById("fPreviewEndBarManual");
+  if (sManualElReset) sManualElReset.value = "";
+  if (eManualElReset) eManualElReset.value = "";
   hidePreviewBox();
   document.getElementById("songFormTitle").textContent = "เพิ่มเพลง";
   ["fSongName", "fArtist", "fPrice", "fDesc"].forEach(id => document.getElementById(id).value = "");
@@ -608,9 +615,14 @@ document.getElementById("recalcPreviewBtn").addEventListener("click", () => {
 });
 
 // ปุ่ม "ใช้ช่วงที่กำหนดเอง" — ระบุห้องเริ่ม/ห้องหยุดของ Preview เองตรงๆ ไม่ผ่านสูตร Dance เลย
-document.getElementById("recalcManualRangeBtn").addEventListener("click", () => {
-  const startVal = document.getElementById("fPreviewStartBarManual").value;
-  const endVal = document.getElementById("fPreviewEndBarManual").value;
+// ⚠️ กัน null ไว้ทั้งก้อน: ถ้า admin.html รุ่นที่ deploy จริงยังไม่มีปุ่ม/ช่องนี้ (เช่น deploy หลุดจังหวะ
+// ตามที่เจอปัญหาไป) จะแค่ข้ามการผูกปุ่มนี้เฉยๆ ไม่ทำให้โค้ดส่วนอื่นทั้งไฟล์ที่อยู่ถัดจากนี้พังตามไปด้วย
+const recalcManualRangeBtnEl = document.getElementById("recalcManualRangeBtn");
+if (recalcManualRangeBtnEl) recalcManualRangeBtnEl.addEventListener("click", () => {
+  const startEl = document.getElementById("fPreviewStartBarManual");
+  const endEl = document.getElementById("fPreviewEndBarManual");
+  const startVal = startEl ? startEl.value : "";
+  const endVal = endEl ? endEl.value : "";
   if (startVal === "" || startVal == null || endVal === "" || endVal == null) {
     showToast("กรุณากรอกทั้งห้องเริ่มและห้องหยุด", "error");
     return;
