@@ -1,1288 +1,499 @@
-// app-admin.js — หน้า Admin: Login (Firebase Auth) + CRUD (Firestore) + อัปโหลดไฟล์ (Cloudinary)
-// ===================================================
-import { db, auth, uploadToCloudinary } from "./firebase-init.js?v=20260905-fix1";
-import { uploadFullSong } from "./storage-adapter.js?v=20260904-rawzip";
-import {
-  collection, addDoc, updateDoc, deleteDoc, doc, getDocs, getDoc, setDoc
-} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import {
-  signInWithEmailAndPassword, onAuthStateChanged, signOut,
-  reauthenticateWithCredential, EmailAuthProvider, updatePassword
-} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { initOrdersView } from "./orders.js?v=20260905-fix1";
-import { resolveCurrentAdminRole, initAdminsView } from "./admin-roles.js";
-import {
-  analyzeSongFile, analyzeSongUrl, recalculateFromManualBar, manualPreviewWindow, BAR_SECONDS
-} from "./song-analyzer.js?v=20260908-previewrange1";
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Admin - Music Store</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
 
-const CACHE = { songs: [], categories: [], djs: [], playlists: [] };
-let currentAdminRole = null; // "main" | "sub" — ของบัญชีที่ล็อกอินอยู่ตอนนี้
-let editingSongId = null, editingCatId = null, editingDjId = null, editingPlaylistId = null;
-let pendingSongFile = null, pendingCoverFile = null, pendingDjImageFile = null, existingDjImageUrl = "";
-let pendingPlaylistCoverFile = null, existingPlaylistCoverUrl = "";
-let pendingFullSongFile = null, existingFullFileUrl = "";
-// ===== Auto Preview (Dance Section) — ไม่ตัดไฟล์ ไม่อัปโหลดไฟล์ใหม่ เก็บแค่วินาทีเริ่ม/จบ =====
-// pendingPreviewData: ผลวิเคราะห์ล่าสุด (จากไฟล์ที่เพิ่งเลือก หรือจากการวิเคราะห์ใหม่/แก้มือ) รอบันทึกตอนกด "บันทึกเพลง"
-let pendingPreviewData = null;
-let confirmAction = null;
-let songUploadSession = 0; // กันไม่ให้ progress ของการอัปโหลดรอบเก่า (ที่ถูกปิด/รีเซ็ตฟอร์มไปแล้ว) มาเขียนทับ UI ของฟอร์มใหม่
-let songUploadController = null; // AbortController ของการอัปโหลดเพลงเดี่ยวที่กำลังทำงานอยู่ (ใช้กดยกเลิก)
-let bulkUploadController = null; // AbortController ของการอัปโหลดแบบ Bulk ที่กำลังทำงานอยู่ (ใช้กดยกเลิก)
+  <div class="login-screen" id="loginScreen">
+    <div class="login-card">
+      <h2>เข้าสู่ระบบ Admin</h2>
+      <p>สำหรับผู้ดูแลระบบเท่านั้น</p>
+      <div class="field"><label>อีเมล</label><input id="loginEmail" type="email" autocomplete="username"></div>
+      <div class="field"><label>รหัสผ่าน</label><input id="loginPassword" type="password" autocomplete="current-password"></div>
+      <button class="btn" id="loginBtn">เข้าสู่ระบบ</button>
+      <div id="loginError" style="color:var(--danger);font-size:13px;margin-top:10px;"></div>
+    </div>
+  </div>
 
-// จำกัดขนาดไฟล์เพลงเต็มสูงสุด (รองรับทั้ง .wav และ .mp3 — ปรับได้ตามแผน Cloudinary — ฟรีแพลนอัปโหลดสูงสุดไฟล์ละ 100MB)
-const MAX_FULL_SONG_SIZE_MB = 100;
-function formatFileSize(bytes) {
-  if (!bytes && bytes !== 0) return "";
-  const mb = bytes / (1024 * 1024);
-  return mb >= 1 ? `${mb.toFixed(1)} MB` : `${Math.round(bytes / 1024)} KB`;
-}
-function isAbortError(err) {
-  return !!(err && err.name === "AbortError");
-}
-
-// ---------------- Auto Preview UI helpers (ไม่ตัดไฟล์ — เก็บแค่วินาทีเริ่ม/จบไว้เล่นฝั่ง user) ----------------
-function formatSec(sec) {
-  if (sec == null || !isFinite(sec)) return "-";
-  const m = Math.floor(sec / 60), s = Math.round(sec % 60);
-  return m + ":" + (s < 10 ? "0" : "") + s;
-}
-function showPreviewBox() { document.getElementById("previewAnalysisBox").style.display = "block"; }
-function hidePreviewBox() { document.getElementById("previewAnalysisBox").style.display = "none"; }
-function setPreviewBadge(text, color) {
-  const el = document.getElementById("previewStatusBadge");
-  el.textContent = text;
-  el.style.background = color + "26"; // ~15% opacity
-  el.style.color = color;
-}
-function renderPreviewData(data) {
-  pendingPreviewData = data;
-  showPreviewBox();
-  const barField = document.getElementById("fDanceStartBar");
-  const info = document.getElementById("previewInfoText");
-  if (!data) {
-    setPreviewBadge("ยังไม่ได้วิเคราะห์", "#9aa0aa");
-    info.textContent = "";
-    return;
-  }
-  if (data.status === "analyzing") {
-    setPreviewBadge("⏳ กำลังวิเคราะห์...", "#3B9EFF");
-    info.textContent = "กำลังวิเคราะห์ Beat/Energy/Onset ของไฟล์เพลง...";
-    return;
-  }
-  if (data.status === "needs_review") {
-    setPreviewBadge("⚠️ NEEDS_REVIEW", "#ff9f43");
-    info.textContent = "ระบบหาช่วง Dance ที่มั่นใจไม่ได้ — กรุณากรอก Dance Start Bar เองแล้วกด \"แก้ไข / คำนวณ Preview ใหม่\"";
-    if (data.dance_start_bar != null) barField.value = data.dance_start_bar;
-    return;
-  }
-  // status === "ok"
-  if (data.manual_window) {
-    // ค่าที่แอดมินกำหนดช่วง Preview เองตรงๆ — ไม่ได้อิงสูตร Dance เลย
-    setPreviewBadge("🎛 กำหนดเอง", "#3B9EFF");
-    barField.value = data.dance_start_bar ?? "";
-    document.getElementById("fPreviewStartBarManual").value = data.preview_start_bar;
-    document.getElementById("fPreviewEndBarManual").value = data.preview_end_bar;
-    info.textContent =
-      `Preview (กำหนดเอง): ${formatSec(data.preview_start_sec)} – ${formatSec(data.preview_end_sec)} ` +
-      `(ห้อง ${data.preview_start_bar}–${data.preview_end_bar})`;
-    return;
-  }
-  setPreviewBadge("✅ พร้อมใช้งาน", "#28c76f");
-  barField.value = data.dance_start_bar;
-  // เติมค่าห้องเริ่ม/ห้องหยุดปัจจุบันไว้ในช่อง "กำหนดเอง" ด้วย เผื่อแอดมินอยากปรับต่อจากค่านี้
-  document.getElementById("fPreviewStartBarManual").value = data.preview_start_bar ?? "";
-  document.getElementById("fPreviewEndBarManual").value = data.preview_end_bar ?? "";
-  const confText = data.confidence != null ? ` (ความมั่นใจ ${(data.confidence * 100).toFixed(0)}%)` : " (แก้ไขเอง)";
-  info.textContent =
-    `Dance: ห้อง ${data.dance_start_bar}–${data.preview_end_bar}${confText} · ` +
-    `Preview: ${formatSec(data.preview_start_sec)} – ${formatSec(data.preview_end_sec)} ` +
-    `(ห้อง ${data.preview_start_bar}–${data.preview_end_bar})`;
-}
-
-// สร้าง/หา label แสดง "X MB / Y MB (Z%)" ต่อท้าย progress bar แบบไดนามิก (ไม่แก้ HTML เดิม)
-// จัดชิดซ้าย ตามที่ผู้ใช้ขอ (เดิมชิดขวา)
-function ensureProgressLabel(barId) {
-  const bar = document.getElementById(barId);
-  if (!bar) return null;
-  let label = document.getElementById(barId + "Label");
-  if (!label) {
-    label = document.createElement("div");
-    label.id = barId + "Label";
-    label.style.cssText = "font-size:12px;color:#9aa0aa;margin-top:6px;text-align:left;";
-    const track = bar.parentElement || bar;
-    track.insertAdjacentElement("afterend", label);
-  }
-  return label;
-}
-// loadedBytes (ไม่บังคับ): ถ้ามีค่าจริงจาก xhr progress event จะใช้ค่านี้แทนการประมาณจาก pct
-function updateProgressLabel(label, totalBytes, pct, loadedBytes) {
-  if (!label) return;
-  const uploaded = (loadedBytes != null) ? loadedBytes : (totalBytes || 0) * (pct || 0) / 100;
-  label.textContent = `${formatFileSize(uploaded)} / ${formatFileSize(totalBytes)} (${Math.round(pct)}%)`;
-}
-
-// สร้าง/หาปุ่ม "ยกเลิกอัปโหลด" ต่อท้าย progress wrap แบบไดนามิก (ไม่แก้ HTML เดิม)
-// onCancel จะถูกผูกใหม่ทุกครั้งที่เรียก เพราะแต่ละรอบอัปโหลดมี AbortController คนละตัว
-function ensureCancelButton(wrapId, onCancel) {
-  const wrap = document.getElementById(wrapId);
-  if (!wrap) return null;
-  let btn = document.getElementById(wrapId + "CancelBtn");
-  if (!btn) {
-    btn = document.createElement("button");
-    btn.id = wrapId + "CancelBtn";
-    btn.type = "button";
-    btn.textContent = "✕ ยกเลิกอัปโหลด";
-    btn.style.cssText = "margin-top:6px;padding:6px 14px;font-size:12px;border-radius:8px;border:1px solid #ff5a5a;background:transparent;color:#ff5a5a;cursor:pointer;display:block;text-align:left;";
-    wrap.insertAdjacentElement("afterend", btn);
-  }
-  btn.onclick = onCancel;
-  btn.style.display = "inline-block";
-  return btn;
-}
-function hideCancelButton(wrapId) {
-  const btn = document.getElementById(wrapId + "CancelBtn");
-  if (btn) btn.style.display = "none";
-}
-
-function showToast(message, type) {
-  const el = document.getElementById("toast");
-  el.textContent = message;
-  el.className = "toast show" + (type ? " " + type : "");
-  clearTimeout(showToast._t);
-  showToast._t = setTimeout(() => { el.className = "toast"; }, 2600);
-}
-function escapeHtml(str) {
-  return String(str == null ? "" : str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-}
-function formatPrice(v) { return Number(v || 0).toLocaleString("en-US") + " LAK"; }
-function debounce(fn, wait) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), wait); }; }
-
-// ---------------- ดึงชื่อเพลงจากชื่อไฟล์ ----------------
-// ตัดแค่นามสกุลไฟล์ออก (.mp3 / .wav ฯลฯ) ส่วนที่เหลือคงไว้ทุกตัวอักษรเหมือนชื่อไฟล์เดิม
-function nameFromFile(fileName) {
-  return String(fileName || "").replace(/\.[^/.]+$/, "").trim();
-}
-
-function withTimeout(promise, milliseconds, message) {
-  let timer;
-  const timeout = new Promise((_, reject) => {
-    timer = setTimeout(() => reject(new Error(message)), milliseconds);
-  });
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
-}
-
-// ---------------- Auth ----------------
-onAuthStateChanged(auth, async (user) => {
-  if (!user) {
-    showLogin();
-    return;
-  }
-  try {
-    await showAdmin();
-  } catch (err) {
-    document.getElementById("loginError").textContent =
-      "เปิดหน้า Admin ไม่สำเร็จ: " + (err.message || err) + " — ตรวจสอบอินเทอร์เน็ตและ Firebase Rules";
-    showLogin();
-    await signOut(auth).catch(() => {});
-  }
-});
-
-document.getElementById("loginBtn").addEventListener("click", async () => {
-  const email = document.getElementById("loginEmail").value.trim();
-  const password = document.getElementById("loginPassword").value;
-  const btn = document.getElementById("loginBtn");
-  document.getElementById("loginError").textContent = "";
-  btn.disabled = true; btn.textContent = "กำลังเข้าสู่ระบบ...";
-  try {
-    await withTimeout(
-      signInWithEmailAndPassword(auth, email, password),
-      15000,
-      "เชื่อมต่อ Firebase นานเกินไป"
-    );
-    // onAuthStateChanged จะเรียก showAdmin() ต่อเอง (รวมถึงเช็คสิทธิ์แอดมิน) — รอสักครู่แล้วคืนปุ่มกลับ
-  } catch (err) {
-    document.getElementById("loginError").textContent =
-      err?.code === "auth/invalid-credential"
-        ? "อีเมลหรือรหัสผ่านไม่ถูกต้อง"
-        : "เข้าสู่ระบบไม่สำเร็จ: " + (err.message || err);
-  }
-  btn.disabled = false; btn.textContent = "เข้าสู่ระบบ";
-});
-document.getElementById("logoutBtn").addEventListener("click", () => signOut(auth));
-
-// ================= เปลี่ยนรหัสผ่านของฉัน (ทุกแอดมินทำได้ ไม่จำกัดเฉพาะแอดมินหลัก) =================
-function resetChangePasswordForm() {
-  document.getElementById("cpCurrentPassword").value = "";
-  document.getElementById("cpNewPassword").value = "";
-  document.getElementById("cpConfirmPassword").value = "";
-  document.getElementById("cpFeedback").textContent = "";
-}
-document.getElementById("changePasswordBtn").addEventListener("click", () => {
-  resetChangePasswordForm();
-  document.getElementById("changePasswordBackdrop").classList.add("show");
-});
-document.getElementById("changePasswordClose").addEventListener("click", () => {
-  document.getElementById("changePasswordBackdrop").classList.remove("show");
-});
-document.getElementById("changePasswordSaveBtn").addEventListener("click", async function () {
-  const feedback = document.getElementById("cpFeedback");
-  const currentPassword = document.getElementById("cpCurrentPassword").value;
-  const newPassword = document.getElementById("cpNewPassword").value;
-  const confirmPassword = document.getElementById("cpConfirmPassword").value;
-  feedback.style.color = "var(--danger)";
-
-  if (!currentPassword || !newPassword || !confirmPassword) { feedback.textContent = "กรุณากรอกให้ครบทุกช่อง"; return; }
-  if (newPassword.length < 6) { feedback.textContent = "รหัสผ่านใหม่ต้องมีอย่างน้อย 6 ตัวอักษร"; return; }
-  if (newPassword !== confirmPassword) { feedback.textContent = "ยืนยันรหัสผ่านใหม่ไม่ตรงกัน"; return; }
-
-  const btn = this; btn.disabled = true; btn.textContent = "กำลังบันทึก...";
-  feedback.textContent = "";
-  try {
-    const user = auth.currentUser;
-    // Firebase บังคับให้ล็อกอินสดๆ ก่อนเปลี่ยนรหัสผ่าน (sensitive operation) จึงต้อง reauthenticate ด้วยรหัสผ่านเดิมก่อนเสมอ
-    const credential = EmailAuthProvider.credential(user.email, currentPassword);
-    await reauthenticateWithCredential(user, credential);
-    await updatePassword(user, newPassword);
-    feedback.style.color = "var(--success)";
-    feedback.textContent = "เปลี่ยนรหัสผ่านสำเร็จแล้ว ✓";
-    showToast("เปลี่ยนรหัสผ่านสำเร็จ", "success");
-    setTimeout(() => { document.getElementById("changePasswordBackdrop").classList.remove("show"); }, 1000);
-  } catch (err) {
-    if (err && err.code === "auth/wrong-password") feedback.textContent = "รหัสผ่านปัจจุบันไม่ถูกต้อง";
-    else if (err && err.code === "auth/too-many-requests") feedback.textContent = "ลองผิดหลายครั้งเกินไป กรุณารอสักครู่แล้วลองใหม่";
-    else feedback.textContent = "เปลี่ยนรหัสผ่านไม่สำเร็จ: " + (err.message || err);
-  }
-  btn.disabled = false; btn.textContent = "บันทึกรหัสผ่านใหม่";
-});
-
-function showLogin() { document.getElementById("loginScreen").style.display = "flex"; document.getElementById("adminShell").style.display = "none"; }
-async function showAdmin() {
-  // ตรวจสอบสิทธิ์แอดมินของบัญชีนี้ก่อนปล่อยเข้าใช้งาน (บูตสแตรปแอดมินหลักคนแรกอัตโนมัติถ้ายังไม่เคยตั้งค่าระบบแอดมินเลย)
-  let roleInfo;
-  try {
-    roleInfo = await withTimeout(
-      resolveCurrentAdminRole(auth.currentUser),
-      15000,
-      "ตรวจสอบสิทธิ์ Admin นานเกินไป"
-    );
-  } catch (err) {
-    // ส่วนใหญ่เกิดจาก Firestore Security Rules ยังไม่อนุญาตให้อ่าน/เขียน collection "admins"
-    document.getElementById("loginError").textContent =
-      "ตรวจสอบสิทธิ์แอดมินไม่สำเร็จ: " + (err.message || err) + " — ถ้าเพิ่งเพิ่มระบบจัดการแอดมิน ให้ตรวจสอบ Firestore Rules ว่าอนุญาต collection \"admins\" แล้วหรือยัง";
-    await signOut(auth);
-    return;
-  }
-  if (!roleInfo) {
-    document.getElementById("loginError").textContent = "บัญชีนี้ไม่มีสิทธิ์เข้าใช้งานระบบ Admin กรุณาติดต่อแอดมินหลักเพื่อเพิ่มบัญชีให้ก่อน";
-    await signOut(auth);
-    return;
-  }
-  currentAdminRole = roleInfo.role;
-  window.__currentAdminRole = currentAdminRole;
-
-  document.getElementById("loginScreen").style.display = "none";
-  document.getElementById("adminShell").style.display = "block";
-  document.getElementById("qaManageAdmins").style.display = currentAdminRole === "main" ? "" : "none";
-  const s = await withTimeout(
-    getDoc(doc(db, "settings", "main")),
-    15000,
-    "โหลดการตั้งค่าเว็บไซต์นานเกินไป"
-  );
-  if (s.exists()) document.getElementById("adminSiteName").textContent = s.data().website_name || "Music Store";
-  await withTimeout(loadDashboard(), 20000, "โหลดข้อมูล Dashboard นานเกินไป");
-}
-
-// ---------------- View switching ----------------
-function showView(id) {
-  document.querySelectorAll(".view").forEach(v => v.style.display = "none");
-  document.getElementById(id).style.display = "block";
-}
-document.querySelectorAll(".back-btn").forEach(b => b.addEventListener("click", () => { showView("view-dashboard"); loadDashboard(); }));
-document.getElementById("qaAddSong").addEventListener("click", async () => { showView("view-songs"); await loadSongs(); openAddSong(); });
-document.getElementById("qaManageSongs").addEventListener("click", () => { showView("view-songs"); loadSongs(); });
-document.getElementById("qaManageCats").addEventListener("click", () => { showView("view-categories"); loadCategories(); });
-document.getElementById("qaManageDjs").addEventListener("click", () => { showView("view-djs"); loadDjs(); });
-document.getElementById("qaManagePlaylists").addEventListener("click", () => { showView("view-playlists"); loadPlaylists(); });
-document.getElementById("qaBulkUpload").addEventListener("click", () => { openBulkUpload(); });
-document.getElementById("qaOrders").addEventListener("click", () => { showView("view-orders"); initOrdersView(); });
-document.getElementById("qaSettings").addEventListener("click", () => { showView("view-settings"); loadSettings(); });
-document.getElementById("qaManageAdmins").addEventListener("click", () => {
-  if (currentAdminRole !== "main") { showToast("เฉพาะแอดมินหลักเท่านั้นที่เข้าหน้านี้ได้", "error"); return; }
-  showView("view-admins"); initAdminsView();
-});
-
-async function loadDashboard() {
-  const [songsSnap, catSnap, djSnap, playlistSnap] = await Promise.all([
-    getDocs(collection(db, "songs")), getDocs(collection(db, "categories")), getDocs(collection(db, "djs")), getDocs(collection(db, "playlists"))
-  ]);
-  document.getElementById("statSongs").textContent = songsSnap.size;
-  document.getElementById("statCats").textContent = catSnap.size;
-  document.getElementById("statDjs").textContent = djSnap.size;
-  document.getElementById("statPlaylists").textContent = playlistSnap.size;
-}
-
-// ================= SONGS =================
-let songSelectMode = false;
-const selectedSongIds = new Set();
-let currentSongListView = [];
-
-async function loadSongs() {
-  const [songsSnap, catSnap, djSnap, playlistSnap] = await Promise.all([
-    getDocs(collection(db, "songs")), getDocs(collection(db, "categories")), getDocs(collection(db, "djs")), getDocs(collection(db, "playlists"))
-  ]);
-  CACHE.songs = songsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-  CACHE.categories = catSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-  CACHE.djs = djSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-  CACHE.playlists = playlistSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-  populateSelect("fCategory", CACHE.categories, "id", "category_name");
-  populateSelect("fDj", CACHE.djs, "id", "dj_name");
-  populateSelect("fPlaylist", CACHE.playlists, "id", "playlist_name");
-  selectedSongIds.clear();
-  updateSongBulkBar();
-  renderSongList(CACHE.songs);
-}
-function populateSelect(id, items, valueKey, labelKey) {
-  const sel = document.getElementById(id);
-  const current = sel.value;
-  sel.innerHTML = '<option value="">— ไม่ระบุ —</option>' + items.map(it => `<option value="${it[valueKey]}">${escapeHtml(it[labelKey])}</option>`).join("");
-  sel.value = current;
-}
-function renderSongList(list) {
-  currentSongListView = list;
-  const wrap = document.getElementById("songList");
-  if (list.length === 0) { wrap.innerHTML = '<div class="empty-state">ยังไม่มีเพลง</div>'; return; }
-  wrap.innerHTML = list.map(s => `
-    <div class="list-row">
-      ${songSelectMode ? `<input type="checkbox" class="song-select-chk" data-id="${s.id}" ${selectedSongIds.has(s.id) ? "checked" : ""} style="width:20px;height:20px;flex-shrink:0;">` : ""}
-      <img src="${s.cover_url || ""}">
-      <div class="info"><div class="n1">${escapeHtml(s.song_name)}</div>
-      <div class="n2">${escapeHtml(s.dj_name || "-")} · ${escapeHtml(s.category_name || "-")} · ${formatPrice(s.price)}</div></div>
-      <div class="row-actions">
-        <button class="icon-btn" data-edit="${s.id}">✎</button>
-        <button class="icon-btn danger" data-del="${s.id}">🗑</button>
+  <div class="admin-shell" id="adminShell" style="display:none;">
+    <div class="topbar">
+      <div class="topbar-inner">
+        <div class="logo"><span>⚙️ Admin — <span id="adminSiteName">Music Store</span></span></div>
+        <button class="icon-btn" id="changePasswordBtn" style="margin-left:auto;" title="เปลี่ยนรหัสผ่านของฉัน">🔑</button>
+        <button class="icon-btn" id="logoutBtn">⎋</button>
       </div>
-    </div>`).join("");
-  wrap.querySelectorAll("[data-edit]").forEach(b => b.addEventListener("click", () => openEditSong(b.getAttribute("data-edit"))));
-  wrap.querySelectorAll("[data-del]").forEach(b => b.addEventListener("click", () => confirmDeleteSong(b.getAttribute("data-del"))));
-  wrap.querySelectorAll(".song-select-chk").forEach(chk => chk.addEventListener("change", () => {
-    const id = chk.getAttribute("data-id");
-    if (chk.checked) selectedSongIds.add(id); else selectedSongIds.delete(id);
-    updateSongBulkBar();
-  }));
-}
+    </div>
 
-function updateSongBulkBar() {
-  document.getElementById("songSelectedCount").textContent = `เลือกแล้ว ${selectedSongIds.size} เพลง`;
-  document.getElementById("songBulkDeleteBtn").disabled = selectedSongIds.size === 0;
-  const allSelected = currentSongListView.length > 0 && currentSongListView.every(s => selectedSongIds.has(s.id));
-  document.getElementById("songSelectAllChk").checked = allSelected;
-}
+    <div id="view-dashboard" class="view">
+      <div class="stat-grid">
+        <div class="stat-card"><div class="num" id="statSongs">0</div><div class="label">เพลงทั้งหมด</div></div>
+        <div class="stat-card"><div class="num" id="statCats">0</div><div class="label">หมวดหมู่</div></div>
+        <div class="stat-card"><div class="num" id="statDjs">0</div><div class="label">DJ</div></div>
+        <div class="stat-card"><div class="num" id="statPlaylists">0</div><div class="label">เพลย์ลิสต์</div></div>
+      </div>
+      <div class="quick-actions">
+        <button id="qaAddSong">➕<br>เพิ่มเพลง</button>
+        <button id="qaManageSongs">🎵<br>จัดการเพลง</button>
+        <button id="qaManagePlaylists">🎶<br>จัดการเพลย์ลิสต์</button>
+        <button id="qaBulkUpload">📦<br>เพิ่มเพลงหลายไฟล์</button>
+        <button id="qaManageCats">🗂️<br>จัดการหมวดหมู่</button>
+        <button id="qaManageDjs">🎧<br>จัดการ DJ</button>
+        <button id="qaOrders">🧾<br>จัดการออเดอร์</button>
+        <button id="qaSettings">🔧<br>ตั้งค่าเว็บไซต์</button>
+        <button id="qaManageAdmins" style="display:none;">👤<br>จัดการแอดมิน</button>
+      </div>
+    </div>
 
-document.getElementById("songSelectModeBtn").addEventListener("click", () => {
-  songSelectMode = !songSelectMode;
-  selectedSongIds.clear();
-  document.getElementById("songBulkBar").style.display = songSelectMode ? "flex" : "none";
-  document.getElementById("songSelectModeBtn").style.background = songSelectMode ? "var(--accent)" : "";
-  document.getElementById("songSelectModeBtn").style.color = songSelectMode ? "#fff" : "";
-  updateSongBulkBar();
-  renderSongList(currentSongListView);
-});
-document.getElementById("songSelectAllChk").addEventListener("change", (e) => {
-  if (e.target.checked) currentSongListView.forEach(s => selectedSongIds.add(s.id));
-  else selectedSongIds.clear();
-  updateSongBulkBar();
-  renderSongList(currentSongListView);
-});
-document.getElementById("songBulkDeleteBtn").addEventListener("click", () => {
-  const ids = Array.from(selectedSongIds);
-  if (ids.length === 0) return;
-  openConfirm(`ต้องการลบเพลงที่เลือกไว้ ${ids.length} เพลงหรือไม่? (เพลงที่มี Order เก่าอยู่แล้วจะถูกปิดการขายแทนการลบ เพื่อไม่ให้ไฟล์เต็มหาย)`, async () => {
-    let deletedCount = 0, hiddenCount = 0;
-    for (const id of ids) {
-      const hasOrders = await songHasOrders(id);
-      if (hasOrders) {
-        await updateDoc(doc(db, "songs", id), { status: "hidden", updated_at: new Date().toISOString() });
-        hiddenCount++;
-      } else {
-        await deleteDoc(doc(db, "songs", id));
-        deletedCount++;
+    <div id="view-songs" class="view" style="display:none;">
+      <div class="container" style="padding:14px 16px 6px;display:flex;gap:8px;align-items:center;">
+        <button class="icon-btn back-btn">←</button>
+        <div class="search-box" style="flex:1;"><input id="songSearch" placeholder="ค้นหาเพลง..."></div>
+        <button class="icon-btn" id="songSelectModeBtn" title="เลือกหลายเพลง">☑️</button>
+        <button class="icon-btn" id="addSongBtn" style="background:var(--accent);color:#fff;">＋</button>
+      </div>
+      <div id="songBulkBar" style="display:none;padding:0 16px 10px;align-items:center;justify-content:space-between;gap:10px;">
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-dim);">
+          <input type="checkbox" id="songSelectAllChk"> เลือกทั้งหมด
+        </label>
+        <span id="songSelectedCount" style="font-size:13px;color:var(--text-dim);">เลือกแล้ว 0 เพลง</span>
+        <button class="btn danger" id="songBulkDeleteBtn" style="padding:8px 14px;font-size:13px;" disabled>ลบที่เลือก</button>
+      </div>
+      <div id="songList"></div>
+    </div>
+
+    <div id="view-categories" class="view" style="display:none;">
+      <div class="container" style="padding:14px 16px 6px;display:flex;gap:8px;align-items:center;">
+        <button class="icon-btn back-btn">←</button>
+        <div style="flex:1;font-weight:800;">จัดการหมวดหมู่</div>
+        <button class="icon-btn" id="addCatBtn" style="background:var(--accent);color:#fff;">＋</button>
+      </div>
+      <div id="catList"></div>
+    </div>
+
+    <div id="view-djs" class="view" style="display:none;">
+      <div class="container" style="padding:14px 16px 6px;display:flex;gap:8px;align-items:center;">
+        <button class="icon-btn back-btn">←</button>
+        <div style="flex:1;font-weight:800;">จัดการ DJ</div>
+        <button class="icon-btn" id="addDjBtn" style="background:var(--accent);color:#fff;">＋</button>
+      </div>
+      <div id="djList"></div>
+    </div>
+
+    <div id="view-playlists" class="view" style="display:none;">
+      <div class="container" style="padding:14px 16px 6px;display:flex;gap:8px;align-items:center;">
+        <button class="icon-btn back-btn">←</button>
+        <div style="flex:1;font-weight:800;">จัดการเพลย์ลิสต์</div>
+        <button class="icon-btn" id="addPlaylistBtn" style="background:var(--accent);color:#fff;">＋</button>
+      </div>
+      <div id="playlistList"></div>
+    </div>
+
+    <!-- ===================== ORDERS VIEW (ใหม่) ===================== -->
+    <style>
+      #view-orders .status-filter { display:flex; flex-wrap:wrap; gap:8px; padding:0 16px; margin:14px 0; }
+      #view-orders .status-filter button {
+        border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.04); color:var(--text-dim);
+        border-radius:999px; padding:6px 14px; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap;
       }
-    }
-    selectedSongIds.clear();
-    songSelectMode = false;
-    document.getElementById("songBulkBar").style.display = "none";
-    document.getElementById("songSelectModeBtn").style.background = "";
-    document.getElementById("songSelectModeBtn").style.color = "";
-    showToast(`ลบแล้ว ${deletedCount} เพลง${hiddenCount > 0 ? ` · ปิดการขาย ${hiddenCount} เพลง (มี Order เก่า)` : ""}`, "success");
-    loadSongs();
-    loadDashboard();
-  });
-});
-
-// ฟังก์ชันกรองและแสดงผลรายการเพลง
-const handleSongSearch = (e) => {
-  const q = e.target.value.trim().toLowerCase();
-  renderSongList(CACHE.songs.filter(s => [s.song_name, s.artist, s.dj_name, s.category_name].join(" ").toLowerCase().includes(q)));
-};
-
-const searchInputEl = document.getElementById("songSearch");
-searchInputEl.addEventListener("input", debounce(handleSongSearch, 200));
-
-// เพิ่มการดักจับปุ่ม Enter และลูกศร เพื่อซ่อนแป้นพิมพ์บนมือถือ
-searchInputEl.addEventListener("keydown", (e) => {
-  if (e.key === "Enter" || e.key === "ArrowDown" || e.key === "ArrowUp") {
-    searchInputEl.blur(); // สั่งปิดแป้นพิมพ์
-  }
-});
-
-function resetSongForm() {
-  songUploadSession++; // ยกเลิก progress callback ของรอบอัปโหลดก่อนหน้า (ถ้ายังค้างอยู่เบื้องหลัง)
-  editingSongId = null; pendingSongFile = null; pendingCoverFile = null;
-  pendingFullSongFile = null; existingFullFileUrl = "";
-  pendingPreviewData = null;
-  document.getElementById("fDanceStartBar").value = "";
-  document.getElementById("fPreviewStartBarManual").value = "";
-  document.getElementById("fPreviewEndBarManual").value = "";
-  hidePreviewBox();
-  document.getElementById("songFormTitle").textContent = "เพิ่มเพลง";
-  ["fSongName", "fArtist", "fPrice", "fDesc"].forEach(id => document.getElementById(id).value = "");
-  document.getElementById("fDj").value = ""; document.getElementById("fCategory").value = ""; document.getElementById("fStatus").value = "active";
-  document.getElementById("fPlaylist").value = "";
-  document.getElementById("songFileInput").value = ""; document.getElementById("coverFileInput").value = "";
-  document.getElementById("songFilePicker").textContent = "📁 แตะเพื่อเลือกไฟล์เพลงจาก iPhone/iPad";
-  document.getElementById("songFilePicker").className = "file-picker";
-  document.getElementById("coverFilePicker").textContent = "🖼️ แตะเพื่อเลือกรูปปก";
-  document.getElementById("coverFilePicker").className = "file-picker";
-  document.getElementById("fullSongFileInput").value = "";
-  // 🔒 ข้อความ placeholder ปรับให้ตรงกับที่รองรับจริง (WAV/MP3) — ไม่กระทบ logic ใดๆ
-  document.getElementById("fullSongFilePicker").textContent = "🔒 แตะเพื่อเลือกไฟล์เพลงเต็ม (WAV/MP3)";
-  document.getElementById("fullSongFilePicker").className = "file-picker";
-  document.getElementById("fullSongFileMeta").style.display = "none";
-  document.getElementById("fullSongFileMeta").textContent = "";
-  document.getElementById("fullSongUploadProgressWrap").style.display = "none";
-  document.getElementById("songUploadProgressWrap").style.display = "none";
-  const songLbl = document.getElementById("songUploadProgressLabel");
-  if (songLbl) songLbl.textContent = "";
-  const fullLbl = document.getElementById("fullSongUploadProgressLabel");
-  if (fullLbl) fullLbl.textContent = "";
-  hideCancelButton("songUploadProgressWrap");
-  hideCancelButton("fullSongUploadProgressWrap");
-  if (songUploadController) { songUploadController.abort(); songUploadController = null; } // เผื่อยังมีอัปโหลดค้างจากรอบก่อนหน้า ให้ยกเลิกจริงไปด้วยเลย
-}
-function openAddSong() { resetSongForm(); document.getElementById("songFormBackdrop").classList.add("show"); }
-function openEditSong(id) {
-  resetSongForm();
-  const s = CACHE.songs.find(x => x.id === id);
-  if (!s) return;
-  editingSongId = id;
-  document.getElementById("songFormTitle").textContent = "แก้ไขเพลง";
-  document.getElementById("fSongName").value = s.song_name || "";
-  document.getElementById("fArtist").value = s.artist || "";
-  document.getElementById("fPrice").value = s.price || 0;
-  document.getElementById("fDesc").value = s.description || "";
-  document.getElementById("fStatus").value = s.status || "active";
-  const dj = CACHE.djs.find(d => d.dj_name === s.dj_name);
-  document.getElementById("fDj").value = dj ? dj.id : "";
-  document.getElementById("fCategory").value = s.category_id || "";
-  document.getElementById("fPlaylist").value = s.playlist_id || "";
-  if (s.file_url) { document.getElementById("songFilePicker").textContent = "✔ มีไฟล์เพลงอยู่แล้ว (ไม่บังคับอัปโหลดใหม่)"; document.getElementById("songFilePicker").className = "file-picker filled"; }
-  if (s.cover_url) { document.getElementById("coverFilePicker").textContent = "✔ มีรูปปกอยู่แล้ว"; document.getElementById("coverFilePicker").className = "file-picker filled"; }
-  existingFullFileUrl = s.full_file_url || "";
-  if (existingFullFileUrl) {
-    document.getElementById("fullSongFilePicker").textContent = `🔒✔ มีไฟล์เต็มอยู่แล้ว${s.full_file_name ? " (" + s.full_file_name + ")" : ""} — ไม่บังคับอัปโหลดใหม่`;
-    document.getElementById("fullSongFilePicker").className = "file-picker filled";
-  }
-  // Auto Preview: ถ้าเพลงนี้เคยวิเคราะห์ไว้แล้ว (หรือเคยแก้มือไว้) ให้โชว์สถานะเดิม — ยังไม่ต้องวิเคราะห์ซ้ำ
-  if (s.file_url) {
-    if (s.preview_status) {
-      renderPreviewData({
-        status: s.preview_status,
-        dance_start_bar: s.dance_start_bar,
-        preview_start_bar: s.preview_start_bar,
-        preview_end_bar: s.preview_end_bar,
-        preview_start_sec: s.preview_start_sec,
-        preview_end_sec: s.preview_end_sec,
-        confidence: s.preview_confidence,
-        duration_sec: s.preview_duration_sec
-      });
-    } else {
-      // เพลงเก่าก่อนมีระบบนี้ — ยังไม่เคยวิเคราะห์เลย
-      showPreviewBox();
-      setPreviewBadge("ยังไม่เคยวิเคราะห์", "#9aa0aa");
-      document.getElementById("previewInfoText").textContent = "เพลงนี้อัปโหลดไว้ก่อนมีระบบ Auto Preview — กด \"วิเคราะห์เสียงใหม่ทั้งหมด\" เพื่อสร้าง Preview ให้เพลงนี้";
-    }
-  }
-  document.getElementById("songFormBackdrop").classList.add("show");
-}
-document.getElementById("addSongBtn").addEventListener("click", openAddSong);
-document.getElementById("songFormClose").addEventListener("click", () => {
-  if (songUploadController) { songUploadController.abort(); songUploadController = null; } // ปิดฟอร์มระหว่างอัปโหลด ต้องยกเลิกอัปโหลดจริงด้วย ไม่ปล่อยค้างเบื้องหลัง
-  document.getElementById("songFormBackdrop").classList.remove("show");
-});
-
-document.getElementById("songFileInput").addEventListener("change", (e) => {
-  const f = e.target.files[0]; if (!f) return;
-  pendingSongFile = f;
-  document.getElementById("songFilePicker").textContent = "🎵 " + f.name;
-  document.getElementById("songFilePicker").className = "file-picker filled";
-
-  const nameField = document.getElementById("fSongName");
-  if (!editingSongId && !nameField.value.trim()) {
-    nameField.value = nameFromFile(f.name);
-  }
-
-  // Auto Preview: วิเคราะห์ไฟล์ที่เพิ่งเลือกทันที (ทำในเบราว์เซอร์ ไม่ต้องรออัปโหลดขึ้น Cloudinary ก่อน)
-  runAnalysisOnFile(f);
-});
-document.getElementById("coverFileInput").addEventListener("change", (e) => {
-  const f = e.target.files[0]; if (!f) return;
-  pendingCoverFile = f;
-  document.getElementById("coverFilePicker").textContent = "🖼️ " + f.name;
-  document.getElementById("coverFilePicker").className = "file-picker filled";
-});
-
-// 🔒🔒🔒 ห้าม AI แก้โค้ดส่วนนี้เองโดยไม่มีคำสั่งจากผู้ใช้โดยตรง (ประกาศจากผู้ใช้ 2026-09-06) 🔒🔒🔒
-// เงื่อนไขไฟล์เพลงเต็ม (ทีละไฟล์): อนุญาตทั้งนามสกุล .wav และ .mp3 — ห้ามแก้ให้เหลือรองรับแค่ชนิดเดียวโดยไม่มีคำสั่งผู้ใช้
-document.getElementById("fullSongFileInput").addEventListener("change", (e) => {
-  const f = e.target.files[0]; if (!f) return;
-  const picker = document.getElementById("fullSongFilePicker");
-  const meta = document.getElementById("fullSongFileMeta");
-  const isWav = /\.wav$/i.test(f.name) || f.type === "audio/wav" || f.type === "audio/x-wav";
-  const isMp3 = /\.mp3$/i.test(f.name) || f.type === "audio/mpeg" || f.type === "audio/mp3";
-  const isAllowed = isWav || isMp3;
-  if (!isAllowed) {
-    showToast("กรุณาเลือกไฟล์นามสกุล .wav หรือ .mp3 เท่านั้นสำหรับเพลงเต็ม", "error");
-    e.target.value = "";
-    pendingFullSongFile = null;
-    meta.style.display = "none";
-    return;
-  }
-  const sizeMb = f.size / (1024 * 1024);
-  if (sizeMb > MAX_FULL_SONG_SIZE_MB) {
-    showToast(`ไฟล์ใหญ่เกินไป (${sizeMb.toFixed(1)} MB) — จำกัดไม่เกิน ${MAX_FULL_SONG_SIZE_MB} MB`, "error");
-    e.target.value = "";
-    pendingFullSongFile = null;
-    meta.style.display = "none";
-    return;
-  }
-  pendingFullSongFile = f;
-  picker.textContent = "🔒 " + f.name;
-  picker.className = "file-picker filled";
-  meta.textContent = `ขนาดไฟล์: ${formatFileSize(f.size)}`;
-  meta.style.display = "block";
-});
-// 🔒🔒🔒 จบส่วนที่ห้าม AI แก้เอง (ไฟล์เพลงเต็มทีละไฟล์) 🔒🔒🔒
-
-// ---------------- Auto Preview: วิเคราะห์อัตโนมัติ + ปุ่มให้แอดมินแก้ไขเอง ----------------
-// mySession กันไม่ให้ผลวิเคราะห์ของไฟล์/ฟอร์มรอบเก่ามาเขียนทับฟอร์มที่เปิดใหม่ (แพทเทิร์นเดียวกับ songUploadSession)
-async function runAnalysisOnFile(file) {
-  const mySession = songUploadSession;
-  renderPreviewData({ status: "analyzing" });
-  try {
-    const result = await analyzeSongFile(file);
-    if (mySession !== songUploadSession) return; // ฟอร์มถูกรีเซ็ต/ปิดไปแล้วระหว่างวิเคราะห์
-    renderPreviewData(result);
-    if (result.status === "needs_review") {
-      showToast("วิเคราะห์ไม่พบช่วง Dance ที่มั่นใจพอ — กรุณากรอก Dance Start Bar เอง", "error");
-    }
-  } catch (err) {
-    if (mySession !== songUploadSession) return;
-    renderPreviewData({ status: "needs_review", dance_start_bar: null });
-    showToast("วิเคราะห์เสียงไม่สำเร็จ: " + (err.message || err) + " — กรอก Dance Start Bar เองได้", "error");
-  }
-}
-
-// ปุ่ม "แก้ไข / คำนวณ Preview ใหม่" — ใช้เลขห้องที่แอดมินกรอกเอง คำนวณช่วง Preview ใหม่ทันที ไม่ต้องวิเคราะห์เสียงซ้ำ
-document.getElementById("recalcPreviewBtn").addEventListener("click", () => {
-  const barVal = document.getElementById("fDanceStartBar").value;
-  if (barVal === "" || barVal == null) { showToast("กรุณากรอก Dance Start Bar ก่อน", "error"); return; }
-  // หาความยาวเพลง (วินาที) เท่าที่รู้ได้ ณ ตอนนี้ — จากผลวิเคราะห์ล่าสุด หรือจากข้อมูลเพลงเดิม (ตอนแก้ไขเพลง)
-  const existingSong = editingSongId ? CACHE.songs.find(x => x.id === editingSongId) : null;
-  const durationSec =
-    (pendingPreviewData && pendingPreviewData.duration_sec) ||
-    (existingSong && existingSong.preview_duration_sec) ||
-    null;
-  const result = recalculateFromManualBar(barVal, durationSec);
-  renderPreviewData(result);
-  showToast("คำนวณ Preview ใหม่จากเลขห้องที่กรอกแล้ว", "success");
-});
-
-// ปุ่ม "ใช้ช่วงที่กำหนดเอง" — ระบุห้องเริ่ม/ห้องหยุดของ Preview เองตรงๆ ไม่ผ่านสูตร Dance เลย
-document.getElementById("recalcManualRangeBtn").addEventListener("click", () => {
-  const startVal = document.getElementById("fPreviewStartBarManual").value;
-  const endVal = document.getElementById("fPreviewEndBarManual").value;
-  if (startVal === "" || startVal == null || endVal === "" || endVal == null) {
-    showToast("กรุณากรอกทั้งห้องเริ่มและห้องหยุด", "error");
-    return;
-  }
-  const existingSong = editingSongId ? CACHE.songs.find(x => x.id === editingSongId) : null;
-  const durationSec =
-    (pendingPreviewData && pendingPreviewData.duration_sec) ||
-    (existingSong && existingSong.preview_duration_sec) ||
-    null;
-  const result = manualPreviewWindow(startVal, endVal, durationSec);
-  renderPreviewData(result);
-  showToast("ใช้ช่วง Preview ที่กำหนดเองแล้ว", "success");
-});
-
-// ปุ่ม "วิเคราะห์เสียงใหม่ทั้งหมด (AI)" — รันตัววิเคราะห์ใหม่ทั้งเพลง (ใช้ไฟล์ที่เพิ่งเลือกถ้ามี ไม่งั้นดึงจาก URL เดิม)
-document.getElementById("reanalyzePreviewBtn").addEventListener("click", async () => {
-  const btn = document.getElementById("reanalyzePreviewBtn");
-  const existingSong = editingSongId ? CACHE.songs.find(x => x.id === editingSongId) : null;
-  if (!pendingSongFile && !(existingSong && existingSong.file_url)) {
-    showToast("ยังไม่มีไฟล์เพลงให้วิเคราะห์ — กรุณาเลือกไฟล์เพลงก่อน", "error");
-    return;
-  }
-  btn.disabled = true; btn.textContent = "กำลังวิเคราะห์...";
-  renderPreviewData({ status: "analyzing" });
-  const mySession = songUploadSession;
-  try {
-    const result = pendingSongFile
-      ? await analyzeSongFile(pendingSongFile)
-      : await analyzeSongUrl(existingSong.file_url);
-    if (mySession !== songUploadSession) return;
-    renderPreviewData(result);
-    showToast(result.status === "ok" ? "วิเคราะห์ใหม่สำเร็จ" : "วิเคราะห์ไม่พบช่วง Dance ที่มั่นใจพอ — กรอกเองได้", result.status === "ok" ? "success" : "error");
-  } catch (err) {
-    if (mySession !== songUploadSession) return;
-    showToast("วิเคราะห์ไม่สำเร็จ: " + (err.message || err), "error");
-  }
-  btn.disabled = false; btn.textContent = "🔄 วิเคราะห์เสียงใหม่ทั้งหมด (AI)";
-});
-
-document.getElementById("songSaveBtn").addEventListener("click", async function () {
-  const name = document.getElementById("fSongName").value.trim();
-  if (!name) { showToast("กรุณากรอกชื่อเพลง", "error"); return; }
-  const btn = this; btn.disabled = true; btn.textContent = "กำลังบันทึก...";
-  const mySession = songUploadSession; // จำ session ปัจจุบัน กันไม่ให้ callback ไปเขียนทับฟอร์มที่ถูกรีเซ็ต/เปิดใหม่ระหว่างอัปโหลด
-  const controller = new AbortController(); // ใช้กดยกเลิกอัปโหลดจริง (xhr.abort())
-  songUploadController = controller;
-  try {
-    let fileUrl = null, coverUrl = null, fullFileUrl = null, fullFilePublicId = null, fullFileName = null;
-    if (pendingSongFile) {
-      document.getElementById("songUploadProgressWrap").style.display = "block";
-      const prog = document.getElementById("songUploadProgress");
-      const songProgLabel = ensureProgressLabel("songUploadProgress");
-      ensureCancelButton("songUploadProgressWrap", () => controller.abort());
-      const songTotalBytes = pendingSongFile.size;
-      const res = await uploadToCloudinary(pendingSongFile, (pct, loaded, total) => {
-        if (mySession !== songUploadSession) return; // ฟอร์มถูกรีเซ็ต/เปิดใหม่ไปแล้ว ไม่ต้องอัปเดต UI ต่อ
-        prog.style.width = pct + "%";
-        updateProgressLabel(songProgLabel, total || songTotalBytes, pct, loaded);
-      }, controller.signal);
-      fileUrl = res.url;
-    }
-    if (pendingCoverFile) {
-      const res = await uploadToCloudinary(pendingCoverFile, null, controller.signal);
-      coverUrl = res.url;
-    }
-    if (pendingFullSongFile) {
-      document.getElementById("fullSongUploadProgressWrap").style.display = "block";
-      const prog = document.getElementById("fullSongUploadProgress");
-      const fullProgLabel = ensureProgressLabel("fullSongUploadProgress");
-      ensureCancelButton("fullSongUploadProgressWrap", () => controller.abort());
-      const fullTotalBytes = pendingFullSongFile.size;
-      btn.textContent = "กำลังอัปโหลดไฟล์เต็ม...";
-      const res = await uploadFullSong(pendingFullSongFile, (pct, loaded, total) => {
-        if (mySession !== songUploadSession) return; // เช่นเดียวกับด้านบน
-        prog.style.width = pct + "%";
-        updateProgressLabel(fullProgLabel, total || fullTotalBytes, pct, loaded);
-      }, controller.signal, (attempt, maxRetries) => {
-        // อัปโหลดหลุด/timeout — ระบบกำลังลองใหม่อัตโนมัติ (สูงสุด 2 ครั้ง) ไม่ต้องให้ผู้ใช้กดเอง
-        if (mySession !== songUploadSession) return;
-        btn.textContent = `เชื่อมต่อหลุด กำลังลองใหม่ (${attempt}/${maxRetries})...`;
-        showToast(`อัปโหลดไฟล์เต็มมีปัญหา กำลังลองใหม่ (${attempt}/${maxRetries})...`, "error");
-      });
-      fullFileUrl = res.url;
-      fullFilePublicId = res.publicId;
-      fullFileName = pendingFullSongFile.name;
-      btn.textContent = "กำลังบันทึก...";
-    }
-    const djSel = document.getElementById("fDj");
-    const catSel = document.getElementById("fCategory");
-    const plSel = document.getElementById("fPlaylist");
-    const payload = {
-      song_name: name,
-      artist: document.getElementById("fArtist").value.trim(),
-      dj_name: djSel.value ? djSel.options[djSel.selectedIndex].text : "",
-      category_id: catSel.value,
-      category_name: catSel.value ? catSel.options[catSel.selectedIndex].text : "",
-      playlist_id: plSel.value,
-      playlist_name: plSel.value ? plSel.options[plSel.selectedIndex].text : "",
-      price: Number(document.getElementById("fPrice").value || 0),
-      description: document.getElementById("fDesc").value.trim(),
-      status: document.getElementById("fStatus").value,
-      updated_at: new Date().toISOString()
-    };
-    if (fileUrl) payload.file_url = fileUrl;
-    if (coverUrl) payload.cover_url = coverUrl;
-    if (fullFileUrl) {
-      payload.full_file_url = fullFileUrl;
-      payload.full_file_public_id = fullFilePublicId;
-      payload.full_file_name = fullFileName;
-    }
-    // Auto Preview: บันทึกแค่วินาทีเริ่ม/จบ + สถานะ — ไม่มีการอัปโหลดไฟล์ preview แยกใดๆ ทั้งสิ้น
-    if (pendingPreviewData && pendingPreviewData.status !== "analyzing") {
-      payload.preview_status = pendingPreviewData.status;
-      payload.dance_start_bar = pendingPreviewData.dance_start_bar ?? null;
-      payload.preview_start_bar = pendingPreviewData.preview_start_bar ?? null;
-      payload.preview_end_bar = pendingPreviewData.preview_end_bar ?? null;
-      payload.preview_start_sec = pendingPreviewData.preview_start_sec ?? null;
-      payload.preview_end_sec = pendingPreviewData.preview_end_sec ?? null;
-      payload.preview_confidence = pendingPreviewData.confidence ?? null;
-      payload.preview_duration_sec = pendingPreviewData.duration_sec ?? null;
-    }
-
-    if (editingSongId) {
-      await updateDoc(doc(db, "songs", editingSongId), payload);
-    } else {
-      payload.created_at = new Date().toISOString();
-      await addDoc(collection(db, "songs"), payload);
-    }
-    hideCancelButton("songUploadProgressWrap");
-    hideCancelButton("fullSongUploadProgressWrap");
-    showToast("บันทึกเพลงสำเร็จ", "success");
-    document.getElementById("songFormBackdrop").classList.remove("show");
-    loadSongs();
-    loadDashboard();
-  } catch (err) {
-    if (isAbortError(err)) {
-      // ผู้ใช้กดยกเลิกอัปโหลดเอง — ซ่อนแถบ progress/ปุ่มยกเลิก แต่คงฟอร์มไว้ให้แก้ไข/อัปโหลดใหม่ได้ตามที่สั่ง
-      document.getElementById("songUploadProgressWrap").style.display = "none";
-      document.getElementById("fullSongUploadProgressWrap").style.display = "none";
-      hideCancelButton("songUploadProgressWrap");
-      hideCancelButton("fullSongUploadProgressWrap");
-      showToast("ยกเลิกการอัปโหลดแล้ว");
-    } else {
-      showToast("บันทึกไม่สำเร็จ: " + err.message, "error");
-    }
-  }
-  songUploadController = null;
-  btn.disabled = false; btn.textContent = "บันทึกเพลง";
-});
-
-// เช็คว่าเพลงนี้เคยถูกสั่งซื้อ (มีอยู่ใน Order เก่า) หรือไม่ — ใช้ก่อนลบเพลงจริง
-async function songHasOrders(songId) {
-  const snap = await getDocs(collection(db, "orders"));
-  return snap.docs.some(d => (d.data().items || []).some(item =>
-    item.song_id === songId || (Array.isArray(item.song_ids) && item.song_ids.includes(songId))
-  ));
-}
-
-async function confirmDeleteSong(id) {
-  const hasOrders = await songHasOrders(id);
-  if (hasOrders) {
-    openConfirm(
-      "เพลงนี้มี Order เก่าอ้างอิงอยู่ — ไม่แนะนำให้ลบเพราะจะทำให้ไฟล์เพลงเต็มหาย ระบบจะเปลี่ยนสถานะเป็น 'ปิดการขาย (hidden)' แทนการลบจริง ต้องการดำเนินการต่อหรือไม่?",
-      async () => {
-        await updateDoc(doc(db, "songs", id), { status: "hidden", updated_at: new Date().toISOString() });
-        showToast("ปิดการขายเพลงนี้แล้ว (ไม่ได้ลบไฟล์)", "success");
-        loadSongs();
-        loadDashboard();
+      #view-orders .status-filter button.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+      #view-orders .status-badge {
+        display:inline-flex; align-items:center; gap:4px; border-radius:999px; padding:3px 10px;
+        font-size:12px; font-weight:700; width:fit-content;
       }
-    );
-    return;
-  }
-  openConfirm("คุณต้องการลบเพลงนี้หรือไม่?", async () => {
-    await deleteDoc(doc(db, "songs", id));
-    showToast("ลบเพลงแล้ว", "success");
-    loadSongs();
-    loadDashboard();
-  });
-}
-
-// ================= CATEGORIES =================
-async function loadCategories() {
-  const snap = await getDocs(collection(db, "categories"));
-  CACHE.categories = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  const wrap = document.getElementById("catList");
-  if (CACHE.categories.length === 0) { wrap.innerHTML = '<div class="empty-state">ยังไม่มีหมวดหมู่</div>'; return; }
-  wrap.innerHTML = CACHE.categories.map(c => `
-    <div class="list-row"><div class="info"><div class="n1">${escapeHtml(c.category_name)}</div>
-    <div class="n2">${escapeHtml(c.description || "")}</div></div>
-    <div class="row-actions"><button class="icon-btn" data-edit="${c.id}">✎</button>
-    <button class="icon-btn danger" data-del="${c.id}">🗑</button></div></div>`).join("");
-  wrap.querySelectorAll("[data-edit]").forEach(b => b.addEventListener("click", () => openEditCat(b.getAttribute("data-edit"))));
-  wrap.querySelectorAll("[data-del]").forEach(b => b.addEventListener("click", () => {
-    openConfirm("ลบหมวดหมู่นี้หรือไม่?", async () => {
-      await deleteDoc(doc(db, "categories", b.getAttribute("data-del")));
-      showToast("ลบแล้ว", "success"); loadCategories(); loadDashboard();
-    });
-  }));
-}
-function openAddCat() { editingCatId = null; document.getElementById("catFormTitle").textContent = "เพิ่มหมวดหมู่"; document.getElementById("fCatName").value = ""; document.getElementById("fCatDesc").value = ""; document.getElementById("catFormBackdrop").classList.add("show"); }
-function openEditCat(id) {
-  const c = CACHE.categories.find(x => x.id === id); if (!c) return;
-  editingCatId = id; document.getElementById("catFormTitle").textContent = "แก้ไขหมวดหมู่";
-  document.getElementById("fCatName").value = c.category_name; document.getElementById("fCatDesc").value = c.description || "";
-  document.getElementById("catFormBackdrop").classList.add("show");
-}
-document.getElementById("addCatBtn").addEventListener("click", openAddCat);
-document.getElementById("catFormClose").addEventListener("click", () => document.getElementById("catFormBackdrop").classList.remove("show"));
-document.getElementById("catSaveBtn").addEventListener("click", async () => {
-  const name = document.getElementById("fCatName").value.trim();
-  if (!name) { showToast("กรุณากรอกชื่อหมวดหมู่", "error"); return; }
-  const payload = { category_name: name, description: document.getElementById("fCatDesc").value.trim() };
-  try {
-    if (editingCatId) await updateDoc(doc(db, "categories", editingCatId), payload);
-    else { payload.created_at = new Date().toISOString(); await addDoc(collection(db, "categories"), payload); }
-    showToast("บันทึกแล้ว", "success"); document.getElementById("catFormBackdrop").classList.remove("show"); loadCategories(); loadDashboard();
-  } catch (err) { showToast("บันทึกไม่สำเร็จ: " + err.message, "error"); }
-});
-
-// ================= DJs =================
-async function loadDjs() {
-  const snap = await getDocs(collection(db, "djs"));
-  CACHE.djs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  const wrap = document.getElementById("djList");
-  if (CACHE.djs.length === 0) { wrap.innerHTML = '<div class="empty-state">ยังไม่มี DJ</div>'; return; }
-  wrap.innerHTML = CACHE.djs.map(d => `
-    <div class="list-row"><img src="${d.image_url || ""}">
-    <div class="info"><div class="n1">${escapeHtml(d.dj_name)}</div><div class="n2">${escapeHtml(d.description || "")}</div></div>
-    <div class="row-actions"><button class="icon-btn" data-edit="${d.id}">✎</button>
-    <button class="icon-btn danger" data-del="${d.id}">🗑</button></div></div>`).join("");
-  wrap.querySelectorAll("[data-edit]").forEach(b => b.addEventListener("click", () => openEditDj(b.getAttribute("data-edit"))));
-  wrap.querySelectorAll("[data-del]").forEach(b => b.addEventListener("click", () => {
-    openConfirm("ลบ DJ นี้หรือไม่?", async () => {
-      await deleteDoc(doc(db, "djs", b.getAttribute("data-del")));
-      showToast("ลบแล้ว", "success"); loadDjs(); loadDashboard();
-    });
-  }));
-}
-function resetDjForm() {
-  editingDjId = null; pendingDjImageFile = null; existingDjImageUrl = "";
-  document.getElementById("fDjName").value = ""; document.getElementById("fDjDesc").value = "";
-  document.getElementById("djImageInput").value = "";
-  document.getElementById("djImagePicker").textContent = "🖼️ แตะเพื่อเลือกรูปจาก iPhone/iPad";
-  document.getElementById("djImagePicker").className = "file-picker";
-}
-function openAddDj() { resetDjForm(); document.getElementById("djFormTitle").textContent = "เพิ่ม DJ"; document.getElementById("djFormBackdrop").classList.add("show"); }
-function openEditDj(id) {
-  const d = CACHE.djs.find(x => x.id === id); if (!d) return;
-  resetDjForm();
-  editingDjId = id; existingDjImageUrl = d.image_url || "";
-  document.getElementById("djFormTitle").textContent = "แก้ไข DJ";
-  document.getElementById("fDjName").value = d.dj_name; document.getElementById("fDjDesc").value = d.description || "";
-  if (existingDjImageUrl) { document.getElementById("djImagePicker").textContent = "✔ มีรูปอยู่แล้ว (แตะเพื่อเปลี่ยนรูปใหม่)"; document.getElementById("djImagePicker").className = "file-picker filled"; }
-  document.getElementById("djFormBackdrop").classList.add("show");
-}
-document.getElementById("addDjBtn").addEventListener("click", openAddDj);
-document.getElementById("djFormClose").addEventListener("click", () => document.getElementById("djFormBackdrop").classList.remove("show"));
-document.getElementById("djImageInput").addEventListener("change", (e) => {
-  const f = e.target.files[0]; if (!f) return;
-  pendingDjImageFile = f;
-  document.getElementById("djImagePicker").textContent = "🖼️ " + f.name;
-  document.getElementById("djImagePicker").className = "file-picker filled";
-});
-document.getElementById("djSaveBtn").addEventListener("click", async function () {
-  const name = document.getElementById("fDjName").value.trim();
-  if (!name) { showToast("กรุณากรอกชื่อ DJ", "error"); return; }
-  const btn = this; btn.disabled = true; btn.textContent = "กำลังบันทึก...";
-  try {
-    let imageUrl = existingDjImageUrl;
-    if (pendingDjImageFile) {
-      const res = await uploadToCloudinary(pendingDjImageFile);
-      imageUrl = res.url;
-    }
-    const payload = { dj_name: name, description: document.getElementById("fDjDesc").value.trim(), image_url: imageUrl };
-    if (editingDjId) await updateDoc(doc(db, "djs", editingDjId), payload);
-    else { payload.created_at = new Date().toISOString(); await addDoc(collection(db, "djs"), payload); }
-    showToast("บันทึกแล้ว", "success"); document.getElementById("djFormBackdrop").classList.remove("show"); loadDjs(); loadDashboard();
-  } catch (err) {
-    showToast("บันทึกไม่สำเร็จ: " + err.message, "error");
-  }
-  btn.disabled = false; btn.textContent = "บันทึก";
-});
-
-// ================= PLAYLISTS =================
-async function loadPlaylists() {
-  const snap = await getDocs(collection(db, "playlists"));
-  CACHE.playlists = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  const wrap = document.getElementById("playlistList");
-  if (CACHE.playlists.length === 0) { wrap.innerHTML = '<div class="empty-state">ยังไม่มีเพลย์ลิสต์</div>'; return; }
-  wrap.innerHTML = CACHE.playlists.map(p => `
-    <div class="list-row"><img src="${p.cover_url || ""}">
-    <div class="info"><div class="n1">${escapeHtml(p.playlist_name)}</div><div class="n2">${escapeHtml(p.description || "")}${p.price ? ` · ${formatPrice(p.price)}` : ""}</div></div>
-    <div class="row-actions"><button class="icon-btn" data-edit="${p.id}">✎</button>
-    <button class="icon-btn danger" data-del="${p.id}">🗑</button></div></div>`).join("");
-  wrap.querySelectorAll("[data-edit]").forEach(b => b.addEventListener("click", () => openEditPlaylist(b.getAttribute("data-edit"))));
-  wrap.querySelectorAll("[data-del]").forEach(b => b.addEventListener("click", () => {
-    openConfirm("ลบเพลย์ลิสต์นี้หรือไม่? (เพลงในเพลย์ลิสต์จะไม่ถูกลบ แค่ไม่ได้อยู่ในเพลย์ลิสต์นี้อีก)", async () => {
-      await deleteDoc(doc(db, "playlists", b.getAttribute("data-del")));
-      showToast("ลบแล้ว", "success"); loadPlaylists(); loadDashboard();
-    });
-  }));
-}
-function resetPlaylistForm() {
-  editingPlaylistId = null; pendingPlaylistCoverFile = null; existingPlaylistCoverUrl = "";
-  document.getElementById("fPlaylistName").value = ""; document.getElementById("fPlaylistDesc").value = "";
-  document.getElementById("fPlaylistPrice").value = "";
-  document.getElementById("playlistCoverInput").value = "";
-  document.getElementById("playlistCoverPicker").textContent = "🖼️ แตะเพื่อเลือกรูปปก";
-  document.getElementById("playlistCoverPicker").className = "file-picker";
-}
-function openAddPlaylist() { resetPlaylistForm(); document.getElementById("playlistFormTitle").textContent = "เพิ่มเพลย์ลิสต์"; document.getElementById("playlistFormBackdrop").classList.add("show"); }
-function openEditPlaylist(id) {
-  const p = CACHE.playlists.find(x => x.id === id); if (!p) return;
-  resetPlaylistForm();
-  editingPlaylistId = id; existingPlaylistCoverUrl = p.cover_url || "";
-  document.getElementById("playlistFormTitle").textContent = "แก้ไขเพลย์ลิสต์";
-  document.getElementById("fPlaylistName").value = p.playlist_name; document.getElementById("fPlaylistDesc").value = p.description || "";
-  document.getElementById("fPlaylistPrice").value = p.price || 0;
-  if (existingPlaylistCoverUrl) { document.getElementById("playlistCoverPicker").textContent = "✔ มีรูปปกอยู่แล้ว (แตะเพื่อเปลี่ยนรูปใหม่)"; document.getElementById("playlistCoverPicker").className = "file-picker filled"; }
-  document.getElementById("playlistFormBackdrop").classList.add("show");
-}
-document.getElementById("addPlaylistBtn").addEventListener("click", openAddPlaylist);
-document.getElementById("playlistFormClose").addEventListener("click", () => document.getElementById("playlistFormBackdrop").classList.remove("show"));
-document.getElementById("playlistCoverInput").addEventListener("change", (e) => {
-  const f = e.target.files[0]; if (!f) return;
-  pendingPlaylistCoverFile = f;
-  document.getElementById("playlistCoverPicker").textContent = "🖼️ " + f.name;
-  document.getElementById("playlistCoverPicker").className = "file-picker filled";
-});
-document.getElementById("playlistSaveBtn").addEventListener("click", async function () {
-  const name = document.getElementById("fPlaylistName").value.trim();
-  if (!name) { showToast("กรุณากรอกชื่อเพลย์ลิสต์", "error"); return; }
-  const btn = this; btn.disabled = true; btn.textContent = "กำลังบันทึก...";
-  try {
-    let coverUrl = existingPlaylistCoverUrl;
-    if (pendingPlaylistCoverFile) {
-      const res = await uploadToCloudinary(pendingPlaylistCoverFile);
-      coverUrl = res.url;
-    }
-    const payload = {
-      playlist_name: name,
-      description: document.getElementById("fPlaylistDesc").value.trim(),
-      price: Number(document.getElementById("fPlaylistPrice").value || 0),
-      cover_url: coverUrl
-    };
-    if (editingPlaylistId) await updateDoc(doc(db, "playlists", editingPlaylistId), payload);
-    else { payload.created_at = new Date().toISOString(); await addDoc(collection(db, "playlists"), payload); }
-    showToast("บันทึกแล้ว", "success"); document.getElementById("playlistFormBackdrop").classList.remove("show"); loadPlaylists(); loadDashboard();
-  } catch (err) {
-    showToast("บันทึกไม่สำเร็จ: " + err.message, "error");
-  }
-  btn.disabled = false; btn.textContent = "บันทึก";
-});
-
-// ================= BULK UPLOAD (เพิ่มเพลงหลายไฟล์พร้อมกันเป็นเพลย์ลิสต์เดียว) =================
-let bulkFiles = [];
-let bulkFullFiles = [];
-let pendingBulkCoverFile = null;
-
-async function openBulkUpload() {
-  bulkFiles = []; bulkFullFiles = []; pendingBulkCoverFile = null;
-  document.getElementById("bulkNewPlaylistName").value = "";
-  document.getElementById("bulkPrice").value = "";
-  document.getElementById("bulkFilesInput").value = "";
-  document.getElementById("bulkCoverInput").value = "";
-  document.getElementById("bulkFilesPicker").textContent = "📁 แตะเพื่อเลือกไฟล์เพลงหลายไฟล์";
-  document.getElementById("bulkFilesPicker").className = "file-picker";
-  document.getElementById("bulkFullFilesInput").value = "";
-  // 🔒 ข้อความ placeholder ปรับให้ตรงกับที่รองรับจริง (WAV/MP3) — ไม่กระทบ logic ใดๆ
-  document.getElementById("bulkFullFilesPicker").textContent = "🔒 แตะเพื่อเลือกไฟล์เพลงเต็มหลายไฟล์ (WAV/MP3)";
-  document.getElementById("bulkFullFilesPicker").className = "file-picker";
-  document.getElementById("bulkFullFilesMeta").style.display = "none";
-  document.getElementById("bulkFullFilesMeta").textContent = "";
-  document.getElementById("bulkCoverPicker").textContent = "🖼️ แตะเพื่อเลือกรูปปก (ใช้ร่วมกันทั้งชุด)";
-  document.getElementById("bulkCoverPicker").className = "file-picker";
-  document.getElementById("bulkProgressWrap").style.display = "none";
-  document.getElementById("bulkStatusText").textContent = "";
-  const bulkLbl = document.getElementById("bulkProgressLabel");
-  if (bulkLbl) bulkLbl.textContent = "";
-  hideCancelButton("bulkProgressWrap");
-  if (bulkUploadController) { bulkUploadController.abort(); bulkUploadController = null; } // เผื่อยังมีอัปโหลดค้างจากรอบก่อนหน้า ให้ยกเลิกจริงไปด้วยเลย
-
-  document.getElementById("bulkCategory").innerHTML = '<option value="">กำลังโหลด...</option>';
-  document.getElementById("bulkDj").innerHTML = '<option value="">กำลังโหลด...</option>';
-  document.getElementById("bulkPlaylist").innerHTML = '<option value="">กำลังโหลด...</option>';
-
-  document.getElementById("bulkUploadBackdrop").classList.add("show");
-
-  const [catSnap, djSnap, playlistSnap] = await Promise.all([
-    getDocs(collection(db, "categories")), getDocs(collection(db, "djs")), getDocs(collection(db, "playlists"))
-  ]);
-  CACHE.categories = catSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-  CACHE.djs = djSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-  CACHE.playlists = playlistSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-  populateSelect("bulkCategory", CACHE.categories, "id", "category_name");
-  populateSelect("bulkDj", CACHE.djs, "id", "dj_name");
-  populateSelect("bulkPlaylist", CACHE.playlists, "id", "playlist_name");
-}
-document.getElementById("bulkUploadClose").addEventListener("click", () => {
-  if (bulkUploadController) { bulkUploadController.abort(); bulkUploadController = null; } // ปิดหน้าต่างระหว่างอัปโหลด ต้องยกเลิกอัปโหลดจริงด้วย ไม่ปล่อยค้างเบื้องหลัง
-  document.getElementById("bulkUploadBackdrop").classList.remove("show");
-});
-
-document.getElementById("bulkFilesInput").addEventListener("change", (e) => {
-  bulkFiles = Array.from(e.target.files || []);
-  if (bulkFiles.length === 0) return;
-  document.getElementById("bulkFilesPicker").textContent = `🎵 เลือกแล้ว ${bulkFiles.length} ไฟล์`;
-  document.getElementById("bulkFilesPicker").className = "file-picker filled";
-});
-
-// 🔒🔒🔒 ห้าม AI แก้โค้ดส่วนนี้เองโดยไม่มีคำสั่งจากผู้ใช้โดยตรง (ประกาศจากผู้ใช้ 2026-09-06) 🔒🔒🔒
-// เงื่อนไขไฟล์เพลงเต็ม (แบบ Bulk หลายไฟล์): อนุญาตทั้งนามสกุล .wav และ .mp3 — ห้ามแก้ให้เหลือรองรับแค่ชนิดเดียวโดยไม่มีคำสั่งผู้ใช้
-document.getElementById("bulkFullFilesInput").addEventListener("change", (e) => {
-  const files = Array.from(e.target.files || []);
-  const meta = document.getElementById("bulkFullFilesMeta");
-  const isAllowedFile = (f) => /\.(wav|mp3)$/i.test(f.name);
-  const notAllowed = files.filter(f => !isAllowedFile(f));
-  if (notAllowed.length > 0) {
-    showToast("ไฟล์เพลงเต็มต้องเป็นนามสกุล .wav หรือ .mp3 เท่านั้น — ตัดไฟล์ที่ไม่รองรับออกแล้ว: " + notAllowed.map(f => f.name).join(", "), "error");
-  }
-  bulkFullFiles = files.filter(isAllowedFile);
-  if (bulkFullFiles.length === 0) { meta.style.display = "none"; return; }
-  document.getElementById("bulkFullFilesPicker").textContent = `🔒 เลือกแล้ว ${bulkFullFiles.length} ไฟล์`;
-  document.getElementById("bulkFullFilesPicker").className = "file-picker filled";
-  meta.textContent = "จะจับคู่กับไฟล์ตัวอย่างโดยเทียบชื่อไฟล์ (ไม่รวมนามสกุล) — เพลงที่จับคู่ไม่ได้จะยังไม่มีไฟล์เต็ม เพิ่มทีหลังได้ที่หน้าแก้ไขเพลง";
-  meta.style.display = "block";
-});
-// 🔒🔒🔒 จบส่วนที่ห้าม AI แก้เอง (ไฟล์เพลงเต็มแบบ Bulk) 🔒🔒🔒
-
-document.getElementById("bulkCoverInput").addEventListener("change", (e) => {
-  const f = e.target.files[0]; if (!f) return;
-  pendingBulkCoverFile = f;
-  document.getElementById("bulkCoverPicker").textContent = "🖼️ " + f.name;
-  document.getElementById("bulkCoverPicker").className = "file-picker filled";
-});
-
-function cleanFileNameToSongName(fileName) {
-  return nameFromFile(fileName);
-}
-
-// ปรับชื่อไฟล์ให้เทียบกันง่ายขึ้น: ตัดนามสกุล, ไม่สนตัวพิมพ์เล็ก-ใหญ่, ไม่สนช่องว่าง/ขีดกลาง/underscore ที่เกินมาหรือขาดไป
-// (กันปัญหาไฟล์ตัวอย่างชื่อ "เพลง A.mp3" กับไฟล์เต็มชื่อ "เพลง_A .wav" ไม่จับคู่กันทั้งที่จริงๆ เป็นเพลงเดียวกัน)
-function normalizeForMatch(fileName) {
-  return nameFromFile(fileName)
-    .trim()
-    .toLowerCase()
-    .replace(/[_\-]+/g, " ")   // underscore/ขีดกลาง ถือเป็นช่องว่าง
-    .replace(/\s+/g, " ");     // ยุบช่องว่างซ้ำให้เหลือช่องเดียว
-}
-
-// จับคู่ไฟล์เต็ม WAV กับไฟล์ตัวอย่าง โดยเทียบชื่อไฟล์แบบยืดหยุ่น (ดู normalizeForMatch)
-function matchFullFile(previewFileName, fullFilesList) {
-  const key = normalizeForMatch(previewFileName);
-  return fullFilesList.find(f => normalizeForMatch(f.name) === key) || null;
-}
-
-// คำนวณคู่ไฟล์ตัวอย่าง<->ไฟล์เต็มล่วงหน้า (ใช้ตรรกะเดียวกับตอนอัปโหลดจริงเป๊ะๆ เพื่อให้ตารางที่โชว์
-// ตรงกับสิ่งที่จะเกิดขึ้นจริง 100% — ถ้าแก้ logic การจับคู่ ต้องแก้ทั้ง 2 จุดนี้ให้ตรงกันเสมอ)
-function computeBulkMatches() {
-  return bulkFiles.map((file) => {
-    const matchedFull = matchFullFile(file.name, bulkFullFiles)
-      || (bulkFiles.length === 1 && bulkFullFiles.length === 1 ? bulkFullFiles[0] : null);
-    return {
-      previewName: file.name,
-      songName: cleanFileNameToSongName(file.name),
-      fullName: matchedFull ? matchedFull.name : null,
-    };
-  });
-}
-
-// โชว์ตารางคู่ไฟล์ที่จับได้ให้แอดมินเช็คก่อนกดยืนยันครั้งเดียว (ตามที่ผู้ใช้เลือกไว้)
-// คืนค่าเป็น Promise<boolean> — true = กดยืนยันอัปโหลด, false = กดย้อนกลับไปแก้ไข
-function showBulkMatchConfirm(matches) {
-  return new Promise((resolve) => {
-    const content = document.getElementById("bulkMatchConfirmContent");
-    const backdrop = document.getElementById("bulkMatchConfirmBackdrop");
-    const matchedCount = matches.filter((m) => m.fullName).length;
-    const rows = matches.map((m) => {
-      const fullLabel = m.fullName
-        ? `✅ ${escapeHtml(m.fullName)}`
-        : `<span style="color:var(--text-dim);">— ไม่มีไฟล์เต็ม —</span>`;
-      return `
-        <div style="display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.08);">
-          <div><strong>${escapeHtml(m.songName)}</strong><small style="display:block;color:var(--text-dim);margin-top:3px;">${escapeHtml(m.previewName)}</small></div>
-          <div style="text-align:right;font-size:13px;white-space:nowrap;">${fullLabel}</div>
-        </div>`;
-    }).join("");
-    content.innerHTML =
-      `<p style="color:var(--text-dim);font-size:13px;margin-top:0;">พบไฟล์เต็มจับคู่ได้ ${matchedCount}/${matches.length} เพลง — ตรวจสอบให้ตรงก่อนอัปโหลดจริง ถ้าคู่ไหนผิดให้กด "ย้อนกลับไปแก้ไข" แล้วเลือกไฟล์ใหม่</p>` +
-      rows;
-    backdrop.classList.add("show");
-
-    const cancelBtn = document.getElementById("bulkMatchConfirmCancel");
-    const okBtn = document.getElementById("bulkMatchConfirmOk");
-    const cleanup = () => {
-      backdrop.classList.remove("show");
-      cancelBtn.removeEventListener("click", onCancel);
-      okBtn.removeEventListener("click", onOk);
-    };
-    const onCancel = () => { cleanup(); resolve(false); };
-    const onOk = () => { cleanup(); resolve(true); };
-    cancelBtn.addEventListener("click", onCancel);
-    okBtn.addEventListener("click", onOk);
-  });
-}
-
-document.getElementById("bulkUploadBtn").addEventListener("click", async function () {
-  const btn = this;
-  if (bulkFiles.length === 0) { showToast("กรุณาเลือกไฟล์เพลงก่อน", "error"); return; }
-
-  // ถ้ามีไฟล์เต็มที่เลือกไว้ ให้โชว์ตารางคู่ที่จับได้ให้เช็คก่อนเริ่มอัปโหลดจริง (กันจับคู่ผิดเพลง)
-  // ถ้าไม่ได้เลือกไฟล์เต็มเลย ก็ไม่มีอะไรต้องเช็ค ข้ามไปอัปโหลดตามปกติ
-  if (bulkFullFiles.length > 0) {
-    const matches = computeBulkMatches();
-    const proceed = await showBulkMatchConfirm(matches);
-    if (!proceed) return; // ผู้ใช้กดย้อนกลับไปแก้ไข — ยังไม่อัปโหลดอะไรทั้งสิ้น
-  }
-
-  const plSel = document.getElementById("bulkPlaylist");
-  const newPlaylistName = document.getElementById("bulkNewPlaylistName").value.trim();
-
-  btn.disabled = true; btn.textContent = "กำลังอัปโหลด...";
-  document.getElementById("bulkProgressWrap").style.display = "block";
-  const bulkProgLabel = ensureProgressLabel("bulkProgress");
-  const controller = new AbortController(); // ใช้กดยกเลิกอัปโหลดจริงทั้งคิว (xhr.abort())
-  bulkUploadController = controller;
-  ensureCancelButton("bulkProgressWrap", () => controller.abort());
-
-  try {
-    let playlistId = plSel.value;
-    let playlistName = plSel.value ? plSel.options[plSel.selectedIndex].text : "";
-    if (!playlistId && newPlaylistName) {
-      const newDoc = await addDoc(collection(db, "playlists"), { playlist_name: newPlaylistName, description: "", price: 0, cover_url: "", created_at: new Date().toISOString() });
-      playlistId = newDoc.id;
-      playlistName = newPlaylistName;
-    }
-
-    let sharedCoverUrl = "";
-    if (pendingBulkCoverFile) {
-      const coverRes = await uploadToCloudinary(pendingBulkCoverFile, null, controller.signal);
-      sharedCoverUrl = coverRes.url;
-      if (playlistId) await updateDoc(doc(db, "playlists", playlistId), { cover_url: sharedCoverUrl }).catch(() => {});
-    }
-
-    const djSel = document.getElementById("bulkDj");
-    const catSel = document.getElementById("bulkCategory");
-    const price = Number(document.getElementById("bulkPrice").value || 0);
-    const djName = djSel.value ? djSel.options[djSel.selectedIndex].text : "";
-    const catId = catSel.value;
-    const catName = catSel.value ? catSel.options[catSel.selectedIndex].text : "";
-
-    let matchedCount = 0;
-    const unmatchedNames = []; // เก็บชื่อเพลงที่มีไฟล์เต็มให้เลือก แต่จับคู่ไม่ได้ — จะได้รู้ทันทีว่าต้องไปแก้ไขเพลงไหนเพิ่ม
-    for (let i = 0; i < bulkFiles.length; i++) {
-      const file = bulkFiles[i];
-      document.getElementById("bulkStatusText").textContent = `กำลังอัปโหลด ${i + 1}/${bulkFiles.length}: ${file.name}`;
-      const res = await uploadToCloudinary(file, (pct, loaded, total) => {
-        const overall = Math.round(((i + pct / 100) / bulkFiles.length) * 100);
-        document.getElementById("bulkProgress").style.width = overall + "%";
-        updateProgressLabel(bulkProgLabel, total || file.size, pct, loaded);
-      }, controller.signal);
-
-      const songPayload = {
-        song_name: cleanFileNameToSongName(file.name),
-        artist: "",
-        dj_name: djName,
-        category_id: catId,
-        category_name: catName,
-        playlist_id: playlistId,
-        playlist_name: playlistName,
-        file_url: res.url,
-        cover_url: sharedCoverUrl,
-        price: price,
-        description: "",
-        status: "active",
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-
-      // ถ้าจับคู่ด้วยชื่อไฟล์ไม่ได้ แต่เลือกไฟล์ตัวอย่าง 1 ไฟล์ + ไฟล์เต็ม 1 ไฟล์พอดี — ไม่มีทางกำกวมว่าเป็นคู่ไหน จับคู่กันตรงๆ ได้เลย ไม่ต้องพึ่งชื่อไฟล์
-      const matchedFull = matchFullFile(file.name, bulkFullFiles)
-        || (bulkFiles.length === 1 && bulkFullFiles.length === 1 ? bulkFullFiles[0] : null);
-      if (matchedFull) {
-        document.getElementById("bulkStatusText").textContent = `กำลังอัปโหลดไฟล์เต็ม ${i + 1}/${bulkFiles.length}: ${matchedFull.name}`;
-        const fullRes = await uploadFullSong(matchedFull, (pct, loaded, total) => {
-          const overall = Math.round(((i + pct / 100) / bulkFiles.length) * 100);
-          document.getElementById("bulkProgress").style.width = overall + "%";
-          updateProgressLabel(bulkProgLabel, total || matchedFull.size, pct, loaded);
-        }, controller.signal, (attempt, maxRetries) => {
-          // อัปโหลดหลุด/timeout — ระบบกำลังลองใหม่อัตโนมัติ (สูงสุด 2 ครั้ง)
-          document.getElementById("bulkStatusText").textContent =
-            `ไฟล์เต็ม "${matchedFull.name}" เชื่อมต่อหลุด กำลังลองใหม่ (${attempt}/${maxRetries})...`;
-        });
-        songPayload.full_file_url = fullRes.url;
-        songPayload.full_file_public_id = fullRes.publicId;
-        songPayload.full_file_name = matchedFull.name;
-        matchedCount++;
-      } else if (bulkFullFiles.length > 0) {
-        unmatchedNames.push(songPayload.song_name);
+      #view-orders .status-select {
+        width:100%; background:var(--surface-2, rgba(255,255,255,.06)); color:var(--text);
+        border:1px solid rgba(255,255,255,.14); border-radius:8px; padding:8px 10px; font-size:13px;
       }
+      /* ---- เพิ่มใหม่: สลับประเภทออเดอร์ เพลงเดี่ยว / ยกเพลย์ลิสต์ ---- */
+      #view-orders .type-toggle { display:flex; gap:8px; margin-bottom:14px; }
+      #view-orders .type-toggle button {
+        flex:1; border:1px solid rgba(255,255,255,.14); background:rgba(255,255,255,.04); color:var(--text-dim);
+        border-radius:10px; padding:10px 8px; font-size:13px; font-weight:700; cursor:pointer;
+      }
+      #view-orders .type-toggle button.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+      #view-orders .playlist-result-card {
+        border:1px solid rgba(255,255,255,.12); border-radius:10px; padding:10px; margin-bottom:8px;
+        display:flex; gap:10px; align-items:center; cursor:pointer;
+      }
+      #view-orders .playlist-result-card:hover { background:rgba(255,255,255,.04); }
+      #view-orders .playlist-result-card img { width:44px; height:44px; border-radius:8px; object-fit:cover; background:rgba(255,255,255,.06); }
+      #view-orders .playlist-selected-card {
+        border:1px solid var(--accent); background:rgba(122,92,255,.08); border-radius:10px; padding:12px;
+        display:flex; flex-direction:column; gap:4px; margin-bottom:10px;
+      }
+      #view-orders .order-type-badge {
+        display:inline-flex; align-items:center; gap:4px; border-radius:999px; padding:2px 9px;
+        font-size:11px; font-weight:700; width:fit-content; margin-bottom:4px;
+      }
+      #receiptBackdrop .receipt-paper {
+        background:#fff; color:#171717; border-radius:12px; padding:22px; max-width:460px; margin:auto;
+      }
+      #receiptBackdrop .receipt-head { text-align:center; border-bottom:1px dashed #bbb; padding-bottom:14px; }
+      #receiptBackdrop .receipt-head h2 { margin:0 0 4px; font-size:21px; }
+      #receiptBackdrop .receipt-head small { display:block; color:#666; margin-top:3px; }
+      #receiptBackdrop .receipt-customer { padding:14px 0; border-bottom:1px solid #e5e5e5; }
+      #receiptBackdrop .receipt-customer div { display:flex; justify-content:space-between; gap:12px; margin:4px 0; }
+      #receiptBackdrop .receipt-customer span { color:#666; }
+      #receiptBackdrop .receipt-items { padding:10px 0; }
+      #receiptBackdrop .receipt-line { display:flex; justify-content:space-between; gap:12px; padding:8px 0; border-bottom:1px solid #eee; }
+      #receiptBackdrop .receipt-line small { display:block; color:#666; margin-top:3px; }
+      #receiptBackdrop .receipt-total { display:flex; justify-content:space-between; padding-top:14px; font-size:18px; }
+      #receiptBackdrop .receipt-thanks { text-align:center; color:#666; margin-top:20px; font-size:12px; }
+      #receiptBackdrop .receipt-empty { color:#666; text-align:center; padding:12px; }
+    </style>
+    <div id="view-orders" class="view" style="display:none;">
+      <div class="container" style="padding:14px 16px 6px;display:flex;gap:8px;align-items:center;">
+        <button class="icon-btn back-btn">←</button>
+        <div style="flex:1;font-weight:800;">จัดการออเดอร์</div>
+      </div>
 
-      await addDoc(collection(db, "songs"), songPayload);
-    }
+      <div class="container" style="padding:0 16px;">
 
-    hideCancelButton("bulkProgressWrap");
-    document.getElementById("bulkProgress").style.width = "100%";
-    const hasUnmatched = unmatchedNames.length > 0;
-    const unmatchedNote = hasUnmatched
-      ? ` (มีไฟล์เต็ม ${matchedCount}/${bulkFiles.length} เพลง — ยังไม่มีไฟล์เต็ม: ${unmatchedNames.join(", ")} ไปเพิ่มทีหลังได้ที่หน้าแก้ไขเพลง)`
-      : "";
-    const destinationNote = playlistName ? ` เข้าเพลย์ลิสต์ "${playlistName}"` : "";
-    document.getElementById("bulkStatusText").textContent = `เสร็จแล้ว! เพิ่มเพลงสำเร็จ ${bulkFiles.length} เพลง${unmatchedNote}`;
-    showToast(`เพิ่มเพลง ${bulkFiles.length} เพลง${destinationNote} สำเร็จ${hasUnmatched ? ` — ${unmatchedNames.length} เพลงยังไม่มีไฟล์เต็ม (ดูรายชื่อด้านล่าง)` : ""}`, hasUnmatched ? "error" : "success");
-    loadDashboard();
-    // ถ้ามีเพลงจับคู่ไฟล์เต็มไม่ได้ ให้ค้างหน้าต่างไว้จนกว่าจะปิดเอง จะได้เห็นรายชื่อที่ต้องไปแก้ไขเพิ่ม
-    if (!hasUnmatched) {
-      setTimeout(() => { document.getElementById("bulkUploadBackdrop").classList.remove("show"); }, 1200);
-    }
-  } catch (err) {
-    if (isAbortError(err)) {
-      // ผู้ใช้กดยกเลิก — หยุดทั้งคิวที่เหลือทันที (เพลงที่บันทึกไปแล้วก่อนหน้ายังอยู่ตามเดิม)
-      // ซ่อนแถบ progress/ปุ่มยกเลิก แต่คงหน้าต่าง Bulk Upload ไว้ให้แก้ไข/กดอัปโหลดใหม่ได้ตามที่สั่ง
-      document.getElementById("bulkProgressWrap").style.display = "none";
-      hideCancelButton("bulkProgressWrap");
-      document.getElementById("bulkStatusText").textContent = "ยกเลิกการอัปโหลดแล้ว";
-      showToast("ยกเลิกการอัปโหลดแล้ว");
-    } else {
-      showToast("อัปโหลดไม่สำเร็จ: " + err.message, "error");
-    }
-  }
-  bulkUploadController = null;
-  btn.disabled = false; btn.textContent = "เริ่มอัปโหลดทั้งหมด";
-});
+        <div class="stat-grid" style="margin-bottom:10px;">
+          <div class="stat-card"><div class="num" id="ordStatCount">0</div><div class="label">ออเดอร์ทั้งหมด</div></div>
+          <div class="stat-card"><div class="num" id="ordStatSongs">0</div><div class="label">เพลงที่ขายได้ (สำเร็จ)</div></div>
+          <div class="stat-card" style="grid-column:span 2;"><div class="num" id="ordStatRevenue">0</div><div class="label">ยอดขายรวม (LAK) — เฉพาะสำเร็จ</div></div>
+        </div>
+        <div class="stat-grid" style="margin-bottom:16px;">
+          <div class="stat-card"><div class="num" id="ordStatSingleCount">0</div><div class="label">ออเดอร์เพลงเดี่ยว (สำเร็จ)</div></div>
+          <div class="stat-card"><div class="num" id="ordStatPlaylistCount">0</div><div class="label">ออเดอร์ยกเพลย์ลิสต์ (สำเร็จ)</div></div>
+        </div>
 
-// ================= SETTINGS =================
-async function loadSettings() {
-  const snap = await getDoc(doc(db, "settings", "main"));
-  const s = snap.exists() ? snap.data() : {};
-  document.getElementById("setWebsiteName").value = s.website_name || "";
-  document.getElementById("setMetaDesc").value = s.meta_description || "";
-  document.getElementById("setAdminName").value = s.admin_name || "";
-  document.getElementById("setWhatsapp").value = s.whatsapp_number || "";
-  document.getElementById("setLogo").value = s.website_logo || "";
-}
-document.getElementById("saveSettingsBtn").addEventListener("click", async () => {
-  const payload = {
-    website_name: document.getElementById("setWebsiteName").value.trim(),
-    meta_description: document.getElementById("setMetaDesc").value.trim(),
-    admin_name: document.getElementById("setAdminName").value.trim(),
-    whatsapp_number: document.getElementById("setWhatsapp").value.trim(),
-    website_logo: document.getElementById("setLogo").value.trim()
-  };
-  try {
-    await setDoc(doc(db, "settings", "main"), payload, { merge: true });
-    showToast("บันทึกการตั้งค่าแล้ว", "success");
-  } catch (err) {
-    showToast("บันทึกไม่สำเร็จ: " + err.message, "error");
-  }
-});
+        <div style="font-weight:800;margin-bottom:10px;">สร้างออเดอร์ใหม่</div>
 
-// ================= Confirm modal =================
-function openConfirm(text, onOk) {
-  document.getElementById("confirmText").textContent = text;
-  confirmAction = onOk;
-  document.getElementById("confirmBackdrop").classList.add("show");
-}
-document.getElementById("confirmCancel").addEventListener("click", () => document.getElementById("confirmBackdrop").classList.remove("show"));
-document.getElementById("confirmOk").addEventListener("click", async () => {
-  document.getElementById("confirmBackdrop").classList.remove("show");
-  if (confirmAction) await confirmAction();
-});
+        <div class="field"><label>ชื่อลูกค้า *</label><input id="ordCustomerName" placeholder=""></div>
+        <div class="field"><label>เบอร์ WhatsApp *</label><input id="ordCustomerWhatsapp" placeholder="20 5xxx xxxx"></div>
 
-// ให้ admin-roles.js เรียกใช้ toast/confirm modal ตัวเดียวกับหน้านี้ได้ (ไม่ต้องสร้างซ้ำ)
-window.__showToast = showToast;
-window.__openConfirm = openConfirm;
+        <p style="font-size:12px;color:var(--text-dim);margin:0 0 10px;">เลือกได้ทั้งเพลงเดี่ยว (หลายเพลง) และเพลย์ลิสต์ (หลายรายการ) ผสมกันในออเดอร์เดียวได้</p>
+
+        <div id="ordSingleSection">
+          <div class="field">
+            <label>🎵 ค้นหาและเลือกเพลง</label>
+            <div class="search-box"><input id="ordSongSearch" placeholder="ค้นหาเพลง ศิลปิน หรือ DJ..."></div>
+          </div>
+          <p id="ordSongsLoading" class="empty-state" style="padding:10px 0;">กำลังโหลดรายชื่อเพลง...</p>
+          <div id="ordSearchResults"></div>
+        </div>
+
+        <div id="ordPlaylistSection" style="margin-top:14px;">
+          <div class="field">
+            <label>🎶 ค้นหาและเลือกเพลย์ลิสต์ (เลือกได้หลายรายการ)</label>
+            <div class="search-box"><input id="ordPlaylistSearch" placeholder="ค้นหาชื่อเพลย์ลิสต์ เช่น Sdk zzbee..."></div>
+          </div>
+          <div id="ordPlaylistSelected"></div>
+          <div id="ordPlaylistResults"></div>
+        </div>
+
+        <div style="margin:16px 0;">
+          <div style="font-weight:700;font-size:13px;color:var(--text-dim);margin-bottom:6px;">ออเดอร์ปัจจุบัน</div>
+          <div id="ordCartItems"></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;border-top:1px solid rgba(255,255,255,.08);padding-top:10px;margin-top:6px;">
+            <span style="color:var(--text-dim);font-size:13px;">ยอดรวม (LAK) — คำนวณอัตโนมัติ</span>
+            <input id="ordCartTotal" type="number" min="0" inputmode="numeric"
+              readonly aria-readonly="true"
+              style="width:140px;text-align:right;font-size:18px;font-weight:800;color:var(--success);background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.14);border-radius:8px;padding:6px 10px;">
+          </div>
+          <div id="ordTotalHint" style="font-size:11px;color:var(--text-dim);text-align:right;margin-top:4px;"></div>
+        </div>
+
+        <button class="btn" id="ordSubmitBtn">บันทึกออเดอร์</button>
+        <div id="ordFormFeedback" style="font-size:13px;margin-top:8px;min-height:18px;"></div>
+      </div>
+
+      <div class="section-title" style="margin-top:22px;">ประวัติออเดอร์</div>
+      <div class="status-filter" id="ordStatusFilter"></div>
+      <div id="ordHistoryList" class="container" style="padding:0 16px 24px;"></div>
+    </div>
+    <!-- ===================== /ORDERS VIEW ===================== -->
+
+    <div id="view-settings" class="view" style="display:none;">
+      <div class="container" style="padding:14px 16px;">
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;">
+          <button class="icon-btn back-btn">←</button>
+          <div style="font-weight:800;">ตั้งค่าเว็บไซต์</div>
+        </div>
+        <div class="field"><label>ชื่อเว็บไซต์</label><input id="setWebsiteName"></div>
+        <div class="field"><label>คำอธิบายเว็บไซต์ (สำหรับ Google ค้นหา)</label><textarea id="setMetaDesc" placeholder="สำหลับค้นหา goole"></textarea></div>
+        <div class="field"><label>ชื่อ Admin</label><input id="setAdminName"></div>
+        <div class="field"><label>เบอร์ WhatsApp (20xxxxxxxx)</label><input id="setWhatsapp"></div>
+        <div class="field"><label>URL โลโก้เว็บไซต์</label><input id="setLogo"></div>
+        <button class="btn" id="saveSettingsBtn">บันทึกการตั้งค่า</button>
+      </div>
+    </div>
+
+    <div id="view-admins" class="view" style="display:none;">
+      <div class="container" style="padding:14px 16px 6px;display:flex;gap:8px;align-items:center;">
+        <button class="icon-btn back-btn">←</button>
+        <div style="flex:1;font-weight:800;">จัดการแอดมิน</div>
+        <button class="icon-btn" id="addAdminBtn" style="background:var(--accent);color:#fff;">＋</button>
+      </div>
+      <p style="color:var(--text-dim);font-size:13px;padding:0 16px;margin-top:-4px;">แอดมินหลักเพิ่ม/ลบ/แก้ไขแอดมินคนอื่นได้ทั้งหมด ส่วนแอดมินย่อยจะเข้าหน้านี้ไม่ได้และไม่เห็นเมนูนี้</p>
+      <div id="adminList" class="container" style="padding:10px 16px 24px;"></div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="songFormBackdrop">
+    <div class="modal">
+      <div class="modal-header"><h3 id="songFormTitle">เพิ่มเพลง</h3><button class="modal-close" id="songFormClose">✕</button></div>
+      <div class="field">
+        <label>ไฟล์เพลง (MP3 / WAV)</label>
+        <label class="file-picker" id="songFilePicker" for="songFileInput">📁 แตะเพื่อเลือกไฟล์เพลงจาก iPhone/iPad</label>
+        <input type="file" id="songFileInput" accept="audio/*,.wav,.mp3" style="position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;">
+        <div class="progress-outer" id="songUploadProgressWrap" style="display:none;"><div class="progress-inner" id="songUploadProgress"></div></div>
+      </div>
+
+      <!-- ===== Auto Preview: สถานะวิเคราะห์ + แก้ไข Dance Start Bar เอง ===== -->
+      <div class="field" id="previewAnalysisBox" style="display:none;border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:12px;background:rgba(255,255,255,.03);">
+        <label style="display:flex;align-items:center;justify-content:space-between;">
+          <span>🎯 Auto Preview (Dance Section)</span>
+          <span id="previewStatusBadge" style="font-size:12px;font-weight:700;padding:2px 10px;border-radius:999px;"></span>
+        </label>
+        <div id="previewInfoText" style="font-size:12px;color:var(--text-dim);margin:6px 0 10px;"></div>
+        <label style="font-size:13px;">Dance Start Bar (ห้องที่เริ่ม Dance — แก้เองได้ถ้าระบบเดาไม่ตรง)</label>
+        <input id="fDanceStartBar" type="number" min="0" step="1" placeholder="เช่น 100">
+        <button type="button" class="btn secondary" id="recalcPreviewBtn" style="margin-top:8px;width:100%;">✎ แก้ไข / คำนวณ Preview ใหม่ (เริ่มห้อง 1 → หยุด Dance+8)</button>
+        <button type="button" class="btn secondary" id="reanalyzePreviewBtn" style="margin-top:8px;width:100%;">🔄 วิเคราะห์เสียงใหม่ทั้งหมด (AI)</button>
+
+        <!-- ===== กำหนดช่วง Preview เอง — ไม่อิงสูตร Dance เลย ระบุห้องเริ่ม/ห้องหยุดได้อิสระ ===== -->
+        <div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.08);">
+          <label style="font-size:13px;">กำหนดช่วง Preview เอง (ไม่ผูกกับสูตร Dance) — ระบุห้องเริ่มเล่นและห้องหยุดเล่นตามต้องการ</label>
+          <div style="display:flex;gap:8px;margin-top:6px;">
+            <input id="fPreviewStartBarManual" type="number" min="0" step="1" placeholder="ห้องเริ่ม เช่น 0" style="flex:1;">
+            <input id="fPreviewEndBarManual" type="number" min="0" step="1" placeholder="ห้องหยุด เช่น 40" style="flex:1;">
+          </div>
+          <button type="button" class="btn secondary" id="recalcManualRangeBtn" style="margin-top:8px;width:100%;">🎛 ใช้ช่วงที่กำหนดเอง</button>
+        </div>
+      </div>
+      <!-- ===== /Auto Preview ===== -->
+
+      <div class="field">
+        <label>รูปปกเพลง</label>
+        <label class="file-picker" id="coverFilePicker" for="coverFileInput">🖼️ แตะเพื่อเลือกรูปปก</label>
+        <input type="file" id="coverFileInput" accept="image/*" style="position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;">
+      </div>
+      <div class="field">
+        <label>ไฟล์เพลงเต็ม WAV (ส่งลูกค้าหลังชำระเงิน — ไม่แสดงบนเว็บ user)</label>
+        <label class="file-picker" id="fullSongFilePicker" for="fullSongFileInput">🔒 แตะเพื่อเลือกไฟล์ WAV เต็ม</label>
+        <input type="file" id="fullSongFileInput" accept="audio/*,.wav,.mp3,.wave,audio/wav,audio/x-wav,audio/wave,audio/vnd.wave,audio/x-pn-wav,audio/mpeg,audio/mp3" style="position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;">
+        <div id="fullSongFileMeta" style="font-size:12px;color:var(--text-dim);margin-top:4px;display:none;"></div>
+        <div class="progress-outer" id="fullSongUploadProgressWrap" style="display:none;"><div class="progress-inner" id="fullSongUploadProgress"></div></div>
+      </div>
+      <div class="field"><label>ชื่อเพลง *</label><input id="fSongName"></div>
+      <div class="field"><label>ศิลปิน</label><input id="fArtist"></div>
+      <div class="field"><label>DJ</label><select id="fDj"><option value="">— ไม่ระบุ —</option></select></div>
+      <div class="field"><label>หมวดหมู่</label><select id="fCategory"><option value="">— ไม่ระบุ —</option></select></div>
+      <div class="field"><label>เพลย์ลิสต์</label><select id="fPlaylist"><option value="">— ไม่ระบุ —</option></select></div>
+      <div class="field"><label>ราคา (LAK)</label><input id="fPrice" type="number" min="0"></div>
+      <div class="field"><label>รายละเอียด</label><textarea id="fDesc"></textarea></div>
+      <div class="field"><label>สถานะ</label><select id="fStatus"><option value="active">เผยแพร่ (active)</option><option value="hidden">ซ่อน (hidden)</option></select></div>
+      <button class="btn" id="songSaveBtn">บันทึกเพลง</button>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="catFormBackdrop">
+    <div class="modal">
+      <div class="modal-header"><h3 id="catFormTitle">เพิ่มหมวดหมู่</h3><button class="modal-close" id="catFormClose">✕</button></div>
+      <div class="field"><label>ชื่อหมวดหมู่ *</label><input id="fCatName"></div>
+      <div class="field"><label>คำอธิบาย</label><textarea id="fCatDesc"></textarea></div>
+      <button class="btn" id="catSaveBtn">บันทึก</button>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="djFormBackdrop">
+    <div class="modal">
+      <div class="modal-header"><h3 id="djFormTitle">เพิ่ม DJ</h3><button class="modal-close" id="djFormClose">✕</button></div>
+      <div class="field"><label>ชื่อ DJ *</label><input id="fDjName"></div>
+      <div class="field"><label>คำอธิบาย</label><textarea id="fDjDesc"></textarea></div>
+      <div class="field">
+        <label>รูปโปรไฟล์ DJ</label>
+        <label class="file-picker" id="djImagePicker" for="djImageInput">🖼️ แตะเพื่อเลือกรูปจาก iPhone/iPad</label>
+        <input type="file" id="djImageInput" accept="image/*" style="position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;">
+      </div>
+      <button class="btn" id="djSaveBtn">บันทึก</button>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="changePasswordBackdrop">
+    <div class="modal">
+      <div class="modal-header"><h3>เปลี่ยนรหัสผ่านของฉัน</h3><button class="modal-close" id="changePasswordClose">✕</button></div>
+      <div class="field"><label>รหัสผ่านปัจจุบัน *</label><input id="cpCurrentPassword" type="password" autocomplete="current-password"></div>
+      <div class="field"><label>รหัสผ่านใหม่ * (อย่างน้อย 6 ตัวอักษร)</label><input id="cpNewPassword" type="password" autocomplete="new-password"></div>
+      <div class="field"><label>ยืนยันรหัสผ่านใหม่ *</label><input id="cpConfirmPassword" type="password" autocomplete="new-password"></div>
+      <div id="cpFeedback" style="font-size:13px;margin-bottom:10px;min-height:18px;"></div>
+      <button class="btn" id="changePasswordSaveBtn">บันทึกรหัสผ่านใหม่</button>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="adminFormBackdrop">
+    <div class="modal">
+      <div class="modal-header"><h3 id="adminFormTitle">เพิ่มแอดมิน</h3><button class="modal-close" id="adminFormClose">✕</button></div>
+      <div class="field"><label>อีเมล *</label><input id="fAdminEmail" type="email" autocomplete="off"></div>
+      <div class="field" id="adminPasswordField"><label>รหัสผ่าน * (อย่างน้อย 6 ตัวอักษร)</label><input id="fAdminPassword" type="password" autocomplete="new-password"></div>
+      <div class="field"><label>ชื่อที่แสดง</label><input id="fAdminDisplayName" placeholder="เช่น น้องแอม"></div>
+      <div class="field">
+        <label>ระดับสิทธิ์</label>
+        <select id="fAdminRole">
+          <option value="sub">แอดมินย่อย (จัดการเพลง/หมวดหมู่/DJ/เพลย์ลิสต์/ออเดอร์ได้ปกติ แต่จัดการแอดมินคนอื่นไม่ได้)</option>
+          <option value="main">แอดมินหลัก (จัดการได้ทุกอย่าง รวมถึงเพิ่ม/ลบ/แก้ไขแอดมินคนอื่น)</option>
+        </select>
+      </div>
+      <div id="adminFormNote" style="font-size:12px;color:var(--text-dim);margin-top:-6px;margin-bottom:14px;"></div>
+      <button class="btn" id="adminSaveBtn">บันทึก</button>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="playlistFormBackdrop">
+    <div class="modal">
+      <div class="modal-header"><h3 id="playlistFormTitle">เพิ่มเพลย์ลิสต์</h3><button class="modal-close" id="playlistFormClose">✕</button></div>
+      <div class="field"><label>ชื่อเพลย์ลิสต์ *</label><input id="fPlaylistName"></div>
+      <div class="field"><label>คำอธิบาย</label><textarea id="fPlaylistDesc"></textarea></div>
+      <div class="field"><label>ราคาเพลย์ลิสต์ (LAK — ราคาขายทั้งชุด, ปล่อยว่างหรือ 0 ถ้าไม่ขายทั้งชุด)</label><input id="fPlaylistPrice" type="number" min="0"></div>
+      <div class="field">
+        <label>รูปปกเพลย์ลิสต์</label>
+        <label class="file-picker" id="playlistCoverPicker" for="playlistCoverInput">🖼️ แตะเพื่อเลือกรูปปก</label>
+        <input type="file" id="playlistCoverInput" accept="image/*" style="position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;">
+      </div>
+      <button class="btn" id="playlistSaveBtn">บันทึก</button>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="bulkUploadBackdrop">
+    <div class="modal">
+      <div class="modal-header"><h3>เพิ่มเพลงหลายไฟล์พร้อมกัน</h3><button class="modal-close" id="bulkUploadClose">✕</button></div>
+      <p style="color:var(--text-dim);font-size:13px;margin-top:-8px;">เลือกไฟล์เพลงหลายไฟล์พร้อมกันจากแอป Files แล้วระบบจะอัปโหลดทีละไฟล์ให้อัตโนมัติ — จะเลือกจัดเข้าเพลย์ลิสต์เดียวกันทั้งหมด หรือเว้นว่างไว้เพื่อเพิ่มเป็นเพลงเดี่ยวๆ หลายเพลงพร้อมกันก็ได้</p>
+
+      <div class="field">
+        <label>เพลย์ลิสต์ปลายทาง (ไม่บังคับ — เว้นว่างได้ถ้าแค่ต้องการเพิ่มเพลงเดี่ยวๆ หลายเพลงพร้อมกัน)</label>
+        <select id="bulkPlaylist"><option value="">— ไม่ระบุ —</option></select>
+      </div>
+      <div class="field"><label>หรือสร้างเพลย์ลิสต์ใหม่ (ไม่บังคับ)</label><input id="bulkNewPlaylistName" placeholder="ชื่อเพลย์ลิสต์ใหม่"></div>
+
+      <div class="field">
+        <label>ไฟล์เพลงทั้งหมด (เลือกได้หลายไฟล์)</label>
+        <label class="file-picker" id="bulkFilesPicker" for="bulkFilesInput">📁 แตะเพื่อเลือกไฟล์เพลงหลายไฟล์</label>
+        <input type="file" id="bulkFilesInput" accept="audio/*,.wav,.mp3" multiple style="position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;">
+      </div>
+
+      <div class="field">
+        <label>ไฟล์เพลงเต็ม WAV (ไม่บังคับ — เลือกได้หลายไฟล์ ระบบจะจับคู่กับไฟล์ตัวอย่างด้านบนตามชื่อไฟล์ให้อัตโนมัติ)</label>
+        <label class="file-picker" id="bulkFullFilesPicker" for="bulkFullFilesInput">🔒 แตะเพื่อเลือกไฟล์ WAV เต็มหลายไฟล์</label>
+        <input type="file" id="bulkFullFilesInput" accept="audio/*,.wav,.mp3,.wave,audio/wav,audio/x-wav,audio/wave,audio/vnd.wave,audio/x-pn-wav,audio/mpeg,audio/mp3" multiple style="position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;">
+        <div id="bulkFullFilesMeta" style="font-size:12px;color:var(--text-dim);margin-top:4px;display:none;"></div>
+      </div>
+
+      <div class="field"><label>DJ (ใช้กับทุกเพลงในชุดนี้ — ไม่ระบุก็ได้)</label><select id="bulkDj"><option value="">— ไม่ระบุ —</option></select></div>
+      <div class="field"><label>หมวดหมู่ (ใช้กับทุกเพลงในชุดนี้ — ไม่ระบุก็ได้)</label><select id="bulkCategory"><option value="">— ไม่ระบุ —</option></select></div>
+      <div class="field"><label>ราคาต่อเพลง (LAK — ใช้กับทุกเพลงในชุดนี้)</label><input id="bulkPrice" type="number" min="0"></div>
+      <div class="field">
+        <label>รูปปก (ใช้กับทุกเพลงในชุดนี้ — ไม่บังคับ)</label>
+        <label class="file-picker" id="bulkCoverPicker" for="bulkCoverInput">🖼️ แตะเพื่อเลือกรูปปก (ใช้ร่วมกันทั้งชุด)</label>
+        <input type="file" id="bulkCoverInput" accept="image/*" style="position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;">
+      </div>
+
+      <div class="progress-outer" id="bulkProgressWrap" style="display:none;"><div class="progress-inner" id="bulkProgress"></div></div>
+      <div id="bulkStatusText" style="font-size:12px;color:var(--text-dim);margin-top:6px;"></div>
+
+      <button class="btn" id="bulkUploadBtn" style="margin-top:14px;">เริ่มอัปโหลดทั้งหมด</button>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="orderFormBackdrop">
+    <div class="modal">
+      <div class="modal-header"><h3 id="orderFormTitle">แก้ไขออเดอร์</h3><button class="modal-close" id="orderFormClose">✕</button></div>
+
+      <div class="field"><label>ชื่อลูกค้า *</label><input id="eOrderCustomerName" placeholder="ชื่อ"></div>
+      <div class="field"><label>เบอร์ WhatsApp *</label><input id="eOrderCustomerWhatsapp" placeholder="20xxxxxxxx"></div>
+
+      <p style="font-size:12px;color:var(--text-dim);margin:0 0 10px;">เลือกได้ทั้งเพลงเดี่ยว (หลายเพลง) และเพลย์ลิสต์ (หลายรายการ) ผสมกันในออเดอร์เดียวได้</p>
+
+      <div id="eOrdSingleSection">
+        <div class="field">
+          <label>🎵 ค้นหาและเลือกเพลง</label>
+          <div class="search-box"><input id="eOrderSongSearch" placeholder="ค้นหาเพลง..."></div>
+        </div>
+        <div id="eOrderSearchResults"></div>
+      </div>
+
+      <div id="eOrdPlaylistSection" style="margin-top:14px;">
+        <div class="field">
+          <label>🎶 ค้นหาและเลือกเพลย์ลิสต์ (เลือกได้หลายรายการ)</label>
+          <div class="search-box"><input id="eOrdPlaylistSearch" placeholder="ค้นหาชื่อเพลย์ลิสต์..."></div>
+        </div>
+        <div id="eOrdPlaylistSelected"></div>
+        <div id="eOrdPlaylistResults"></div>
+      </div>
+
+      <div style="margin:16px 0;">
+        <div style="font-weight:700;font-size:13px;color:var(--text-dim);margin-bottom:6px;">เพลงในออเดอร์นี้</div>
+        <div id="eOrderCartItems"></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;border-top:1px solid rgba(255,255,255,.08);padding-top:10px;margin-top:6px;">
+            <span style="color:var(--text-dim);font-size:13px;">ยอดรวม (LAK) — คำนวณอัตโนมัติ</span>
+          <input id="eOrderCartTotal" type="number" min="0" inputmode="numeric"
+            readonly aria-readonly="true"
+            style="width:140px;text-align:right;font-size:18px;font-weight:800;color:var(--success);background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.14);border-radius:8px;padding:6px 10px;">
+        </div>
+        <div id="eOrderTotalHint" style="font-size:11px;color:var(--text-dim);text-align:right;margin-top:4px;"></div>
+      </div>
+
+      <button class="btn" id="eOrderSaveBtn">บันทึกการแก้ไข</button>
+      <div id="eOrderFeedback" style="font-size:13px;margin-top:8px;min-height:18px;"></div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="receiptBackdrop">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>ใบเสร็จ</h3>
+        <button class="modal-close" id="receiptClose">✕</button>
+      </div>
+      <div id="receiptContent"></div>
+      <div style="display:flex;gap:8px;margin-top:14px;">
+        <button class="btn secondary" id="receiptWhatsAppBtn" style="flex:1;">ส่งใบเสร็จทาง WhatsApp</button>
+        <button class="btn" id="receiptDownloadImgBtn" style="flex:1;">ดาวน์โหลดใบเสร็จเป็นรูป</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="fullFilesBackdrop">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>ไฟล์เพลงเต็มสำหรับส่งลูกค้า</h3>
+        <button class="modal-close" id="fullFilesClose">✕</button>
+      </div>
+      <p style="color:var(--text-dim);font-size:13px;margin-top:0;">ดาวน์โหลดแล้วส่งให้ลูกค้าทาง WhatsApp ด้วยตัวเอง — ลิงก์นี้สำหรับ Admin เท่านั้น ห้ามส่งลิงก์นี้ตรงให้ลูกค้า</p>
+      <div id="fullFilesContent"></div>
+      <button class="btn secondary" id="fullFilesWhatsAppBtn" style="margin-top:14px;width:100%;">เปิด WhatsApp คุยกับลูกค้า (แนบไฟล์ที่ดาวน์โหลดแล้วเอง)</button>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="bulkMatchConfirmBackdrop">
+    <div class="modal">
+      <div class="modal-header"><h3>ตรวจสอบคู่ไฟล์ก่อนอัปโหลด</h3></div>
+      <div id="bulkMatchConfirmContent"></div>
+      <div style="display:flex;gap:10px;margin-top:14px;">
+        <button class="btn secondary" id="bulkMatchConfirmCancel" style="flex:1;">ย้อนกลับไปแก้ไข</button>
+        <button class="btn" id="bulkMatchConfirmOk" style="flex:1;">ยืนยันและเริ่มอัปโหลด</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="confirmBackdrop">
+    <div class="modal">
+      <div class="modal-header"><h3>ยืนยันการลบ</h3></div>
+      <p id="confirmText" style="color:var(--text-dim);">คุณต้องการลบรายการนี้หรือไม่?</p>
+      <div style="display:flex;gap:10px;">
+        <button class="btn secondary" id="confirmCancel" style="flex:1;">ยกเลิก</button>
+        <button class="btn danger" id="confirmOk" style="flex:1;">ลบ</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script type="module" src="app-admin.js?v=20260907-autopreview1"></script>
+</body>
+</html>
