@@ -363,20 +363,63 @@ function renderSongList(list) {
       <div class="info"><div class="n1">${escapeHtml(s.song_name)}</div>
       <div class="n2">${escapeHtml(s.dj_name || "-")} · ${escapeHtml(s.category_name || "-")} · ${formatPrice(s.price)}</div></div>
       <div class="row-actions">
-        <button class="icon-btn" data-assign="${s.id}" title="จัดเข้าเพลย์ลิสต์/หมวดหมู่/DJ">📌</button>
-        <button class="icon-btn" data-edit="${s.id}">✎</button>
-        <button class="icon-btn danger" data-del="${s.id}">🗑</button>
+        <button class="icon-btn" data-menu="${s.id}" title="เมนู">⋮</button>
       </div>
     </div>`).join("");
-  wrap.querySelectorAll("[data-assign]").forEach(b => b.addEventListener("click", () => openQuickAssign(b.getAttribute("data-assign"))));
-  wrap.querySelectorAll("[data-edit]").forEach(b => b.addEventListener("click", () => openEditSong(b.getAttribute("data-edit"))));
-  wrap.querySelectorAll("[data-del]").forEach(b => b.addEventListener("click", () => confirmDeleteSong(b.getAttribute("data-del"))));
+  wrap.querySelectorAll("[data-menu]").forEach(b => b.addEventListener("click", (e) => {
+    e.stopPropagation();
+    toggleSongRowMenu(b, b.getAttribute("data-menu"));
+  }));
   wrap.querySelectorAll(".song-select-chk").forEach(chk => chk.addEventListener("change", () => {
     const id = chk.getAttribute("data-id");
     if (chk.checked) selectedSongIds.add(id); else selectedSongIds.delete(id);
     updateSongBulkBar();
   }));
 }
+
+// เมนูดรอปดาวน์ ⋮ แบบใช้ element ตัวเดียวร่วมกันทุกแถว (ไม่สร้างซ้ำในแต่ละแถว) — แก้ปัญหาปุ่ม 📌✎🗑
+// เรียงกัน 3 ปุ่มแล้วบังชื่อเพลงบนจอแคบ โดยยังเรียกฟังก์ชันเดิม (openQuickAssign/openEditSong/confirmDeleteSong) ทุกอย่างเหมือนเดิม
+let openSongMenuId = null;
+function toggleSongRowMenu(btn, songId) {
+  const menu = document.getElementById("songRowMenu");
+  if (openSongMenuId === songId && menu.style.display !== "none") {
+    hideSongRowMenu();
+    return;
+  }
+  openSongMenuId = songId;
+  const rect = btn.getBoundingClientRect();
+  menu.style.display = "block";
+  // จัดตำแหน่งให้อยู่ใต้ปุ่ม ⋮ ที่กด ชิดขวาจอ กันล้นขอบจอฝั่งขวา และเผื่อกรณีใกล้ขอบล่างจอให้เด้งขึ้นด้านบนแทน
+  const menuWidth = menu.offsetWidth || 200;
+  let left = rect.right - menuWidth;
+  if (left < 8) left = 8;
+  menu.style.left = left + "px";
+  const menuHeight = menu.offsetHeight || 150;
+  let top = rect.bottom + 6;
+  if (top + menuHeight > window.innerHeight - 8) top = rect.top - menuHeight - 6;
+  menu.style.top = top + "px";
+}
+function hideSongRowMenu() {
+  document.getElementById("songRowMenu").style.display = "none";
+  openSongMenuId = null;
+}
+document.addEventListener("click", (e) => {
+  const menu = document.getElementById("songRowMenu");
+  if (menu.style.display !== "none" && !menu.contains(e.target)) hideSongRowMenu();
+});
+window.addEventListener("scroll", hideSongRowMenu, true);
+document.getElementById("songRowMenuAssign").addEventListener("click", () => {
+  const id = openSongMenuId; hideSongRowMenu();
+  if (id) openQuickAssign(id);
+});
+document.getElementById("songRowMenuEdit").addEventListener("click", () => {
+  const id = openSongMenuId; hideSongRowMenu();
+  if (id) openEditSong(id);
+});
+document.getElementById("songRowMenuDelete").addEventListener("click", () => {
+  const id = openSongMenuId; hideSongRowMenu();
+  if (id) confirmDeleteSong(id);
+});
 
 // ================= จัดเพลงเข้าเพลย์ลิสต์ / หมวดหมู่ / DJ แบบเร็ว (ไม่ต้องเปิดฟอร์มแก้ไขเพลงเต็ม) =================
 let quickAssignSongId = null;
