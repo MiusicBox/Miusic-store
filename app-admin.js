@@ -1597,6 +1597,25 @@ let detailAudioUnlocked = false;
 let detailIsSeeking = false;
 let detailCurrentSection = null; // "intro" | "preview" | "outro" — track ว่ากำลังอยู่ช่วงไหน (เพื่อ highlight ปุ่ม)
 
+// ===== เพิ่มใหม่: pending seek pattern =====
+// ปัญหา: ตอนกดปุ่มกระโดดก่อน metadata โหลดเสร็จ → browser จะ ignore currentTime = X
+//   ทำให้เสียงเล่นจาก 0 เสมอ ไม่ว่าจะกดปุ่มไหน
+// แก้: เก็บตำแหน่งที่ต้องการ seek ไว้ใน detailPendingSeek แล้ว apply ตอน loadedmetadata ฟื้นขึ้น
+//   ค่าพิเศษ: -1 = "ไปท้ายเพลง" (ยังไม่รู้ duration ตอนกด เลยใช้ sentinel)
+let detailPendingSeek = null;
+
+// helper: seek ทันทีถ้า metadata พร้อม หรือเก็บไว้รอถ้ายังไม่พร้อม
+function detailSeekOrQueue(target) {
+  // readyState >= 1 (HAVE_METADATA) → seek ได้เลย
+  if (DETAIL_AUDIO.readyState >= 1 && isFinite(target) && target >= 0) {
+    try { DETAIL_AUDIO.currentTime = target; } catch (e) {}
+    detailPendingSeek = null;
+  } else {
+    // metadata ยังไม่โหลด → เก็บ pending seek ไว้รอ loadedmetadata
+    detailPendingSeek = target;
+  }
+}
+
 // format เวลาเหมือนฝั่ง user
 function detailFormatTime(sec) {
   if (!isFinite(sec) || sec < 0) return "0:00";
@@ -1709,6 +1728,9 @@ function openSongDetailPopup(songId) {
   document.getElementById("songDetailCurrTime").textContent = "0:00";
   document.getElementById("songDetailDurTime").textContent = "0:00";
 
+  // reset pending seek (กันค้างจากเพลงก่อนหน้า)
+  detailPendingSeek = null;
+
   // ปิดเมนูดรอปดาวน์ ⋮ ที่อาจเปิดอยู่ (กันบัง popup)
   hideSongRowMenu();
   hideDetailRowMenu();
@@ -1735,6 +1757,7 @@ function closeSongDetailPopup() {
   detailPopupSong = null;
   detailPopupPreview = null;
   detailCurrentSection = null;
+  detailPendingSeek = null; // เคลียร์ pending seek ด้วย
   setDetailJumpActive(null);
   setDetailPlayBtnUI("play");
 }
@@ -1749,12 +1772,11 @@ document.getElementById("songDetailBackdrop").addEventListener("click", (e) => {
 // ปุ่มเล่น/หยุดหลัก
 document.getElementById("songDetailPlayBtn").addEventListener("click", () => {
   if (!detailPopupSong || !detailPopupSong.file_url) { showToast("ไม่พบไฟล์เพลง", "error"); return; }
-  // unlock audio สำหรับ mobile (เหมือนฝั่ง user)
+  // unlock audio สำหรับ mobile (เหมือนฝั่ง user — sync pattern: play แล้ว pause ทันที ไม่ใช้ .finally)
   if (!detailAudioUnlocked) {
-    DETAIL_AUDIO.play().catch(() => {}).finally(() => {
-      DETAIL_AUDIO.pause();
-      detailAudioUnlocked = true;
-    });
+    DETAIL_AUDIO.play().catch(() => {});
+    DETAIL_AUDIO.pause();
+    detailAudioUnlocked = true;
   }
   // ถ้ากำลังเล่นอยู่ → กดหยุด
   if (!DETAIL_AUDIO.paused) {
@@ -1762,11 +1784,12 @@ document.getElementById("songDetailPlayBtn").addEventListener("click", () => {
     return;
   }
   // ถ้าหยุดอยู่และยังไม่เคยข้ามช่วง → เริ่มที่ preview (ถ้ามี) หรือที่ 0
+  // ใช้ detailSeekOrQueue เพื่อรองรับกรณี metadata ยังไม่โหลด
   if (detailPopupPreview && (DETAIL_AUDIO.currentTime < detailPopupPreview.start || DETAIL_AUDIO.currentTime >= detailPopupPreview.end)) {
-    DETAIL_AUDIO.currentTime = detailPopupPreview.start;
+    detailSeekOrQueue(detailPopupPreview.start);
     setDetailJumpActive("preview");
   } else if (!detailPopupPreview && detailCurrentSection === null) {
-    DETAIL_AUDIO.currentTime = 0;
+    detailSeekOrQueue(0);
     setDetailJumpActive("intro");
   }
   setDetailPlayBtnUI("loading");
@@ -1778,11 +1801,12 @@ document.getElementById("songDetailPlayBtn").addEventListener("click", () => {
   });
 });
 
-// ปุ่มกระโดดช่วงเพลง
+// ปุ่มกระโดดช่วงเพลง — ทั้ง 3 ปุ่มใช้ detailSeekOrQueue เพื่อให้ seek ได้ถูกต้อง
+// แม้ว่าจะกดตอน metadata ยังไม่โหลดเสร็จ (สาเหตุที่กดปุ่มแล้วกลับไปต้นเพลงเสมอ)
 document.getElementById("jumpToIntro").addEventListener("click", () => {
   if (!detailPopupSong || !detailPopupSong.file_url) return;
   setDetailJumpActive("intro");
-  DETAIL_AUDIO.currentTime = 0;
+  detailSeekOrQueue(0); // ต้นเพลง = วินาที 0 เสมอ
   // ถ้าหยุดอยู่ → เล่นทันที
   if (DETAIL_AUDIO.paused) {
     setDetailPlayBtnUI("loading");
@@ -1797,7 +1821,7 @@ document.getElementById("jumpToPreview").addEventListener("click", () => {
     return;
   }
   setDetailJumpActive("preview");
-  DETAIL_AUDIO.currentTime = detailPopupPreview.start;
+  detailSeekOrQueue(detailPopupPreview.start); // กระโดดไปยังจุดเริ่มช่วง Dance/Preview
   if (DETAIL_AUDIO.paused) {
     setDetailPlayBtnUI("loading");
     DETAIL_AUDIO.play().then(() => setDetailPlayBtnUI("pause")).catch(() => setDetailPlayBtnUI("play"));
@@ -1805,14 +1829,23 @@ document.getElementById("jumpToPreview").addEventListener("click", () => {
 });
 document.getElementById("jumpToOutro").addEventListener("click", () => {
   if (!detailPopupSong || !detailPopupSong.file_url) return;
-  // ท้ายเพลง = เวลา 90% ของความยาวรวม หรือ (preview.end + 30s) แล้วแต่ตัวไหนใกล้ท้ายกว่า
+  // ท้ายเพลง = (preview.end + 30s) หรือ (dur - 15) ถ้าไม่มี preview
   const dur = DETAIL_AUDIO.duration || 0;
-  if (!dur) { showToast("กำลังโหลดข้อมูลเพลง...", "info"); return; }
+  if (!dur) {
+    // metadata ยังไม่โหลด → ใช้ sentinel -1 = "ไปท้ายเพลง" รอคำนวณตอน loadedmetadata
+    setDetailJumpActive("outro");
+    detailSeekOrQueue(-1);
+    if (DETAIL_AUDIO.paused) {
+      setDetailPlayBtnUI("loading");
+      DETAIL_AUDIO.play().then(() => setDetailPlayBtnUI("pause")).catch(() => setDetailPlayBtnUI("play"));
+    }
+    return;
+  }
   const outroTarget = detailPopupPreview
     ? Math.min(dur - 5, detailPopupPreview.end + 30)
     : Math.max(0, dur - 15);
   setDetailJumpActive("outro");
-  DETAIL_AUDIO.currentTime = outroTarget;
+  detailSeekOrQueue(outroTarget);
   if (DETAIL_AUDIO.paused) {
     setDetailPlayBtnUI("loading");
     DETAIL_AUDIO.play().then(() => setDetailPlayBtnUI("pause")).catch(() => setDetailPlayBtnUI("play"));
@@ -1821,14 +1854,28 @@ document.getElementById("jumpToOutro").addEventListener("click", () => {
 
 // Audio events
 DETAIL_AUDIO.addEventListener("loadedmetadata", () => {
-  // ถ้ามี preview — เซ็ต seek bar ให้อยู่ในช่วง preview เหมือนฝั่ง user
+  // ===== เพิ่มใหม่: apply pending seek ถ้ามี =====
+  // กรณี sentinel -1 (ไปท้ายเพลง) → คำนวณตำแหน่งจริงจาก duration ที่โหลดเสร็จแล้ว
+  if (detailPendingSeek !== null) {
+    let target = detailPendingSeek;
+    if (target === -1) {
+      const dur = DETAIL_AUDIO.duration || 0;
+      target = detailPopupPreview
+        ? Math.min(dur - 5, detailPopupPreview.end + 30)
+        : Math.max(0, dur - 15);
+    }
+    if (isFinite(target) && target >= 0) {
+      try { DETAIL_AUDIO.currentTime = target; } catch (e) {}
+    }
+    detailPendingSeek = null;
+  }
   updateDetailSeekUI();
 });
 DETAIL_AUDIO.addEventListener("timeupdate", () => {
   // ถ้าอยู่ในโหมด preview และถึงท้ายช่วง preview → หยุด (เหมือนฝั่ง user)
   if (detailPopupPreview && DETAIL_AUDIO.currentTime >= detailPopupPreview.end) {
     DETAIL_AUDIO.pause();
-    DETAIL_AUDIO.currentTime = detailPopupPreview.start;
+    try { DETAIL_AUDIO.currentTime = detailPopupPreview.start; } catch (e) {}
     setDetailPlayBtnUI("play");
     updateDetailSeekUI();
     return;
