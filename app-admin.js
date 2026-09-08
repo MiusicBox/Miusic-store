@@ -1083,36 +1083,75 @@ function renderDetailSongsList() {
       <div class="info"><div class="n1">${escapeHtml(s.song_name)}</div>
       <div class="n2">${escapeHtml(s.dj_name || "-")} · ${escapeHtml(s.category_name || "-")} · ${formatPrice(s.price)}</div></div>
       <div class="row-actions">
-        <button class="icon-btn" data-detail-edit="${s.id}" title="แก้ไขเพลง">✎</button>
-        <button class="icon-btn danger" data-detail-remove="${s.id}" title="${removeLabel}">➖</button>
-        <button class="icon-btn danger" data-detail-delete="${s.id}" title="ลบเพลงนี้ออกจากระบบจริง (ลบถาวร)">🗑</button>
+        <button class="icon-btn" data-detail-menu="${s.id}" title="เมนู">⋮</button>
       </div>
     </div>`).join("");
-  wrap.querySelectorAll("[data-detail-edit]").forEach(b => b.addEventListener("click", async () => {
-    const songId = b.getAttribute("data-detail-edit");
-    document.getElementById("listSongsBackdrop").classList.remove("show");
-    await loadSongs(); // โหลดใหม่เพื่อให้ dropdown DJ/หมวดหมู่/เพลย์ลิสต์ในฟอร์มแก้ไขเพลงมีข้อมูลครบ เหมือนเข้าจากหน้าจัดการเพลงปกติ
-    openEditSong(songId);
-  }));
-  wrap.querySelectorAll("[data-detail-remove]").forEach(b => b.addEventListener("click", () => {
-    const songId = b.getAttribute("data-detail-remove");
-    const ctx = currentDetailContext;
-    openConfirm(`ต้องการ${removeLabel}นี้ใช่หรือไม่? เพลงจะยังอยู่ในระบบเหมือนเดิม แค่ไม่ได้อยู่ใน "${ctx.name}" อีกต่อไป`, async () => {
-      const payload = { updated_at: new Date().toISOString() };
-      if (ctx.type === "category") { payload.category_id = ""; payload.category_name = ""; }
-      else if (ctx.type === "playlist") { payload.playlist_id = ""; payload.playlist_name = ""; }
-      else if (ctx.type === "dj") { payload.dj_name = ""; }
-      await updateDoc(doc(db, "songs", songId), payload);
-      const song = CACHE.songs.find(x => x.id === songId);
-      if (song) Object.assign(song, payload);
-      showToast("นำเพลงออกจากรายการแล้ว (เพลงยังอยู่ในระบบ ไม่ได้ถูกลบ)", "success");
-      renderDetailSongsList();
-    });
-  }));
-  wrap.querySelectorAll("[data-detail-delete]").forEach(b => b.addEventListener("click", () => {
-    deleteSongFromDetailView(b.getAttribute("data-detail-delete"));
+  wrap.querySelectorAll("[data-detail-menu]").forEach(b => b.addEventListener("click", (e) => {
+    e.stopPropagation();
+    toggleDetailRowMenu(b, b.getAttribute("data-detail-menu"));
   }));
 }
+
+// เมนูดรอปดาวน์ ⋮ สำหรับแถวเพลงในหน้ารายละเอียด หมวดหมู่ / DJ / เพลย์ลิสต์ (เดิมเป็นปุ่ม ✎➖🗑 เรียงกันจนบังชื่อเพลงบนจอแคบ)
+// ทำงานแบบเดียวกับ songRowMenu ในหน้าจัดการเพลงหลัก แต่ใช้ element และตัวแปร state แยกกันคนละชุด ไม่ปนกัน
+// ยังเรียกฟังก์ชันเดิมทุกตัว (openEditSong / นำออกจากรายการ / deleteSongFromDetailView) เหมือนเดิมทุกประการ
+let openDetailMenuId = null;
+function toggleDetailRowMenu(btn, songId) {
+  const menu = document.getElementById("detailSongRowMenu");
+  if (openDetailMenuId === songId && menu.style.display !== "none") {
+    hideDetailRowMenu();
+    return;
+  }
+  openDetailMenuId = songId;
+  const rect = btn.getBoundingClientRect();
+  menu.style.display = "block";
+  const menuWidth = menu.offsetWidth || 200;
+  let left = rect.right - menuWidth;
+  if (left < 8) left = 8;
+  menu.style.left = left + "px";
+  const menuHeight = menu.offsetHeight || 150;
+  let top = rect.bottom + 6;
+  if (top + menuHeight > window.innerHeight - 8) top = rect.top - menuHeight - 6;
+  menu.style.top = top + "px";
+}
+function hideDetailRowMenu() {
+  document.getElementById("detailSongRowMenu").style.display = "none";
+  openDetailMenuId = null;
+}
+document.addEventListener("click", (e) => {
+  const menu = document.getElementById("detailSongRowMenu");
+  if (menu.style.display !== "none" && !menu.contains(e.target)) hideDetailRowMenu();
+});
+window.addEventListener("scroll", hideDetailRowMenu, true);
+document.getElementById("detailRowMenuEdit").addEventListener("click", async () => {
+  const songId = openDetailMenuId; hideDetailRowMenu();
+  if (!songId) return;
+  document.getElementById("listSongsBackdrop").classList.remove("show");
+  await loadSongs(); // โหลดใหม่เพื่อให้ dropdown DJ/หมวดหมู่/เพลย์ลิสต์ในฟอร์มแก้ไขเพลงมีข้อมูลครบ เหมือนเข้าจากหน้าจัดการเพลงปกติ
+  openEditSong(songId);
+});
+document.getElementById("detailRowMenuRemove").addEventListener("click", () => {
+  const songId = openDetailMenuId; hideDetailRowMenu();
+  if (!songId) return;
+  const ctx = currentDetailContext;
+  if (!ctx) return;
+  const removeLabel = { category: "นำออกจากหมวดหมู่นี้ (ไม่ลบเพลง)", playlist: "นำออกจากเพลย์ลิสต์นี้ (ไม่ลบเพลง)", dj: "นำออกจาก DJ นี้ (ไม่ลบเพลง)" }[ctx.type];
+  openConfirm(`ต้องการ${removeLabel}นี้ใช่หรือไม่? เพลงจะยังอยู่ในระบบเหมือนเดิม แค่ไม่ได้อยู่ใน "${ctx.name}" อีกต่อไป`, async () => {
+    const payload = { updated_at: new Date().toISOString() };
+    if (ctx.type === "category") { payload.category_id = ""; payload.category_name = ""; }
+    else if (ctx.type === "playlist") { payload.playlist_id = ""; payload.playlist_name = ""; }
+    else if (ctx.type === "dj") { payload.dj_name = ""; }
+    await updateDoc(doc(db, "songs", songId), payload);
+    const song = CACHE.songs.find(x => x.id === songId);
+    if (song) Object.assign(song, payload);
+    showToast("นำเพลงออกจากรายการแล้ว (เพลงยังอยู่ในระบบ ไม่ได้ถูกลบ)", "success");
+    renderDetailSongsList();
+  });
+});
+document.getElementById("detailRowMenuDelete").addEventListener("click", () => {
+  const songId = openDetailMenuId; hideDetailRowMenu();
+  if (songId) deleteSongFromDetailView(songId);
+});
 
 // ลบเพลงออกจากระบบจริง จากหน้าดูรายละเอียดหมวดหมู่/DJ/เพลย์ลิสต์
 // ใช้ logic เดียวกับปุ่มลบเพลงในหน้าจัดการเพลง (confirmDeleteSong) ทุกประการ — เช็ค Order เก่าก่อน
