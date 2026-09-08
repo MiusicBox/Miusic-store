@@ -589,6 +589,9 @@ AUDIO.addEventListener("loadedmetadata", () => {
     if (seekEl) { seekEl.min = 0; seekEl.max = AUDIO.duration || 0; }
     if (durTimeEl) durTimeEl.textContent = formatTime(AUDIO.duration);
   }
+  // ===== เพิ่มใหม่: sync seek bar ของ popup ด้วย (ถ้า popup เปิดอยู่) =====
+  // ไม่กระทบโค้ดเดิมด้านบน — เพียงแค่อัปเดต UI ของ popup เพิ่มเติม
+  updateModalSeekUI();
 });
 
 AUDIO.addEventListener("timeupdate", () => {
@@ -609,6 +612,25 @@ AUDIO.addEventListener("timeupdate", () => {
 
   if (currTimeEl) currTimeEl.textContent = formatTime(preview ? AUDIO.currentTime - preview.start : AUDIO.currentTime);
   if (seekEl) seekEl.value = AUDIO.currentTime;
+
+  // ===== เพิ่มใหม่: sync seek bar + jump highlight ของ popup ด้วย =====
+  // อัปเดตเฉพาะเมื่อ popup เปิดอยู่ (ฟังก์ชันจะ check เองด้านใน)
+  updateModalSeekUI();
+
+  // อัปเดต highlight ของปุ่มกระโดดตามตำแหน่งปัจจุบัน — เหมือนฝั่ง admin
+  const backdrop = document.getElementById("songModalBackdrop");
+  if (backdrop && backdrop.classList.contains("show")) {
+    const t = AUDIO.currentTime;
+    if (preview) {
+      if (t >= preview.start && t < preview.end) setModalJumpActive("preview");
+      else if (t < preview.start) setModalJumpActive("intro");
+      else setModalJumpActive("outro");
+    } else {
+      const dur = AUDIO.duration || 0;
+      if (t < dur * 0.7) setModalJumpActive("intro");
+      else setModalJumpActive("outro");
+    }
+  }
 });
 
 if (seekEl) {
@@ -652,23 +674,68 @@ function openSongModal(songId) {
   const djEl = document.getElementById("modalDj");
   const descEl = document.getElementById("modalDesc");
   const priceEl = document.getElementById("modalPrice");
+  const badgesEl = document.getElementById("modalBadges");
+  const metaLineEl = document.getElementById("modalMetaLine");
   const modalBtn = document.getElementById("modalPlayBtn");
   const buyBtn = document.getElementById("modalBuyBtn");
+  const buyLabelEl = document.getElementById("modalBuyLabel");
   const backdropEl = document.getElementById("songModalBackdrop");
+  const seekEl = document.getElementById("modalSeek");
+  const currTimeEl = document.getElementById("modalCurrTime");
+  const durTimeEl = document.getElementById("modalDurTime");
 
   if (coverEl) coverEl.src = song.cover_url || "";
   if (nameEl) nameEl.textContent = song.song_name;
   if (artistEl) artistEl.textContent = song.artist || "";
-  if (djEl) djEl.textContent = song.dj_name ? "DJ: " + song.dj_name : "";
+
+  // DJ — เก็บไว้ใน badge ด้วยเหมือนฝั่ง admin (เดิมแสดงบรรทัด DJ: ... คงไว้ตามโครงเดิม)
+  if (djEl) djEl.textContent = song.dj_name ? "🎧 DJ: " + song.dj_name : "";
+
+  // badges — เหมือนฝั่ง admin: DJ / หมวดหมู่ / เพลย์ลิสต์ (ถ้ามีข้อมูล)
+  if (badgesEl) {
+    const badges = [];
+    if (song.dj_name) badges.push(`<span class="badge dj">🎧 ${escapeHtml(song.dj_name)}</span>`);
+    if (song.category_name) badges.push(`<span class="badge cat">🗂️ ${escapeHtml(song.category_name)}</span>`);
+    if (song.playlist_name) badges.push(`<span class="badge pl">🎶 ${escapeHtml(song.playlist_name)}</span>`);
+    badgesEl.innerHTML = badges.join("");
+  }
+
   if (descEl) descEl.textContent = song.description || "";
   if (priceEl) priceEl.textContent = formatPrice(song.price);
+
+  // meta line: แสดงข้อมูล preview ถ้ามี (เหมือนฝั่ง admin)
+  // ใช้ STATE.currentPreview ของเพลงนี้ — คำนวณตามเงื่อนไขเดียวกับ playSong()
+  const songPreview =
+    song.preview_status === "ok" && song.preview_start_sec != null && song.preview_end_sec != null
+      ? { start: Number(song.preview_start_sec), end: Number(song.preview_end_sec) }
+      : null;
+  if (metaLineEl) {
+    if (songPreview) {
+      const bars = (song.preview_start_bar != null && song.preview_end_bar != null)
+        ? ` · ห้อง ${song.preview_start_bar}–${song.preview_end_bar}` : "";
+      metaLineEl.innerHTML = `🎯 เล่นช่วงตัวอย่าง ${formatTime(songPreview.start)}–${formatTime(songPreview.end)}${bars}`;
+    } else {
+      metaLineEl.innerHTML = `เล่นเต็มไฟล์ (เพลงนี้ยังไม่ได้วิเคราะห์ช่วง Preview)`;
+    }
+  }
+
+  // reset seek bar ของ popup — ค่าจริงจะอัปเดตตอน loadedmetadata ของเพลงที่เล่น
+  if (seekEl) { seekEl.value = 0; seekEl.min = 0; seekEl.max = 0; }
+  if (currTimeEl) currTimeEl.textContent = "0:00";
+  if (durTimeEl) durTimeEl.textContent = "0:00";
+
+  // reset ปุ่มกระโดด — ไม่ active จนกว่าจะเริ่มเล่น
+  setModalJumpActive(null);
 
   if (modalBtn) {
     modalBtn.setAttribute("data-play", songId);
     modalBtn.onclick = () => { unlockAudio(); playSong(songId); };
   }
+
+  // ปุ่มเพิ่มเข้าตะกร้า — ใช้ addToCart เดิม ไม่เปลี่ยนระบบ cart
+  // เปลี่ยนเฉพาะข้อความ label ให้เป็น "เพิ่มเข้าตะกร้า" + แสดงราคาในวงเล็บ
   if (buyBtn) {
-    buyBtn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg><span>${formatPrice(song.price)}</span>`;
+    if (buyLabelEl) buyLabelEl.textContent = `เพิ่มเข้าตะกร้า · ${formatPrice(song.price)}`;
     buyBtn.setAttribute("aria-label", `เพิ่ม ${song.song_name} ลงตะกร้า`);
     buyBtn.onclick = () => {
       addToCart(song);
@@ -676,6 +743,126 @@ function openSongModal(songId) {
   }
   updatePlayButtonsUI();
   if (backdropEl) backdropEl.classList.add("show");
+}
+
+// ===== เพิ่มใหม่: helper สำหรับ popup ใหม่ — เหมือนฝั่ง admin (ไม่แตะระบบเดิม) =====
+// state สำหรับ seek bar ภายใน popup
+let modalIsSeeking = false;
+
+// ไอคอนเล่น/หยุดของปุ่มใน popup (ใช้ SVG เดียวกับของเดิม)
+function modalPlayIconSvg() { return '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg>'; }
+function modalStopIconSvg() { return '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14"></rect><rect x="14" y="5" width="4" height="14"></rect></svg>'; }
+
+// ตั้ง active ของปุ่มกระโดดช่วง — เหมือน setDetailJumpActive ฝั่ง admin
+function setModalJumpActive(section) {
+  ["modalJumpToIntro", "modalJumpToPreview", "modalJumpToOutro"].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.toggle("active", id === {
+      intro: "modalJumpToIntro",
+      preview: "modalJumpToPreview",
+      outro: "modalJumpToOutro"
+    }[section]);
+  });
+}
+
+// อัปเดต seek bar ของ popup ตามสถานะ AUDIO ปัจจุบัน (เหมือน updateDetailSeekUI ฝั่ง admin)
+function updateModalSeekUI() {
+  const seekEl = document.getElementById("modalSeek");
+  const currEl = document.getElementById("modalCurrTime");
+  const durEl = document.getElementById("modalDurTime");
+  if (!seekEl) return;
+  // อัปเดตเฉพาะเมื่อ popup เปิดอยู่ (ประหยัด CPU)
+  const backdrop = document.getElementById("songModalBackdrop");
+  if (!backdrop || !backdrop.classList.contains("show")) return;
+
+  const preview = STATE.currentPreview;
+  if (preview) {
+    seekEl.min = preview.start;
+    seekEl.max = preview.end;
+    if (!modalIsSeeking) seekEl.value = AUDIO.currentTime;
+    if (currEl) currEl.textContent = formatTime(Math.max(0, AUDIO.currentTime - preview.start));
+    if (durEl) durEl.textContent = formatTime(preview.end - preview.start);
+  } else {
+    seekEl.min = 0;
+    seekEl.max = AUDIO.duration || 0;
+    if (!modalIsSeeking) seekEl.value = AUDIO.currentTime;
+    if (currEl) currEl.textContent = formatTime(AUDIO.currentTime);
+    if (durEl) durEl.textContent = formatTime(AUDIO.duration || 0);
+  }
+}
+
+// ===== เพิ่มใหม่: event listeners สำหรับ popup ใหม่ — เหมือนฝั่ง admin =====
+// ปุ่มกระโดดช่วงเพลง (3 ปุ่ม) — เหมือน jumpToIntro / jumpToPreview / jumpToOutro ฝั่ง admin
+// ใช้ AUDIO ตัวเดิมของฝั่ง user — ไม่สร้าง Audio ใหม่
+document.getElementById("modalJumpToIntro").addEventListener("click", () => {
+  if (!STATE.currentPlayingId) {
+    showToast("กดปุ่ม ฟังเพลง ก่อน เพื่อเริ่มเล่น", "info");
+    return;
+  }
+  setModalJumpActive("intro");
+  AUDIO.currentTime = 0; // ต้นเพลง = วินาที 0 เสมอ
+  if (AUDIO.paused) {
+    AUDIO.play().then(updatePlayButtonsUI).catch(() => {});
+  }
+});
+
+document.getElementById("modalJumpToPreview").addEventListener("click", () => {
+  const preview = STATE.currentPreview;
+  if (!preview) {
+    showToast("เพลงนี้ยังไม่ได้วิเคราะห์ช่วง Preview — กระโดดไปช่วงต้นแทน", "info");
+    document.getElementById("modalJumpToIntro").click();
+    return;
+  }
+  if (!STATE.currentPlayingId) {
+    showToast("กดปุ่ม ฟังเพลง ก่อน เพื่อเริ่มเล่น", "info");
+    return;
+  }
+  setModalJumpActive("preview");
+  AUDIO.currentTime = preview.start; // กระโดดไปยังจุดเริ่มช่วง Dance/Preview
+  if (AUDIO.paused) {
+    AUDIO.play().then(updatePlayButtonsUI).catch(() => {});
+  }
+});
+
+document.getElementById("modalJumpToOutro").addEventListener("click", () => {
+  if (!STATE.currentPlayingId) {
+    showToast("กดปุ่ม ฟังเพลง ก่อน เพื่อเริ่มเล่น", "info");
+    return;
+  }
+  const preview = STATE.currentPreview;
+  const dur = AUDIO.duration || 0;
+  // ท้ายเพลง = (preview.end + 30s) หรือ (dur - 15) ถ้าไม่มี preview — เหมือนฝั่ง admin
+  const outroTarget = preview
+    ? Math.min(dur - 5, preview.end + 30)
+    : Math.max(0, dur - 15);
+  if (isFinite(outroTarget) && outroTarget >= 0) {
+    try { AUDIO.currentTime = outroTarget; } catch (e) {}
+  }
+  setModalJumpActive("outro");
+  if (AUDIO.paused) {
+    AUDIO.play().then(updatePlayButtonsUI).catch(() => {});
+  }
+});
+
+// Seek bar ของ popup — เหมือน detailSeekEl ฝั่ง admin
+const modalSeekEl = document.getElementById("modalSeek");
+if (modalSeekEl) {
+  modalSeekEl.addEventListener("input", () => {
+    modalIsSeeking = true;
+    const preview = STATE.currentPreview;
+    const currEl = document.getElementById("modalCurrTime");
+    const shown = preview ? Number(modalSeekEl.value) - preview.start : Number(modalSeekEl.value);
+    if (currEl) currEl.textContent = formatTime(shown);
+  });
+  modalSeekEl.addEventListener("change", () => {
+    const preview = STATE.currentPreview;
+    let target = Number(modalSeekEl.value);
+    // clamp ให้อยู่ในช่วง preview (เหมือนฝั่ง admin)
+    if (preview) target = Math.min(preview.end, Math.max(preview.start, target));
+    AUDIO.currentTime = target;
+    modalIsSeeking = false;
+  });
 }
 
 const modalCloseBtn = document.getElementById("songModalClose");
