@@ -530,6 +530,49 @@
 
         <div id="songDetailMetaLine"></div>
       </div>
+
+      <!-- ===== Auto Preview Editor (collapsible) — แก้ห้อง Preview ได้โดยไม่ต้องเปิดฟอร์มแก้ไขเพลงเต็ม ===== -->
+      <div id="songDetailPreviewEditor" style="margin-top:14px;border-top:1px solid rgba(255,255,255,.08);padding-top:12px;">
+        <button type="button" id="songDetailPreviewToggle" style="width:100%;display:flex;align-items:center;justify-content:space-between;background:transparent;border:0;color:var(--text);font-size:13px;font-weight:700;padding:4px 0;cursor:pointer;">
+          <span>🎯 แก้ไข Auto Preview (Dance Section)</span>
+          <span id="songDetailPreviewChevron" style="transition:transform .2s;">▼</span>
+        </button>
+
+        <div id="songDetailPreviewBody" style="display:none;margin-top:10px;">
+          <!-- สถานะปัจจุบัน -->
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+            <span style="font-size:12px;color:var(--text-dim);">สถานะ:</span>
+            <span id="songDetailPreviewBadge" style="font-size:12px;font-weight:700;padding:2px 10px;border-radius:999px;"></span>
+          </div>
+          <div id="songDetailPreviewInfo" style="font-size:12px;color:var(--text-dim);margin-bottom:10px;line-height:1.5;"></div>
+
+          <!-- วิเคราะห์ใหม่ด้วย AI -->
+          <button type="button" id="songDetailReanalyzeBtn" class="btn secondary" style="width:100%;font-size:12px;padding:8px;margin-bottom:10px;">🔄 วิเคราะห์เสียงใหม่ทั้งหมด (AI)</button>
+
+          <!-- แก้ Dance Start Bar -->
+          <div style="border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:10px;margin-bottom:8px;">
+            <div style="font-size:12px;font-weight:700;margin-bottom:6px;">Dance Start Bar (ห้องที่เริ่ม Dance)</div>
+            <div style="display:flex;gap:6px;">
+              <input id="songDetailDanceStartBar" type="number" min="0" step="1" placeholder="เช่น 100" style="flex:1;padding:6px 8px;font-size:13px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.14);border-radius:6px;color:var(--text);">
+              <button type="button" id="songDetailRecalcBtn" class="btn secondary" style="font-size:12px;padding:6px 10px;">คำนวณ</button>
+            </div>
+          </div>
+
+          <!-- กำหนดช่วงเอง -->
+          <div style="border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:10px;margin-bottom:10px;">
+            <div style="font-size:12px;font-weight:700;margin-bottom:6px;">กำหนดช่วง Preview เอง (ไม่ผูกกับสูตร Dance)</div>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <input id="songDetailManualStart" type="number" min="0" step="1" placeholder="ห้องเริ่ม" style="flex:1;padding:6px 8px;font-size:13px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.14);border-radius:6px;color:var(--text);">
+              <span style="color:var(--text-dim);">→</span>
+              <input id="songDetailManualEnd" type="number" min="0" step="1" placeholder="ห้องหยุด" style="flex:1;padding:6px 8px;font-size:13px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.14);border-radius:6px;color:var(--text);">
+            </div>
+            <button type="button" id="songDetailManualBtn" class="btn secondary" style="width:100%;font-size:12px;padding:6px;margin-top:6px;">🎛 ใช้ช่วงที่กำหนดเอง</button>
+          </div>
+
+          <!-- ปุ่มบันทึก Preview ลงเดียว -->
+          <button type="button" id="songDetailSavePreviewBtn" class="btn" style="width:100%;font-size:13px;padding:10px;">💾 บันทึก Preview ลงเพลงนี้</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -692,6 +735,6 @@
 
   <div class="toast" id="toast"></div>
 
-  <script type="module" src="app-admin.js?v=20260908-songdetail3"></script>
+  <script type="module" src="app-admin.js?v=20260908-songdetail4"></script>
 </body>
 </html>
