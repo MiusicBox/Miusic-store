@@ -810,10 +810,16 @@ async function loadCategories() {
   const wrap = document.getElementById("catList");
   if (CACHE.categories.length === 0) { wrap.innerHTML = '<div class="empty-state">ยังไม่มีหมวดหมู่</div>'; return; }
   wrap.innerHTML = CACHE.categories.map(c => `
-    <div class="list-row"><div class="info"><div class="n1">${escapeHtml(c.category_name)}</div>
+    <div class="list-row" data-open="${c.id}" style="cursor:pointer;"><div class="info"><div class="n1">${escapeHtml(c.category_name)}</div>
     <div class="n2">${escapeHtml(c.description || "")}</div></div>
     <div class="row-actions"><button class="icon-btn" data-edit="${c.id}">✎</button>
     <button class="icon-btn danger" data-del="${c.id}">🗑</button></div></div>`).join("");
+  // กดที่ตัวแถว (ไม่ใช่ปุ่มแก้ไข/ลบ) เพื่อดูเพลงที่อยู่จริงในหมวดหมู่นี้
+  wrap.querySelectorAll("[data-open]").forEach(row => row.addEventListener("click", (e) => {
+    if (e.target.closest(".row-actions")) return;
+    const c = CACHE.categories.find(x => x.id === row.getAttribute("data-open"));
+    if (c) openDetailSongs("category", c.id, c.category_name);
+  }));
   wrap.querySelectorAll("[data-edit]").forEach(b => b.addEventListener("click", () => openEditCat(b.getAttribute("data-edit"))));
   wrap.querySelectorAll("[data-del]").forEach(b => b.addEventListener("click", () => {
     openConfirm("ลบหมวดหมู่นี้หรือไม่?", async () => {
@@ -849,10 +855,16 @@ async function loadDjs() {
   const wrap = document.getElementById("djList");
   if (CACHE.djs.length === 0) { wrap.innerHTML = '<div class="empty-state">ยังไม่มี DJ</div>'; return; }
   wrap.innerHTML = CACHE.djs.map(d => `
-    <div class="list-row"><img src="${d.image_url || ""}">
+    <div class="list-row" data-open="${d.id}" style="cursor:pointer;"><img src="${d.image_url || ""}">
     <div class="info"><div class="n1">${escapeHtml(d.dj_name)}</div><div class="n2">${escapeHtml(d.description || "")}</div></div>
     <div class="row-actions"><button class="icon-btn" data-edit="${d.id}">✎</button>
     <button class="icon-btn danger" data-del="${d.id}">🗑</button></div></div>`).join("");
+  // กดที่ตัวแถว (ไม่ใช่ปุ่มแก้ไข/ลบ) เพื่อดูเพลงที่อยู่จริงในสังกัด DJ นี้
+  wrap.querySelectorAll("[data-open]").forEach(row => row.addEventListener("click", (e) => {
+    if (e.target.closest(".row-actions")) return;
+    const d = CACHE.djs.find(x => x.id === row.getAttribute("data-open"));
+    if (d) openDetailSongs("dj", d.id, d.dj_name);
+  }));
   wrap.querySelectorAll("[data-edit]").forEach(b => b.addEventListener("click", () => openEditDj(b.getAttribute("data-edit"))));
   wrap.querySelectorAll("[data-del]").forEach(b => b.addEventListener("click", () => {
     openConfirm("ลบ DJ นี้หรือไม่?", async () => {
@@ -913,10 +925,16 @@ async function loadPlaylists() {
   const wrap = document.getElementById("playlistList");
   if (CACHE.playlists.length === 0) { wrap.innerHTML = '<div class="empty-state">ยังไม่มีเพลย์ลิสต์</div>'; return; }
   wrap.innerHTML = CACHE.playlists.map(p => `
-    <div class="list-row"><img src="${p.cover_url || ""}">
+    <div class="list-row" data-open="${p.id}" style="cursor:pointer;"><img src="${p.cover_url || ""}">
     <div class="info"><div class="n1">${escapeHtml(p.playlist_name)}</div><div class="n2">${escapeHtml(p.description || "")}${p.price ? ` · ${formatPrice(p.price)}` : ""}</div></div>
     <div class="row-actions"><button class="icon-btn" data-edit="${p.id}">✎</button>
     <button class="icon-btn danger" data-del="${p.id}">🗑</button></div></div>`).join("");
+  // กดที่ตัวแถว (ไม่ใช่ปุ่มแก้ไข/ลบ) เพื่อดูเพลงที่อยู่จริงในเพลย์ลิสต์นี้
+  wrap.querySelectorAll("[data-open]").forEach(row => row.addEventListener("click", (e) => {
+    if (e.target.closest(".row-actions")) return;
+    const p = CACHE.playlists.find(x => x.id === row.getAttribute("data-open"));
+    if (p) openDetailSongs("playlist", p.id, p.playlist_name);
+  }));
   wrap.querySelectorAll("[data-edit]").forEach(b => b.addEventListener("click", () => openEditPlaylist(b.getAttribute("data-edit"))));
   wrap.querySelectorAll("[data-del]").forEach(b => b.addEventListener("click", () => {
     openConfirm("ลบเพลย์ลิสต์นี้หรือไม่? (เพลงในเพลย์ลิสต์จะไม่ถูกลบ แค่ไม่ได้อยู่ในเพลย์ลิสต์นี้อีก)", async () => {
@@ -925,6 +943,81 @@ async function loadPlaylists() {
     });
   }));
 }
+
+// ================= DETAIL: เพลงที่อยู่จริงในหมวดหมู่ / DJ / เพลย์ลิสต์ที่กดเข้าไปดู =================
+// หมายเหตุ: ความสัมพันธ์เพลง-DJ ในระบบเดิมผูกด้วยชื่อ (song.dj_name) ไม่มี dj_id เก็บไว้ที่เพลง
+// (เห็นได้จาก openEditSong ที่ match ด้วยชื่อเช่นกัน) จึงต้อง match ด้วยชื่อให้ตรงกับของเดิมทุกจุด
+let currentDetailContext = null; // { type: 'category'|'dj'|'playlist', id, name }
+
+function getSongsForDetail(type, id) {
+  if (type === "category") return CACHE.songs.filter(s => s.category_id === id);
+  if (type === "playlist") return CACHE.songs.filter(s => s.playlist_id === id);
+  if (type === "dj") {
+    const dj = CACHE.djs.find(x => x.id === id);
+    if (!dj) return [];
+    return CACHE.songs.filter(s => s.dj_name === dj.dj_name);
+  }
+  return [];
+}
+
+async function openDetailSongs(type, id, name) {
+  currentDetailContext = { type, id, name };
+  document.getElementById("listSongsTitle").textContent = `เพลงใน "${name}"`;
+  document.getElementById("listSongsMeta").textContent = "";
+  document.getElementById("listSongsContainer").innerHTML = '<div class="empty-state">กำลังโหลด...</div>';
+  document.getElementById("listSongsBackdrop").classList.add("show");
+  // โหลดรายชื่อเพลงล่าสุดเสมอตอนเปิดหน้านี้ (กันกรณีเข้าหน้าหมวดหมู่/DJ/เพลย์ลิสต์โดยยังไม่เคยโหลดเพลงมาก่อน)
+  const snap = await getDocs(collection(db, "songs"));
+  CACHE.songs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  if (currentDetailContext && currentDetailContext.type === type && currentDetailContext.id === id) {
+    renderDetailSongsList();
+  }
+}
+
+function renderDetailSongsList() {
+  if (!currentDetailContext) return;
+  const { type, id } = currentDetailContext;
+  const songs = getSongsForDetail(type, id);
+  document.getElementById("listSongsMeta").textContent = `ทั้งหมด ${songs.length} เพลง`;
+  const wrap = document.getElementById("listSongsContainer");
+  if (songs.length === 0) { wrap.innerHTML = '<div class="empty-state">ยังไม่มีเพลงในรายการนี้</div>'; return; }
+  const removeLabel = { category: "นำออกจากหมวดหมู่นี้ (ไม่ลบเพลง)", playlist: "นำออกจากเพลย์ลิสต์นี้ (ไม่ลบเพลง)", dj: "นำออกจาก DJ นี้ (ไม่ลบเพลง)" }[type];
+  wrap.innerHTML = songs.map(s => `
+    <div class="list-row">
+      <img src="${s.cover_url || ""}">
+      <div class="info"><div class="n1">${escapeHtml(s.song_name)}</div>
+      <div class="n2">${escapeHtml(s.dj_name || "-")} · ${escapeHtml(s.category_name || "-")} · ${formatPrice(s.price)}</div></div>
+      <div class="row-actions">
+        <button class="icon-btn" data-detail-edit="${s.id}" title="แก้ไขเพลง">✎</button>
+        <button class="icon-btn danger" data-detail-remove="${s.id}" title="${removeLabel}">➖</button>
+      </div>
+    </div>`).join("");
+  wrap.querySelectorAll("[data-detail-edit]").forEach(b => b.addEventListener("click", async () => {
+    const songId = b.getAttribute("data-detail-edit");
+    document.getElementById("listSongsBackdrop").classList.remove("show");
+    await loadSongs(); // โหลดใหม่เพื่อให้ dropdown DJ/หมวดหมู่/เพลย์ลิสต์ในฟอร์มแก้ไขเพลงมีข้อมูลครบ เหมือนเข้าจากหน้าจัดการเพลงปกติ
+    openEditSong(songId);
+  }));
+  wrap.querySelectorAll("[data-detail-remove]").forEach(b => b.addEventListener("click", () => {
+    const songId = b.getAttribute("data-detail-remove");
+    const ctx = currentDetailContext;
+    openConfirm(`ต้องการ${removeLabel}นี้ใช่หรือไม่? เพลงจะยังอยู่ในระบบเหมือนเดิม แค่ไม่ได้อยู่ใน "${ctx.name}" อีกต่อไป`, async () => {
+      const payload = { updated_at: new Date().toISOString() };
+      if (ctx.type === "category") { payload.category_id = ""; payload.category_name = ""; }
+      else if (ctx.type === "playlist") { payload.playlist_id = ""; payload.playlist_name = ""; }
+      else if (ctx.type === "dj") { payload.dj_name = ""; }
+      await updateDoc(doc(db, "songs", songId), payload);
+      const song = CACHE.songs.find(x => x.id === songId);
+      if (song) Object.assign(song, payload);
+      showToast("นำเพลงออกจากรายการแล้ว (เพลงยังอยู่ในระบบ ไม่ได้ถูกลบ)", "success");
+      renderDetailSongsList();
+    });
+  }));
+}
+document.getElementById("listSongsClose").addEventListener("click", () => {
+  document.getElementById("listSongsBackdrop").classList.remove("show");
+  currentDetailContext = null;
+});
 function resetPlaylistForm() {
   editingPlaylistId = null; pendingPlaylistCoverFile = null; existingPlaylistCoverUrl = "";
   document.getElementById("fPlaylistName").value = ""; document.getElementById("fPlaylistDesc").value = "";
