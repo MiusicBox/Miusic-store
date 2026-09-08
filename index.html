@@ -37,6 +37,105 @@
     .cart-item-total { grid-column:2; }
     .cart-remove { grid-column:3; grid-row:1 / span 2; }
   }
+
+  /* ---- popup รายละเอียดเพลง (ฝั่ง user) — ปรับใหม่ให้เหมือนฝั่ง admin ---- */
+  /* เพิ่มใหม่: ไม่แตะ CSS เดิม ใช้คลาส scope ภายใน #songModalBackdrop เท่านั้น */
+  #songModalBackdrop .modal { max-width: 440px; }
+  #songModalBackdrop .modal-header { padding-bottom: 10px; }
+  #modalHead { display:flex; gap:12px; align-items:flex-start; margin-bottom:12px; }
+  #modalCoverWrap {
+    width:80px; height:80px; flex-shrink:0; position:relative;
+    overflow:hidden; border-radius:10px; background:rgba(255,255,255,.04);
+  }
+  #modalCover { position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; }
+  #modalInfo { flex:1; min-width:0; }
+  #modalName {
+    margin:0 0 2px; font-size:16px; font-weight:800; line-height:1.3;
+    overflow:hidden; text-overflow:ellipsis; display:-webkit-box;
+    -webkit-line-clamp:2; -webkit-box-orient:vertical;
+  }
+  #modalArtist {
+    color:var(--text-dim); font-size:13px; margin-bottom:6px;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  #modalBadges { display:flex; flex-wrap:wrap; gap:4px; margin-bottom:6px; }
+  #modalBadges .badge {
+    display:inline-flex; align-items:center; gap:3px;
+    padding:2px 8px; border-radius:999px; font-size:11px; font-weight:600;
+    background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.10); color:var(--text);
+  }
+  #modalBadges .badge.dj { color:var(--accent-2, #61dafb); }
+  #modalPrice { font-size:16px; font-weight:800; color:var(--success, #28c76f); margin-top:2px; }
+  #modalDesc {
+    font-size:12px; color:var(--text-dim); margin-bottom:12px; line-height:1.5;
+    max-height:60px; overflow-y:auto; padding:8px 10px;
+    background:rgba(255,255,255,.03); border-radius:8px;
+  }
+  #modalDesc:empty { display:none; }
+
+  /* Player ภายใน popup — เหมือนฝั่ง admin */
+  #modalPlayer {
+    display:flex; flex-direction:column; gap:10px;
+    padding-top:10px; border-top:1px solid rgba(255,255,255,.08);
+  }
+  #modalSeekWrap { display:flex; align-items:center; gap:8px; }
+  #modalSeek {
+    flex:1; -webkit-appearance:none; appearance:none; height:4px;
+    background:rgba(255,255,255,.12); border-radius:999px; outline:none; cursor:pointer;
+  }
+  #modalSeek::-webkit-slider-thumb {
+    -webkit-appearance:none; appearance:none; width:14px; height:14px;
+    border-radius:50%; background:var(--accent, #7a5cff); cursor:pointer; border:0;
+  }
+  #modalSeek::-moz-range-thumb {
+    width:14px; height:14px; border-radius:50%; background:var(--accent, #7a5cff);
+    cursor:pointer; border:0;
+  }
+  #modalCurrTime, #modalDurTime {
+    font-size:11px; color:var(--text-dim); font-variant-numeric:tabular-nums;
+    min-width:32px; text-align:center;
+  }
+
+  /* ปุ่มกระโดดช่วงเพลง — เหมือนฝั่ง admin (3 ปุ่ม) */
+  #modalJumpRow {
+    display:flex; gap:6px; align-items:center; justify-content:center;
+  }
+  .modal-jump-btn {
+    flex:1; display:flex; flex-direction:column; align-items:center; gap:2px;
+    padding:7px 4px; font-size:10px; font-weight:600;
+    background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.12);
+    border-radius:9px; color:var(--text-dim); cursor:pointer;
+    transition:background .15s, color .15s, border-color .15s;
+  }
+  .modal-jump-btn:hover { background:rgba(255,255,255,.08); color:var(--text); }
+  .modal-jump-btn.active {
+    background:rgba(122,92,255,.16); border-color:var(--accent, #7a5cff); color:#fff;
+  }
+  .modal-jump-btn .modal-jump-ico { font-size:14px; line-height:1; }
+  .modal-jump-btn:disabled { opacity:.4; cursor:not-allowed; }
+
+  /* ปุ่มเล่นหลัก (เด่น) — เหมือนฝั่ง admin */
+  #songModalBackdrop #modalPlayBtn {
+    width:100%; display:flex; align-items:center; justify-content:center; gap:8px;
+    padding:11px; font-size:14px; font-weight:700; border-radius:10px;
+    background:var(--accent, #7a5cff); color:#fff; border:0; cursor:pointer;
+  }
+  #modalPlayBtn:disabled { opacity:.5; cursor:not-allowed; }
+  #modalPlayBtn .spinner { display:none; width:16px; height:16px; border-width:2px; }
+  #modalPlayBtn.loading .spinner { display:inline-block; }
+  #modalPlayBtn.loading #modalPlayIconWrap,
+  #modalPlayBtn.loading #modalPlayLabel { display:none; }
+
+  /* ปุ่มเพิ่มเข้าตะกร้า — สีเดียวกับปุ่มเล่น (สีม่วง accent) */
+  #songModalBackdrop #modalBuyBtn {
+    width:100%; display:flex; align-items:center; justify-content:center; gap:8px;
+    padding:11px; font-size:14px; font-weight:700; border-radius:10px;
+    background:var(--accent, #7a5cff); color:#fff; border:0; cursor:pointer;
+    margin-top:8px;
+  }
+  #modalMetaLine {
+    font-size:11px; color:var(--text-dim); text-align:center; line-height:1.5;
+  }
 </style>
 </head>
 <body>
@@ -128,25 +227,63 @@
         <h3>รายละเอียดเพลง</h3>
         <button class="modal-close" id="songModalClose">✕</button>
       </div>
-      <div style="width:100%;position:relative;overflow:hidden;border-radius:14px;margin-bottom:14px;">
-        <div style="padding-top:100%;"></div>
-        <img id="modalCover" src="" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;">
+
+      <!-- แถวหัว: รูปปก 80x80 ซ้าย + ข้อมูลขวา — กระทัดรัด เหมือนฝั่ง admin -->
+      <div id="modalHead">
+        <div id="modalCoverWrap">
+          <img id="modalCover" src="" alt="">
+        </div>
+        <div id="modalInfo">
+          <h3 id="modalName"></h3>
+          <div id="modalArtist"></div>
+          <div id="modalBadges"></div>
+          <div id="modalPrice"></div>
+        </div>
       </div>
-      <h3 id="modalName" style="margin:0 0 4px;"></h3>
-      <div id="modalArtist" style="color:var(--text-dim);font-size:14px;margin-bottom:2px;"></div>
-      <div id="modalDj" style="color:var(--accent-2);font-size:13px;margin-bottom:10px;"></div>
-      <div id="modalDesc" style="font-size:14px;color:var(--text-dim);margin-bottom:16px;line-height:1.6;"></div>
-      <div style="font-size:20px;font-weight:800;color:var(--success);margin-bottom:16px;" id="modalPrice"></div>
-      <div style="display:flex;gap:10px;">
-        <button class="btn secondary" id="modalPlayBtn" data-play="" style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;">
+
+      <!-- DJ + คำอธิบาย -->
+      <div id="modalDj"></div>
+      <div id="modalDesc"></div>
+
+      <!-- Player ภายใน popup — เหมือนฝั่ง admin -->
+      <div id="modalPlayer">
+        <!-- Seek bar -->
+        <div id="modalSeekWrap">
+          <span id="modalCurrTime">0:00</span>
+          <input id="modalSeek" type="range" min="0" max="0" step="0.1" value="0" aria-label="ตำแหน่งเพลง">
+          <span id="modalDurTime">0:00</span>
+        </div>
+
+        <!-- ปุ่มกระโดดช่วงเพลง (3 ปุ่ม) -->
+        <div id="modalJumpRow">
+          <button type="button" class="modal-jump-btn" id="modalJumpToIntro" title="ข้ามไปช่วงต้นเพลง">
+            <span class="modal-jump-ico">⏮</span><span>ต้นเพลง</span>
+          </button>
+          <button type="button" class="modal-jump-btn" id="modalJumpToPreview" title="ข้ามไปช่วง Dance / Preview ที่ AI ตัดไว้">
+            <span class="modal-jump-ico">🎯</span><span>Dance / Preview</span>
+          </button>
+          <button type="button" class="modal-jump-btn" id="modalJumpToOutro" title="ข้ามไปช่วงท้ายเพลง">
+            <span class="modal-jump-ico">⏭</span><span>ท้ายเพลง</span>
+          </button>
+        </div>
+
+        <!-- ปุ่มเล่นหลัก (เด่น) — สีเดียวกับฝั่ง admin -->
+        <button class="btn" id="modalPlayBtn" data-play="">
           <span id="modalPlayIconWrap" style="display:inline-flex;width:24px;height:24px;align-items:center;justify-content:center;position:relative;flex-shrink:0;">
-            <svg id="modalPlayIcon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+            <svg id="modalPlayIcon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg>
             <div class="spinner" id="modalPlaySpinner" style="display:none;width:24px;height:24px;border-width:4px;"></div>
           </span>
           <span id="modalPlayLabel">ฟังเพลง</span>
         </button>
-        <button class="btn whatsapp" id="modalBuyBtn" style="flex:1;">สนใจซื้อเพลง</button>
+
+        <div id="modalMetaLine"></div>
       </div>
+
+      <!-- ปุ่มเพิ่มเข้าตะกร้า — สีเดียวกับปุ่มเล่น (สีม่วง accent) -->
+      <button class="btn" id="modalBuyBtn">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+        <span id="modalBuyLabel">เพิ่มเข้าตะกร้า</span>
+      </button>
     </div>
   </div>
 
