@@ -12,8 +12,8 @@ import {
 import { initOrdersView } from "./orders.js?v=20260905-fix1";
 import { resolveCurrentAdminRole, initAdminsView } from "./admin-roles.js";
 import {
-  analyzeSongFile, analyzeSongUrl, recalculateFromManualBar, manualPreviewWindow, BAR_SECONDS
-} from "./song-analyzer.js?v=20260908-previewrange1";
+  analyzeSongFile, analyzeSongUrl, recalculateFromManualBar, BAR_SECONDS
+} from "./song-analyzer.js?v=20260907-autopreview1";
 
 const CACHE = { songs: [], categories: [], djs: [], playlists: [] };
 let currentAdminRole = null; // "main" | "sub" — ของบัญชีที่ล็อกอินอยู่ตอนนี้
@@ -76,22 +76,8 @@ function renderPreviewData(data) {
     return;
   }
   // status === "ok"
-  if (data.manual_window) {
-    // ค่าที่แอดมินกำหนดช่วง Preview เองตรงๆ — ไม่ได้อิงสูตร Dance เลย
-    setPreviewBadge("🎛 กำหนดเอง", "#3B9EFF");
-    barField.value = data.dance_start_bar ?? "";
-    document.getElementById("fPreviewStartBarManual").value = data.preview_start_bar;
-    document.getElementById("fPreviewEndBarManual").value = data.preview_end_bar;
-    info.textContent =
-      `Preview (กำหนดเอง): ${formatSec(data.preview_start_sec)} – ${formatSec(data.preview_end_sec)} ` +
-      `(ห้อง ${data.preview_start_bar}–${data.preview_end_bar})`;
-    return;
-  }
   setPreviewBadge("✅ พร้อมใช้งาน", "#28c76f");
   barField.value = data.dance_start_bar;
-  // เติมค่าห้องเริ่ม/ห้องหยุดปัจจุบันไว้ในช่อง "กำหนดเอง" ด้วย เผื่อแอดมินอยากปรับต่อจากค่านี้
-  document.getElementById("fPreviewStartBarManual").value = data.preview_start_bar ?? "";
-  document.getElementById("fPreviewEndBarManual").value = data.preview_end_bar ?? "";
   const confText = data.confidence != null ? ` (ความมั่นใจ ${(data.confidence * 100).toFixed(0)}%)` : " (แก้ไขเอง)";
   info.textContent =
     `Dance: ห้อง ${data.dance_start_bar}–${data.preview_end_bar}${confText} · ` +
@@ -441,8 +427,6 @@ function resetSongForm() {
   pendingFullSongFile = null; existingFullFileUrl = "";
   pendingPreviewData = null;
   document.getElementById("fDanceStartBar").value = "";
-  document.getElementById("fPreviewStartBarManual").value = "";
-  document.getElementById("fPreviewEndBarManual").value = "";
   hidePreviewBox();
   document.getElementById("songFormTitle").textContent = "เพิ่มเพลง";
   ["fSongName", "fArtist", "fPrice", "fDesc"].forEach(id => document.getElementById(id).value = "");
@@ -605,24 +589,6 @@ document.getElementById("recalcPreviewBtn").addEventListener("click", () => {
   const result = recalculateFromManualBar(barVal, durationSec);
   renderPreviewData(result);
   showToast("คำนวณ Preview ใหม่จากเลขห้องที่กรอกแล้ว", "success");
-});
-
-// ปุ่ม "ใช้ช่วงที่กำหนดเอง" — ระบุห้องเริ่ม/ห้องหยุดของ Preview เองตรงๆ ไม่ผ่านสูตร Dance เลย
-document.getElementById("recalcManualRangeBtn").addEventListener("click", () => {
-  const startVal = document.getElementById("fPreviewStartBarManual").value;
-  const endVal = document.getElementById("fPreviewEndBarManual").value;
-  if (startVal === "" || startVal == null || endVal === "" || endVal == null) {
-    showToast("กรุณากรอกทั้งห้องเริ่มและห้องหยุด", "error");
-    return;
-  }
-  const existingSong = editingSongId ? CACHE.songs.find(x => x.id === editingSongId) : null;
-  const durationSec =
-    (pendingPreviewData && pendingPreviewData.duration_sec) ||
-    (existingSong && existingSong.preview_duration_sec) ||
-    null;
-  const result = manualPreviewWindow(startVal, endVal, durationSec);
-  renderPreviewData(result);
-  showToast("ใช้ช่วง Preview ที่กำหนดเองแล้ว", "success");
 });
 
 // ปุ่ม "วิเคราะห์เสียงใหม่ทั้งหมด (AI)" — รันตัววิเคราะห์ใหม่ทั้งเพลง (ใช้ไฟล์ที่เพิ่งเลือกถ้ามี ไม่งั้นดึงจาก URL เดิม)
