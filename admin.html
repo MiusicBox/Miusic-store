@@ -370,6 +370,18 @@
     </div>
   </div>
 
+  <!-- ===== จัดเพลงเข้าเพลย์ลิสต์ / หมวดหมู่ / DJ แบบเร็ว (จากปุ่ม 📌 ในหน้าจัดการเพลง) ===== -->
+  <div class="modal-backdrop" id="quickAssignBackdrop">
+    <div class="modal">
+      <div class="modal-header"><h3>จัดเพลงเข้าเพลย์ลิสต์ / หมวดหมู่ / DJ</h3><button class="modal-close" id="quickAssignClose">✕</button></div>
+      <div id="quickAssignSongName" style="font-weight:700;margin-bottom:12px;"></div>
+      <div class="field"><label>DJ</label><select id="qaDj"><option value="">— ไม่ระบุ —</option></select></div>
+      <div class="field"><label>หมวดหมู่</label><select id="qaCategory"><option value="">— ไม่ระบุ —</option></select></div>
+      <div class="field"><label>เพลย์ลิสต์</label><select id="qaPlaylist"><option value="">— ไม่ระบุ —</option></select></div>
+      <button class="btn" id="quickAssignSaveBtn">บันทึก</button>
+    </div>
+  </div>
+
   <div class="modal-backdrop" id="bulkUploadBackdrop">
     <div class="modal">
       <div class="modal-header"><h3>เพิ่มเพลงหลายไฟล์พร้อมกัน</h3><button class="modal-close" id="bulkUploadClose">✕</button></div>
