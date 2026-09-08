@@ -990,6 +990,7 @@ function renderDetailSongsList() {
       <div class="row-actions">
         <button class="icon-btn" data-detail-edit="${s.id}" title="แก้ไขเพลง">✎</button>
         <button class="icon-btn danger" data-detail-remove="${s.id}" title="${removeLabel}">➖</button>
+        <button class="icon-btn danger" data-detail-delete="${s.id}" title="ลบเพลงนี้ออกจากระบบจริง (ลบถาวร)">🗑</button>
       </div>
     </div>`).join("");
   wrap.querySelectorAll("[data-detail-edit]").forEach(b => b.addEventListener("click", async () => {
@@ -1013,6 +1014,38 @@ function renderDetailSongsList() {
       renderDetailSongsList();
     });
   }));
+  wrap.querySelectorAll("[data-detail-delete]").forEach(b => b.addEventListener("click", () => {
+    deleteSongFromDetailView(b.getAttribute("data-detail-delete"));
+  }));
+}
+
+// ลบเพลงออกจากระบบจริง จากหน้าดูรายละเอียดหมวดหมู่/DJ/เพลย์ลิสต์
+// ใช้ logic เดียวกับปุ่มลบเพลงในหน้าจัดการเพลง (confirmDeleteSong) ทุกประการ — เช็ค Order เก่าก่อน
+// ถ้ามี Order อ้างอิงอยู่จะปิดการขาย (hidden) แทนการลบจริง กันไฟล์เต็มหาย ต่างจาก confirmDeleteSong
+// แค่ตรงที่ต้อง re-render รายการเพลงในหน้านี้ด้วยหลังลบ แทนที่จะ loadSongs() ทั้งหน้าจัดการเพลง
+async function deleteSongFromDetailView(id) {
+  const hasOrders = await songHasOrders(id);
+  if (hasOrders) {
+    openConfirm(
+      "เพลงนี้มี Order เก่าอ้างอิงอยู่ — ไม่แนะนำให้ลบเพราะจะทำให้ไฟล์เพลงเต็มหาย ระบบจะเปลี่ยนสถานะเป็น 'ปิดการขาย (hidden)' แทนการลบจริง ต้องการดำเนินการต่อหรือไม่?",
+      async () => {
+        await updateDoc(doc(db, "songs", id), { status: "hidden", updated_at: new Date().toISOString() });
+        showToast("ปิดการขายเพลงนี้แล้ว (ไม่ได้ลบไฟล์)", "success");
+        const song = CACHE.songs.find(x => x.id === id);
+        if (song) song.status = "hidden";
+        renderDetailSongsList();
+        loadDashboard();
+      }
+    );
+    return;
+  }
+  openConfirm("ต้องการลบเพลงนี้ออกจากระบบจริงหรือไม่? (ลบถาวร — ต่างจากปุ่ม ➖ ที่แค่ถอดออกจากรายการนี้)", async () => {
+    await deleteDoc(doc(db, "songs", id));
+    showToast("ลบเพลงออกจากระบบแล้ว", "success");
+    CACHE.songs = CACHE.songs.filter(x => x.id !== id);
+    renderDetailSongsList();
+    loadDashboard();
+  });
 }
 document.getElementById("listSongsClose").addEventListener("click", () => {
   document.getElementById("listSongsBackdrop").classList.remove("show");
