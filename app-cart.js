@@ -11,6 +11,8 @@ const CHECKOUT_ORDER_KEY = "music_store_checkout_order_v1";
 // แม้จะปิดใบเสร็จไปแล้วโดยยังไม่ได้กดติดต่อแอดมิน
 const LAST_ORDER_STORAGE_KEY = "music_store_last_order_v1";
 const BANNER_DISMISS_KEY = "music_store_banner_dismissed_v1"; // sessionStorage — ซ่อนแถบเตือนแค่ชั่วคราวต่อ session
+// เพิ่มใหม่: จำชื่อ+เบอร์โทร/WhatsApp ของลูกค้าไว้ในเครื่อง เพื่อเติมให้อัตโนมัติตอนสั่งซื้อครั้งถัดไป (ลดการกรอกซ้ำ)
+const CUSTOMER_INFO_STORAGE_KEY = "music_store_customer_info_v1";
 
 export function initCart({ state, showToast, escapeHtml, formatPrice, buildWhatsAppLink }) {
   let submitting = false;
@@ -233,6 +235,21 @@ export function initCart({ state, showToast, escapeHtml, formatPrice, buildWhats
     `;
   }
 
+  // ---- เพิ่มใหม่: จำชื่อ+เบอร์โทร/WhatsApp ของลูกค้าไว้ในเครื่อง (localStorage) เพื่อเติมฟอร์มอัตโนมัติตอนสั่งซื้อครั้งถัดไป ----
+  function saveCustomerInfo(customerName, whatsapp) {
+    try {
+      localStorage.setItem(CUSTOMER_INFO_STORAGE_KEY, JSON.stringify({ customerName, whatsapp }));
+    } catch (_) {}
+  }
+  function loadCustomerInfo() {
+    try {
+      const raw = localStorage.getItem(CUSTOMER_INFO_STORAGE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   function openCheckout() {
     if (state.cart.length === 0) {
       showToast("ยังไม่มีเพลงในตะกร้า", "error");
@@ -241,6 +258,14 @@ export function initCart({ state, showToast, escapeHtml, formatPrice, buildWhats
     renderCheckoutSummary();
     const feedback = document.getElementById("checkoutFeedback");
     if (feedback) feedback.textContent = "";
+    // เพิ่มใหม่: ถ้าเคยสั่งซื้อมาก่อนและจำชื่อ/เบอร์ไว้ในเครื่องนี้ ให้เติมให้อัตโนมัติ (เฉพาะช่องที่ลูกค้ายังไม่ได้กรอกเอง)
+    const savedInfo = loadCustomerInfo();
+    if (savedInfo) {
+      const nameInput = document.getElementById("checkoutCustomerName");
+      const whatsappInput = document.getElementById("checkoutCustomerWhatsapp");
+      if (nameInput && !nameInput.value.trim() && savedInfo.customerName) nameInput.value = savedInfo.customerName;
+      if (whatsappInput && !whatsappInput.value.trim() && savedInfo.whatsapp) whatsappInput.value = savedInfo.whatsapp;
+    }
     closeCart();
     const backdrop = document.getElementById("checkoutBackdrop");
     if (backdrop) {
@@ -760,6 +785,8 @@ export function initCart({ state, showToast, escapeHtml, formatPrice, buildWhats
     activeOrderKey = null;
     clearStoredOrderId();
     renderCart();
+    // เพิ่มใหม่: จำชื่อ+เบอร์โทรไว้ในเครื่อง เพื่อเติมฟอร์มอัตโนมัติให้ลูกค้าตอนสั่งซื้อครั้งถัดไป
+    saveCustomerInfo(customerName, whatsapp);
     if (nameInput) nameInput.value = "";
     if (whatsappInput) whatsappInput.value = "";
     setCheckoutFeedback(`บันทึก Order ${receiptNumber} สำเร็จแล้ว`, "success");
