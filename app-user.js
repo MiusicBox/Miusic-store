@@ -1,7 +1,7 @@
 // app-user.js — หน้า User: ดึงข้อมูลจาก Firestore, เล่นเพลงจาก Cloudinary โดยตรง
 // ===================================================
 import { db } from "./firebase-init.js?v=20260905-fix1";
-import { collection, getDocs, doc, getDoc, query, where } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { collection, getDocs, doc, getDoc, query, where, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { initCart } from "./app-cart.js?v=20260909-perf1";
 
 const STATE = {
@@ -970,6 +970,8 @@ function openTrackOrder() {
 function closeTrackOrder() {
   const backdrop = document.getElementById("trackOrderBackdrop");
   if (backdrop) backdrop.classList.remove("show");
+  // เพิ่มใหม่: ปิด listener เรียลไทม์ของโหมด "ออเดอร์ทั้งหมด" (ถ้ามี) กัน query ค้างหลังปิดโมดัล
+  stopTrackOrderAllListener();
 }
 
 function setTrackOrderFeedback(message, type) {
@@ -1075,6 +1077,191 @@ async function handleTrackOrderSubmit() {
     btn.textContent = "ค้นหาออเดอร์";
   }
 }
+
+// ===== เพิ่มใหม่: ดูออเดอร์ทั้งหมดของฉัน แบบเรียลไทม์ (ฝั่งลูกค้า ไม่ต้อง Login) — ไม่แตะระบบเดิมด้านบน =====
+// ใช้เบอร์โทร/WhatsApp ที่ผูกกับทุกออเดอร์อยู่แล้วเป็นตัวระบุ + เทียบชื่อคู่กันเหมือนโหมดค้นหาออเดอร์เดียว
+let trackOrderAllUnsub = null;      // เก็บฟังก์ชันยกเลิก onSnapshot listener ปัจจุบัน
+let trackOrderAllOrders = [];       // เก็บผลลัพธ์ล่าสุดไว้ใช้ตอนกดดูรายละเอียดในลิสต์
+
+function stopTrackOrderAllListener() {
+  if (trackOrderAllUnsub) {
+    try { trackOrderAllUnsub(); } catch (err) { /* เพิกเฉย ถ้ายกเลิกซ้ำ */ }
+    trackOrderAllUnsub = null;
+  }
+}
+
+function setTrackOrderAllFeedback(message, type) {
+  const el = document.getElementById("trackOrderAllFeedback");
+  if (!el) return;
+  el.textContent = message || "";
+  el.style.color = type === "success" ? "var(--success)" : "var(--danger)";
+}
+
+function switchTrackOrderMode(mode) {
+  const singleBtn = document.getElementById("trackOrderModeSingleBtn");
+  const allBtn = document.getElementById("trackOrderModeAllBtn");
+  const singleView = document.getElementById("trackOrderSingleView");
+  const allView = document.getElementById("trackOrderAllView");
+  if (!singleBtn || !allBtn || !singleView || !allView) return;
+
+  const isAll = mode === "all";
+  singleBtn.classList.toggle("active", !isAll);
+  singleBtn.setAttribute("aria-selected", String(!isAll));
+  allBtn.classList.toggle("active", isAll);
+  allBtn.setAttribute("aria-selected", String(isAll));
+  singleView.hidden = isAll;
+  allView.hidden = !isAll;
+
+  // ออกจากโหมด "ทั้งหมด" แล้ว ให้ปิด listener เรียลไทม์เพื่อไม่ให้ทำงานเปล่าๆ เบื้องหลัง
+  if (!isAll) stopTrackOrderAllListener();
+}
+
+function renderTrackOrderAllList(orders) {
+  const listEl = document.getElementById("trackOrderAllList");
+  if (!listEl) return;
+
+  if (!orders.length) {
+    listEl.innerHTML = `<div class="track-order-all-empty">ยังไม่พบออเดอร์ของคุณ</div>`;
+    listEl.hidden = false;
+    return;
+  }
+
+  listEl.innerHTML = orders.map((order, index) => {
+    const cfg = TRACK_STATUS_CONFIG[order.status] || TRACK_STATUS_CONFIG.pending_verify;
+    const dateStr = order.created_at ? new Date(order.created_at).toLocaleDateString("th-TH", { day: "2-digit", month: "2-digit", year: "numeric" }) : "";
+    return `
+      <button class="track-order-all-card" type="button" data-track-all-index="${index}">
+        <div class="track-order-all-card-top">
+          <span class="track-order-all-card-id">${escapeHtml(order.receipt_number || "")}</span>
+          <span class="track-order-all-card-status" style="color:${cfg.color};background:${cfg.bg};">${cfg.emoji} ${escapeHtml(cfg.label)}</span>
+        </div>
+        <div class="track-order-all-card-bottom">
+          <span>${escapeHtml(dateStr)}</span>
+          <span>${formatPrice(order.total)}</span>
+        </div>
+      </button>
+    `;
+  }).join("");
+  listEl.hidden = false;
+
+  listEl.querySelectorAll("[data-track-all-index]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const order = trackOrderAllOrders[Number(btn.getAttribute("data-track-all-index"))];
+      if (order) openTrackOrderAllDetail(order);
+    });
+  });
+}
+
+function openTrackOrderAllDetail(order) {
+  const listEl = document.getElementById("trackOrderAllList");
+  const detailEl = document.getElementById("trackOrderAllDetail");
+  const contentEl = document.getElementById("trackOrderAllDetailContent");
+  if (!detailEl || !contentEl) return;
+
+  const cfg = TRACK_STATUS_CONFIG[order.status] || TRACK_STATUS_CONFIG.pending_verify;
+  const items = order.items || [];
+  const itemsHtml = items.map(item => `
+    <div class="track-order-item">
+      <span class="track-order-item-name">${escapeHtml(item.title || "เพลง")}</span>
+      <span class="track-order-item-price">${formatPrice(item.price)}</span>
+    </div>
+  `).join("");
+
+  contentEl.innerHTML = `
+    <div class="track-order-status" style="color:${cfg.color};background:${cfg.bg};">${cfg.emoji} ${escapeHtml(cfg.label)}</div>
+    <div class="track-order-row"><span>เลข Order</span><strong>${escapeHtml(order.receipt_number || "")}</strong></div>
+    <div class="track-order-row"><span>ชื่อลูกค้า</span><strong>${escapeHtml(order.customer_name || "")}</strong></div>
+    <div class="track-order-row"><span>เบอร์โทร</span><strong>${escapeHtml(order.whatsapp || "")}</strong></div>
+    <div class="track-order-items">${itemsHtml}</div>
+    <div class="track-order-total"><span>ยอดรวม</span><span>${formatPrice(order.total)}</span></div>
+    <div class="track-order-actions">
+      <button class="btn" type="button" id="trackOrderAllWhatsappBtn">ติดต่อแอดมินผ่าน WhatsApp</button>
+    </div>
+  `;
+
+  if (listEl) listEl.hidden = true;
+  detailEl.hidden = false;
+
+  const waBtn = document.getElementById("trackOrderAllWhatsappBtn");
+  if (waBtn) {
+    waBtn.onclick = () => {
+      const number = STATE.settings.whatsapp_number;
+      if (!number) { showToast("ร้านยังไม่ได้ตั้งค่าเบอร์ WhatsApp", "error"); return; }
+      window.open(buildWhatsAppLink(number, buildTrackOrderWhatsAppText(order)), "_blank", "noopener");
+    };
+  }
+}
+
+function closeTrackOrderAllDetail() {
+  const listEl = document.getElementById("trackOrderAllList");
+  const detailEl = document.getElementById("trackOrderAllDetail");
+  if (detailEl) detailEl.hidden = true;
+  if (listEl) listEl.hidden = false;
+}
+
+function startTrackOrderAllListener(name, phone) {
+  stopTrackOrderAllListener();
+  const listEl = document.getElementById("trackOrderAllList");
+  const detailEl = document.getElementById("trackOrderAllDetail");
+  if (listEl) listEl.hidden = true;
+  if (detailEl) detailEl.hidden = true;
+
+  // หมายเหตุ: order.whatsapp ถูกบันทึกเป็นข้อความดิบตอน checkout (ไม่ normalize) จึง query แบบ exact-match ตรงๆ ไม่น่าเชื่อถือ
+  // (พิมพ์เว้นวรรค/ขีดต่างจากตอนสั่งซื้อ ก็จะหาไม่เจอ) ใช้วิธีเดียวกับโหมดค้นหาออเดอร์เดียว คือฟัง collection แล้วเทียบแบบ normalize ฝั่ง client แทน
+  const q = query(collection(db, "orders"));
+  trackOrderAllUnsub = onSnapshot(
+    q,
+    (snap) => {
+      const matched = snap.docs
+        .map((d) => d.data())
+        .filter((order) => normalizeName(order.customer_name) === normalizeName(name) && normalizePhone(order.whatsapp) === phone);
+      matched.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+      trackOrderAllOrders = matched;
+      setTrackOrderAllFeedback("");
+      renderTrackOrderAllList(matched);
+    },
+    (err) => {
+      setTrackOrderAllFeedback("โหลดออเดอร์ไม่สำเร็จ: " + err.message);
+    }
+  );
+}
+
+async function handleTrackOrderAllSubmit() {
+  const nameInput = document.getElementById("trackOrderAllName");
+  const phoneInput = document.getElementById("trackOrderAllPhone");
+  const btn = document.getElementById("trackOrderAllSubmitBtn");
+
+  const name = nameInput.value.trim();
+  const phoneRaw = phoneInput.value.trim();
+  const phone = normalizePhone(phoneRaw);
+
+  setTrackOrderAllFeedback("");
+  document.getElementById("trackOrderAllList").hidden = true;
+  document.getElementById("trackOrderAllDetail").hidden = true;
+
+  if (!name || !phoneRaw) {
+    setTrackOrderAllFeedback("กรุณากรอกชื่อและเบอร์โทรให้ครบ");
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = "กำลังโหลด...";
+  try {
+    startTrackOrderAllListener(name, phone);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "ดูออเดอร์ทั้งหมด";
+  }
+}
+
+const trackOrderModeSingleBtnEl = document.getElementById("trackOrderModeSingleBtn");
+if (trackOrderModeSingleBtnEl) trackOrderModeSingleBtnEl.addEventListener("click", () => switchTrackOrderMode("single"));
+const trackOrderModeAllBtnEl = document.getElementById("trackOrderModeAllBtn");
+if (trackOrderModeAllBtnEl) trackOrderModeAllBtnEl.addEventListener("click", () => switchTrackOrderMode("all"));
+const trackOrderAllSubmitBtnEl = document.getElementById("trackOrderAllSubmitBtn");
+if (trackOrderAllSubmitBtnEl) trackOrderAllSubmitBtnEl.addEventListener("click", handleTrackOrderAllSubmit);
+const trackOrderAllBackBtnEl = document.getElementById("trackOrderAllBackBtn");
+if (trackOrderAllBackBtnEl) trackOrderAllBackBtnEl.addEventListener("click", closeTrackOrderAllDetail);
 
 const trackOrderBtnEl = document.getElementById("trackOrderBtn");
 if (trackOrderBtnEl) trackOrderBtnEl.addEventListener("click", openTrackOrder);
