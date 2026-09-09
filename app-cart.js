@@ -330,29 +330,39 @@ export function initCart({ state, showToast, escapeHtml, formatPrice, buildWhats
   async function resolveCartFromDatabase() {
     const songEntries = state.cart.filter(item => item.kind !== "playlist");
     const playlistEntries = state.cart.filter(item => item.kind === "playlist");
+    const playlistIds = playlistEntries.map(item => String(item.id).replace(/^playlist:/, ""));
+
+    // ---- เพิ่มใหม่ (แก้บั๊ก 2026-09-09): อ่านข้อมูลทุกอย่างพร้อมกันด้วย Promise.all แทนการวน await ทีละรายการ ----
+    // เดิมใช้ for...of + await วนอ่านทีละเพลง/ทีละเพลย์ลิสต์เรียงกันไป ทำให้ตะกร้าที่มีหลายรายการ
+    // ยิ่งมีรายการเยอะยิ่งรอนาน (เวลารวม = ผลรวมของทุก request) โดยเฉพาะเน็ตช้า/มือถือ
+    // เปลี่ยนมายิง request ทั้งหมดพร้อมกันแทน (เวลารวม = request ที่ช้าที่สุดตัวเดียว) ผลลัพธ์/การตรวจสอบ
+    // ราคาและสถานะเพลงยังคงเหมือนเดิมทุกประการ เพียงแค่เปลี่ยนวิธีอ่านข้อมูลให้เร็วขึ้น
+    const [songSnaps, playlistSnaps, playlistSongsSnaps, settingsSnap] = await Promise.all([
+      Promise.all(songEntries.map(cartItem => getDoc(doc(db, "songs", String(cartItem.id))))),
+      Promise.all(playlistIds.map(playlistId => getDoc(doc(db, "playlists", playlistId)))),
+      Promise.all(playlistIds.map(playlistId => getDocs(query(collection(db, "songs"), where("playlist_id", "==", playlistId))))),
+      getDoc(doc(db, "settings", "main"))
+    ]);
 
     // ---- ตรวจสอบ/ดึงราคาล่าสุดของเพลงเดี่ยวที่เพิ่มเองในตะกร้า ----
-    const singleSongItems = [];
-    for (const cartItem of songEntries) {
-      const songSnap = await getDoc(doc(db, "songs", String(cartItem.id)));
+    const singleSongItems = songEntries.map((cartItem, index) => {
+      const songSnap = songSnaps[index];
       if (!songSnap.exists()) throw new Error(`ไม่พบเพลง "${cartItem.song_name}" ในฐานข้อมูล`);
       const song = songSnap.data();
       if (song.status === "hidden") throw new Error(`เพลง "${song.song_name || cartItem.song_name}" ปิดการขายแล้ว`);
       const price = Number(song.price);
       if (!Number.isFinite(price) || price < 0) throw new Error(`ราคาเพลง "${song.song_name || cartItem.song_name}" ไม่ถูกต้อง`);
-      singleSongItems.push({
+      return {
         song_id: songSnap.id,
         title: String(song.song_name || cartItem.song_name || "เพลง"),
         price,
         quantity: 1
-      });
-    }
+      };
+    });
 
     // ---- ตรวจสอบ/ดึงราคาล่าสุดของเพลย์ลิสต์แต่ละรายการในตะกร้า ----
-    const playlistResolutions = [];
-    for (const cartItem of playlistEntries) {
-      const playlistId = String(cartItem.id).replace(/^playlist:/, "");
-      const playlistSnap = await getDoc(doc(db, "playlists", playlistId));
+    const playlistResolutions = playlistEntries.map((cartItem, index) => {
+      const playlistSnap = playlistSnaps[index];
       if (!playlistSnap.exists()) throw new Error(`ไม่พบเพลย์ลิสต์ "${cartItem.song_name}" ในฐานข้อมูล`);
       const playlist = { id: playlistSnap.id, ...playlistSnap.data() };
       const playlistPrice = Number(playlist.price);
@@ -360,9 +370,8 @@ export function initCart({ state, showToast, escapeHtml, formatPrice, buildWhats
         throw new Error(`เพลย์ลิสต์ "${playlist.playlist_name || cartItem.song_name}" ยังไม่มีราคาขาย`);
       }
 
-      const songsSnap = await getDocs(query(collection(db, "songs"), where("playlist_id", "==", playlistId)));
       const activeSongs = [];
-      songsSnap.docs.forEach(songDoc => {
+      playlistSongsSnaps[index].docs.forEach(songDoc => {
         const song = songDoc.data();
         if (song.status === "hidden") return;
         activeSongs.push({
@@ -374,10 +383,10 @@ export function initCart({ state, showToast, escapeHtml, formatPrice, buildWhats
       if (activeSongs.length === 0) {
         throw new Error(`เพลย์ลิสต์ "${playlist.playlist_name || cartItem.song_name}" ยังไม่มีเพลงที่เปิดขาย`);
       }
-      playlistResolutions.push({ playlist, songs: activeSongs });
-    }
+      return { playlist, songs: activeSongs };
+    });
 
-    const settingsSnap = await getDoc(doc(db, "settings", "main"));
+
     const settings = settingsSnap.exists() ? settingsSnap.data() : {};
 
     // ===== กรณีเดิม (1): มีเพลย์ลิสต์เดียวล้วนๆ ไม่มีเพลงเดี่ยวปน — คงพฤติกรรมเดิมทุกประการ =====
@@ -693,33 +702,48 @@ export function initCart({ state, showToast, escapeHtml, formatPrice, buildWhats
       // จึงเปลี่ยนมาอ่านแบบธรรมดาก่อน แล้วค่อยเขียนทีเดียวด้วย setDoc() แทน ผลลัพธ์ทางธุรกิจเหมือนเดิม
       // ทุกประการ เพียงไม่การันตี atomicity ระดับ transaction (ยอมรับได้ เพราะทุก Order มีสถานะ
       // "รอตรวจสอบการโอน" ให้แอดมินเช็คมืออยู่แล้ว)
-      const resolved = await resolveCartFromDatabase();
-      resolvedSettings = resolved.settings || {};
 
-      const builtOrder = {
-        customer_name: customerName,
-        whatsapp,
-        items: resolved.items, // Order Items ทั้งหมดของตะกร้า ณ ขณะสั่งซื้อ
-        total: resolved.total,
-        order_type: resolved.orderType, // "single" | "playlist" | "mixed"
-        playlist_id: resolved.orderType === "playlist" ? (resolved.playlist?.id || null) : null,
-        playlist_name: resolved.orderType === "playlist" ? (resolved.playlist?.playlist_name || null) : null,
-        store_name: resolved.settings.website_name || "Music Store",
-        status: "pending_verify",
-        created_at: createdAt,
-        receipt_number: receiptNumber
-      };
-      // playlist_ids เป็นฟิลด์เสริมสำหรับ Order แบบผสม (เพลง+เพลย์ลิสต์ หรือหลายเพลย์ลิสต์) เท่านั้น
-      // ระบบเดิม (resolveOrderSongs ใน orders.js) อ่านฟิลด์นี้อยู่แล้วสำหรับสร้าง ZIP ดาวน์โหลด จึงไม่ต้องแก้ไฟล์นั้นเพิ่ม
-      if (resolved.orderType === "mixed") {
-        builtOrder.playlist_ids = resolved.playlistIds;
-      }
+      // ---- เพิ่มใหม่ (แก้บั๊ก 2026-09-09): ใส่ timeout กันปุ่มค้าง "กำลังตรวจสอบและบันทึก..." ตลอดไป ----
+      // ถ้าเน็ตหลุด/Firestore ไม่ตอบภายในเวลาที่กำหนด ให้แจ้งลูกค้าและปลดล็อกปุ่มให้กดลองใหม่ได้
+      // แทนที่จะปล่อยให้ปุ่มค้างเฉยๆ แบบไม่มีข้อความ (งานเดิม resolveCartFromDatabase/setDoc ไม่ถูกยกเลิก
+      // อาจยังทำงานต่อในเบื้องหลัง แต่เนื่องจาก orderRef.id คงที่ต่อ checkoutKey เดิม การเขียนซ้ำภายหลัง
+      // จะเขียนทับ Order เดิมด้วยข้อมูลเดียวกัน ไม่ทำให้เกิด Order ซ้ำซ้อน)
+      const TIMEOUT_MS = 20000;
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error("เชื่อมต่อช้ากว่าปกติ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่อีกครั้ง")), TIMEOUT_MS);
+      });
 
-      await setDoc(orderRef, builtOrder);
-      order = builtOrder;
+      const mainTask = (async () => {
+        const resolved = await resolveCartFromDatabase();
+        resolvedSettings = resolved.settings || {};
+
+        const builtOrder = {
+          customer_name: customerName,
+          whatsapp,
+          items: resolved.items, // Order Items ทั้งหมดของตะกร้า ณ ขณะสั่งซื้อ
+          total: resolved.total,
+          order_type: resolved.orderType, // "single" | "playlist" | "mixed"
+          playlist_id: resolved.orderType === "playlist" ? (resolved.playlist?.id || null) : null,
+          playlist_name: resolved.orderType === "playlist" ? (resolved.playlist?.playlist_name || null) : null,
+          store_name: resolved.settings.website_name || "Music Store",
+          status: "pending_verify",
+          created_at: createdAt,
+          receipt_number: receiptNumber
+        };
+        // playlist_ids เป็นฟิลด์เสริมสำหรับ Order แบบผสม (เพลง+เพลย์ลิสต์ หรือหลายเพลย์ลิสต์) เท่านั้น
+        // ระบบเดิม (resolveOrderSongs ใน orders.js) อ่านฟิลด์นี้อยู่แล้วสำหรับสร้าง ZIP ดาวน์โหลด จึงไม่ต้องแก้ไฟล์นั้นเพิ่ม
+        if (resolved.orderType === "mixed") {
+          builtOrder.playlist_ids = resolved.playlistIds;
+        }
+
+        await setDoc(orderRef, builtOrder);
+        return builtOrder;
+      })();
+
+      order = await Promise.race([mainTask, timeoutPromise]);
     } catch (err) {
       console.error("checkoutCart error:", err);
-      setCheckoutFeedback("บันทึก Order ไม่สำเร็จ: " + (err?.message || err));
+      setCheckoutFeedback(err?.message || "บันทึก Order ไม่สำเร็จ กรุณาลองใหม่");
       submitting = false;
       if (btn) { btn.disabled = false; btn.textContent = "ยืนยันสั่งซื้อ"; }
       return;
