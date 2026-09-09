@@ -7,6 +7,10 @@ import {
 
 const CART_STORAGE_KEY = "music_store_cart_v1";
 const CHECKOUT_ORDER_KEY = "music_store_checkout_order_v1";
+// เพิ่มใหม่: จำออเดอร์ล่าสุดของลูกค้าไว้ในเครื่อง เพื่อให้กลับมาดูใบเสร็จ/แจ้งแอดมินซ้ำได้
+// แม้จะปิดใบเสร็จไปแล้วโดยยังไม่ได้กดติดต่อแอดมิน
+const LAST_ORDER_STORAGE_KEY = "music_store_last_order_v1";
+const BANNER_DISMISS_KEY = "music_store_banner_dismissed_v1"; // sessionStorage — ซ่อนแถบเตือนแค่ชั่วคราวต่อ session
 
 export function initCart({ state, showToast, escapeHtml, formatPrice, buildWhatsAppLink }) {
   let submitting = false;
@@ -52,6 +56,7 @@ export function initCart({ state, showToast, escapeHtml, formatPrice, buildWhats
       try { localStorage.removeItem(CART_STORAGE_KEY); } catch (__) {}
     }
     renderCart();
+    renderPendingOrderBanner(); // เพิ่มใหม่: เช็คตอนโหลดหน้าว่ามีออเดอร์ค้างแจ้งแอดมินไหม
   }
 
   function saveCart() {
@@ -466,6 +471,62 @@ export function initCart({ state, showToast, escapeHtml, formatPrice, buildWhats
   // ===== เพิ่มใหม่: ใบเสร็จหลังสั่งซื้อสำเร็จ (ฝั่งลูกค้า) — โครงหน้าเดียวกับใบเสร็จฝั่งแอดมิน =====
   // ปุ่ม WhatsApp บนใบเสร็จนี้ถูกปรับให้เป็น "ติดต่อแอดมินเพื่อชำระเงิน" (ไม่ใช่ส่งใบเสร็จหาเบอร์ลูกค้าแบบฝั่งแอดมิน)
   // และสร้างข้อความอัตโนมัติด้วย buildAdminWhatsAppText เดิมที่มีอยู่แล้วด้านบน (ใช้ซ้ำ ไม่สร้างข้อความใหม่)
+  // ===== เพิ่มใหม่: จำออเดอร์ล่าสุด + แถบเตือน "ยังไม่ได้แจ้งแอดมิน" =====
+  let receiptContacted = false; // สถานะของใบเสร็จที่กำลังเปิดอยู่ ณ ขณะนี้ — ใช้เช็คก่อนปิด
+
+  function saveLastOrderRecord(order, receiptNumber) {
+    try {
+      localStorage.setItem(LAST_ORDER_STORAGE_KEY, JSON.stringify({ order, receiptNumber, contacted: false }));
+      sessionStorage.removeItem(BANNER_DISMISS_KEY); // ออเดอร์ใหม่ ให้แถบเตือนกลับมาแสดงได้อีกครั้งถ้าจำเป็น
+    } catch (_) {}
+  }
+
+  function getLastOrderRecord() {
+    try {
+      const raw = localStorage.getItem(LAST_ORDER_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : null;
+      if (!parsed || !parsed.order || !parsed.receiptNumber) return null;
+      return parsed;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function markLastOrderContacted() {
+    const record = getLastOrderRecord();
+    if (!record) return;
+    try {
+      localStorage.setItem(LAST_ORDER_STORAGE_KEY, JSON.stringify({ ...record, contacted: true }));
+    } catch (_) {}
+    receiptContacted = true;
+    renderPendingOrderBanner();
+  }
+
+  function renderPendingOrderBanner() {
+    const banner = document.getElementById("pendingOrderBanner");
+    if (!banner) return;
+    const record = getLastOrderRecord();
+    const dismissed = sessionStorage.getItem(BANNER_DISMISS_KEY) === "1";
+    const shouldShow = !!record && !record.contacted && !dismissed;
+    banner.hidden = !shouldShow;
+  }
+
+  function attemptCloseReceipt() {
+    if (!receiptContacted) {
+      const confirmed = window.confirm("คุณยังไม่ได้กดแจ้งแอดมินเพื่อชำระเงิน หากปิดตอนนี้ แอดมินจะยังไม่เห็นออเดอร์ของคุณ ต้องการปิดหรือไม่?");
+      if (!confirmed) return;
+    }
+    closeReceipt();
+    renderPendingOrderBanner();
+  }
+
+  function closeReceipt() {
+    const backdrop = document.getElementById("receiptBackdrop");
+    if (!backdrop) return;
+    backdrop.classList.remove("show");
+    backdrop.setAttribute("aria-hidden", "true");
+  }
+
   function buildReceiptItemRows(order) {
     const items = order.items || [];
     if (order.order_type === "playlist") {
@@ -542,14 +603,8 @@ export function initCart({ state, showToast, escapeHtml, formatPrice, buildWhats
     }
   }
 
-  function closeReceipt() {
-    const backdrop = document.getElementById("receiptBackdrop");
-    if (!backdrop) return;
-    backdrop.classList.remove("show");
-    backdrop.setAttribute("aria-hidden", "true");
-  }
-
-  function showReceipt(order, receiptNumber, adminWhatsappNumber) {
+  function showReceipt(order, receiptNumber, adminWhatsappNumber, alreadyContacted) {
+    receiptContacted = !!alreadyContacted;
     const date = order.created_at ? new Date(order.created_at) : new Date();
     const dateText = Number.isNaN(date.getTime())
       ? "-"
@@ -584,14 +639,17 @@ export function initCart({ state, showToast, escapeHtml, formatPrice, buildWhats
     const waBtn = document.getElementById("receiptWhatsAppBtn");
     if (waBtn) {
       waBtn.onclick = () => {
-        const number = String(adminWhatsappNumber || "").replace(/[^0-9]/g, "");
+        const number = String(adminWhatsappNumber || state.settings?.whatsapp_number || "").replace(/[^0-9]/g, "");
         if (!number) { showToast("ร้านยังไม่ได้ตั้งค่าเบอร์ WhatsApp", "error"); return; }
         const text = buildAdminWhatsAppText(order, receiptNumber, order.store_name);
         window.open(buildWhatsAppLink(number, text), "_blank", "noopener");
+        markLastOrderContacted();
       };
     }
     const downloadBtn = document.getElementById("receiptDownloadImgBtn");
     if (downloadBtn) downloadBtn.onclick = () => downloadReceiptAsImage(receiptNumber);
+
+    renderPendingOrderBanner();
   }
 
   async function checkoutCart() {
@@ -687,6 +745,7 @@ export function initCart({ state, showToast, escapeHtml, formatPrice, buildWhats
 
     // เดิม: เปิด WhatsApp หาแอดมินอัตโนมัติทันที — เปลี่ยนเป็นแสดงใบเสร็จก่อน แล้วให้ลูกค้ากดปุ่มเองเพื่อติดต่อแอดมิน
     closeCheckout();
+    saveLastOrderRecord(order, receiptNumber);
     showReceipt(order, receiptNumber, resolvedSettings.whatsapp_number);
   }
 
@@ -730,10 +789,20 @@ export function initCart({ state, showToast, escapeHtml, formatPrice, buildWhats
     });
     document.getElementById("checkoutCartBtn")?.addEventListener("click", openCheckout);
     document.getElementById("submitCartOrderBtn")?.addEventListener("click", checkoutCart);
-    // เพิ่มใหม่: ปิด popup ใบเสร็จ
-    document.getElementById("receiptClose")?.addEventListener("click", closeReceipt);
+    // เพิ่มใหม่: ปิด popup ใบเสร็จ (เตือนก่อนถ้ายังไม่ได้แจ้งแอดมิน)
+    document.getElementById("receiptClose")?.addEventListener("click", attemptCloseReceipt);
     document.getElementById("receiptBackdrop")?.addEventListener("click", event => {
-      if (event.target === event.currentTarget) closeReceipt();
+      if (event.target === event.currentTarget) attemptCloseReceipt();
+    });
+    // เพิ่มใหม่: แถบเตือนออเดอร์ค้างแจ้งแอดมิน
+    document.getElementById("pendingOrderBannerBtn")?.addEventListener("click", () => {
+      const record = getLastOrderRecord();
+      if (!record) { renderPendingOrderBanner(); return; }
+      showReceipt(record.order, record.receiptNumber, state.settings?.whatsapp_number, record.contacted);
+    });
+    document.getElementById("pendingOrderBannerDismiss")?.addEventListener("click", () => {
+      try { sessionStorage.setItem(BANNER_DISMISS_KEY, "1"); } catch (_) {}
+      renderPendingOrderBanner();
     });
   }
 
@@ -744,6 +813,8 @@ export function initCart({ state, showToast, escapeHtml, formatPrice, buildWhats
     renderCart,
     openCart,
     closeCart,
-    checkoutCart
+    checkoutCart,
+    getLastOrderRecord,
+    showReceipt
   };
 }
