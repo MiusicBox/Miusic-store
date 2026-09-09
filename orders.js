@@ -282,6 +282,7 @@ const state = {
   cartEntries: [],
   allOrders: [],      // แคชออเดอร์ล่าสุดที่โหลดมา (ใช้กรองสถานะโดยไม่ต้องโหลดซ้ำ)
   historyFilter: "all", // สถานะที่กำลังกรองดูในประวัติออเดอร์
+  historySearch: "",    // คำค้นหาในประวัติออเดอร์ (ค้นจาก ชื่อลูกค้า/เบอร์/ชื่อเพลง/เพลย์ลิสต์/เลขออเดอร์/ชื่อ ZIP)
   listenersBound: false, // กันการผูก event ซ้ำเมื่อเปิดหน้านี้หลายครั้ง
 
   playlistSearchResults: [],
@@ -711,15 +712,49 @@ function renderFilterPills() {
   });
 }
 
+/* ---------------- ค้นหาในประวัติออเดอร์ ----------------
+   ค้นหาจากข้อมูลออเดอร์จริงที่โหลดมาแล้ว (state.allOrders)
+   รองรับหลายคำ (คั่นด้วย space = AND match) แบบ case-insensitive
+   ครอบคลุม: ชื่อลูกค้า, เบอร์ WhatsApp, ชื่อเพลง (ทุกรายการใน items),
+            ชื่อเพลย์ลิสต์, เลขออเดอร์ (id), ชื่อไฟล์ ZIP
+   ทำงานร่วมกับ status filter — กรองทั้งสองเงื่อนไขไปด้วยกัน */
+function orderMatchesSearch(order, keywords) {
+  if (!keywords || keywords.length === 0) return true;
+  const haystack = [
+    order.customer_name,
+    order.whatsapp,
+    order.id,
+    order.playlist_name,
+    order.zip_file_name,
+    (order.items || []).map((it) => it.title).join(" "),
+  ].map((v) => (v == null ? "" : String(v))).join(" ").toLowerCase();
+  return keywords.every((kw) => haystack.indexOf(kw) !== -1);
+}
+
+function handleHistorySearchInput(e) {
+  const raw = (e.target.value || "").trim().toLowerCase();
+  state.historySearch = raw;
+  renderHistory();
+}
+
 /* ---------------- Render: ประวัติออเดอร์ ---------------- */
 function renderHistory() {
   const wrap = document.getElementById("ordHistoryList");
-  const orders = state.historyFilter === "all"
-    ? state.allOrders
-    : state.allOrders.filter((o) => o.status === state.historyFilter);
+  const keywords = (state.historySearch || "")
+    .split(/\s+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+
+  // กรองทั้งสถานะ (historyFilter) และคำค้นหา (historySearch) ไปด้วยกัน — flow เข้ากัน
+  const orders = state.allOrders.filter((o) => {
+    const passStatus = state.historyFilter === "all" ? true : o.status === state.historyFilter;
+    if (!passStatus) return false;
+    return orderMatchesSearch(o, keywords);
+  });
 
   if (orders.length === 0) {
-    wrap.innerHTML = `<div class="empty-state">ไม่พบออเดอร์ในสถานะนี้</div>`;
+    const hasSearch = keywords.length > 0;
+    wrap.innerHTML = `<div class="empty-state">${hasSearch ? "ไม่พบออเดอร์ที่ตรงกับคำค้นหา" : "ไม่พบออเดอร์ในสถานะนี้"}</div>`;
     return;
   }
   wrap.innerHTML = orders.map((o) => {
@@ -1660,6 +1695,21 @@ export async function initOrdersView() {
     document.getElementById("ordSubmitBtn").addEventListener("click", handleSubmitOrder);
     document.getElementById("ordPlaylistSearch").addEventListener("input", debounce(handlePlaylistSearchInput, 200));
 
+    // ---- ค้นหาในประวัติออเดอร์ (เพิ่มใหม่ — ไม่กระทบระบบเดิม) ----
+    const ordHistorySearchEl = document.getElementById("ordHistorySearch");
+    if (ordHistorySearchEl) {
+      ordHistorySearchEl.addEventListener("input", debounce(handleHistorySearchInput, 200));
+    }
+    const ordHistorySearchClearEl = document.getElementById("ordHistorySearchClear");
+    if (ordHistorySearchClearEl) {
+      ordHistorySearchClearEl.addEventListener("click", () => {
+        state.historySearch = "";
+        const inp = document.getElementById("ordHistorySearch");
+        if (inp) inp.value = "";
+        renderHistory();
+      });
+    }
+
     // ปุ่ม/ช่องค้นหาของ modal แก้ไขออเดอร์
     document.getElementById("eOrderSongSearch").addEventListener("input", debounce(handleEditSearchInput, 200));
     document.getElementById("eOrderSaveBtn").addEventListener("click", handleUpdateOrder);
@@ -1691,6 +1741,10 @@ export async function initOrdersView() {
   document.getElementById("ordSongSearch").value = "";
   document.getElementById("ordPlaylistSearch").value = "";
   document.getElementById("ordFormFeedback").textContent = "";
+  // รีเซ็ตการค้นหาในประวัติออเดอร์ (เพิ่มใหม่ — กันค่าค้างจาก session ก่อน)
+  state.historySearch = "";
+  const ordHistorySearchInput = document.getElementById("ordHistorySearch");
+  if (ordHistorySearchInput) ordHistorySearchInput.value = "";
   renderCart();
   renderSearchResults();
   renderPlaylistSelected();
