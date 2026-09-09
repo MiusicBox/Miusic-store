@@ -1,7 +1,7 @@
 // app-user.js — หน้า User: ดึงข้อมูลจาก Firestore, เล่นเพลงจาก Cloudinary โดยตรง
 // ===================================================
 import { db } from "./firebase-init.js?v=20260905-fix1";
-import { collection, getDocs, doc, getDoc, query, where, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { collection, getDocs, doc, getDoc, query, where, onSnapshot, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { initCart } from "./app-cart.js?v=20260909-friendlyerr1";
 
 const STATE = {
@@ -1026,6 +1026,28 @@ function buildTrackOrderWhatsAppText(order) {
   ].join("\n");
 }
 
+// ---- เพิ่มใหม่: ลูกค้าลบออเดอร์ของตัวเองได้ (เฉพาะสถานะ "รอตรวจสอบการโอน" กันลบออเดอร์ที่แอดมินเริ่มดำเนินการแล้ว) ----
+function canCustomerDeleteOrder(order) {
+  return !!order && order.status === "pending_verify";
+}
+
+async function handleCustomerDeleteOrder(order, onDeleted) {
+  if (!order || !order._docId) {
+    showToast("ไม่พบข้อมูลออเดอร์นี้ กรุณาลองใหม่", "error");
+    return;
+  }
+  const confirmed = window.confirm(`ต้องการลบ Order ${order.receipt_number || ""} ใช่หรือไม่? เมื่อลบแล้วจะไม่สามารถกู้คืนได้`);
+  if (!confirmed) return;
+  try {
+    await deleteDoc(doc(db, "orders", order._docId));
+    showToast("ลบออเดอร์เรียบร้อยแล้ว", "success");
+    if (typeof onDeleted === "function") onDeleted();
+  } catch (err) {
+    console.error("handleCustomerDeleteOrder error:", err);
+    showToast(getFriendlyErrorMessage(err), "error");
+  }
+}
+
 function renderTrackOrderResult(order) {
   const resultEl = document.getElementById("trackOrderResult");
   if (!resultEl) return;
@@ -1048,6 +1070,7 @@ function renderTrackOrderResult(order) {
     <div class="track-order-total"><span>ยอดรวม</span><span>${formatPrice(order.total)}</span></div>
     <div class="track-order-actions">
       <button class="btn" type="button" id="trackOrderWhatsappBtn">ติดต่อแอดมินผ่าน WhatsApp</button>
+      ${canCustomerDeleteOrder(order) ? `<button class="btn danger" type="button" id="trackOrderDeleteBtn">ลบออเดอร์นี้</button>` : ""}
     </div>
   `;
   resultEl.hidden = false;
@@ -1058,6 +1081,16 @@ function renderTrackOrderResult(order) {
       const number = STATE.settings.whatsapp_number;
       if (!number) { showToast("ร้านยังไม่ได้ตั้งค่าเบอร์ WhatsApp", "error"); return; }
       window.open(buildWhatsAppLink(number, buildTrackOrderWhatsAppText(order)), "_blank", "noopener");
+    };
+  }
+
+  const deleteBtn = document.getElementById("trackOrderDeleteBtn");
+  if (deleteBtn) {
+    deleteBtn.onclick = () => {
+      handleCustomerDeleteOrder(order, () => {
+        resultEl.hidden = true;
+        resultEl.innerHTML = "";
+      });
     };
   }
 }
@@ -1099,7 +1132,7 @@ async function handleTrackOrderSubmit() {
       setTrackOrderFeedback("ไม่พบออเดอร์นี้ กรุณาตรวจสอบเลข Order อีกครั้ง");
       return;
     }
-    const order = snap.docs[0].data();
+    const order = { ...snap.docs[0].data(), _docId: snap.docs[0].id };
     const nameMatches = normalizeName(order.customer_name) === normalizeName(name);
     const phoneMatches = normalizePhone(order.whatsapp) === normalizePhone(phone);
     if (!nameMatches || !phoneMatches) {
@@ -1220,6 +1253,7 @@ function openTrackOrderAllDetail(order) {
     <div class="track-order-total"><span>ยอดรวม</span><span>${formatPrice(order.total)}</span></div>
     <div class="track-order-actions">
       <button class="btn" type="button" id="trackOrderAllWhatsappBtn">ติดต่อแอดมินผ่าน WhatsApp</button>
+      ${canCustomerDeleteOrder(order) ? `<button class="btn danger" type="button" id="trackOrderAllDeleteBtn">ลบออเดอร์นี้</button>` : ""}
     </div>
   `;
 
@@ -1232,6 +1266,16 @@ function openTrackOrderAllDetail(order) {
       const number = STATE.settings.whatsapp_number;
       if (!number) { showToast("ร้านยังไม่ได้ตั้งค่าเบอร์ WhatsApp", "error"); return; }
       window.open(buildWhatsAppLink(number, buildTrackOrderWhatsAppText(order)), "_blank", "noopener");
+    };
+  }
+
+  const deleteBtn = document.getElementById("trackOrderAllDeleteBtn");
+  if (deleteBtn) {
+    deleteBtn.onclick = () => {
+      // เพิ่มใหม่: ลบแล้วปิดหน้า detail กลับไปที่ลิสต์ — listener เรียลไทม์ (onSnapshot) จะอัปเดตลิสต์ให้เองอัตโนมัติ
+      handleCustomerDeleteOrder(order, () => {
+        closeTrackOrderAllDetail();
+      });
     };
   }
 }
@@ -1268,7 +1312,7 @@ function startTrackOrderAllListener(name, phone) {
       clearTimeout(trackOrderAllSlowTimer);
       trackOrderAllSlowTimer = null;
       const matched = snap.docs
-        .map((d) => d.data())
+        .map((d) => ({ ...d.data(), _docId: d.id }))
         .filter((order) => normalizeName(order.customer_name) === normalizeName(name) && normalizePhone(order.whatsapp) === phone);
       matched.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
       trackOrderAllOrders = matched;
