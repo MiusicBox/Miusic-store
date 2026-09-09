@@ -2,7 +2,7 @@
 // ===================================================
 import { db } from "./firebase-init.js?v=20260905-fix1";
 import { collection, getDocs, doc, getDoc, query, where, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import { initCart } from "./app-cart.js?v=20260909-remembercustomer1";
+import { initCart } from "./app-cart.js?v=20260909-friendlyerr1";
 
 const STATE = {
   songs: [], categories: [], djs: [], playlists: [], settings: {},
@@ -945,6 +945,35 @@ document.querySelectorAll(".bottom-nav button").forEach(btn => {
 function normalizePhone(v) { return String(v || "").replace(/[^0-9]/g, ""); }
 function normalizeName(v) { return String(v || "").trim().toLowerCase(); }
 
+// เพิ่มใหม่: แปล error ดิบจาก Firebase/เน็ตให้เป็นข้อความที่ลูกค้าอ่านเข้าใจ (แทนที่จะโชว์ err.message ภาษาอังกฤษดิบๆ)
+function getFriendlyErrorMessage(err) {
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    return "ไม่มีสัญญาณอินเทอร์เน็ต กรุณาตรวจสอบการเชื่อมต่อแล้วลองใหม่อีกครั้ง";
+  }
+  const code = String(err?.code || "");
+  if (code.includes("unavailable") || code.includes("deadline-exceeded") || err?.name === "TrackOrderTimeout") {
+    return "เชื่อมต่อระบบช้ากว่าปกติ (อินเทอร์เน็ตอาจช้าหรือหลุด) กรุณาลองใหม่อีกครั้ง";
+  }
+  if (code.includes("permission-denied")) {
+    return "ระบบขัดข้อง ไม่สามารถเข้าถึงข้อมูลได้ในขณะนี้ กรุณาลองใหม่ภายหลัง";
+  }
+  return "ระบบขัดข้องชั่วคราว กรุณาลองใหม่อีกครั้ง";
+}
+
+// เพิ่มใหม่: ครอบ promise ด้วย timeout กันปุ่มค้าง "กำลังค้นหา..." ตลอดไปเวลาเน็ตช้า/หลุดกลางทาง
+function withTimeout(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      setTimeout(() => {
+        const err = new Error("เชื่อมต่อช้ากว่าปกติ");
+        err.name = "TrackOrderTimeout";
+        reject(err);
+      }, ms);
+    })
+  ]);
+}
+
 function openTrackOrder() {
   const backdrop = document.getElementById("trackOrderBackdrop");
   if (backdrop) backdrop.classList.add("show");
@@ -1052,11 +1081,20 @@ async function handleTrackOrderSubmit() {
     return;
   }
 
+  // เพิ่มใหม่: เช็คเน็ตก่อนยิง request กันลูกค้ารอเปล่าๆ ตอนไม่มีสัญญาณ
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    setTrackOrderFeedback("ไม่มีสัญญาณอินเทอร์เน็ต กรุณาตรวจสอบการเชื่อมต่อแล้วลองใหม่อีกครั้ง");
+    return;
+  }
+
   btn.disabled = true;
   btn.textContent = "กำลังค้นหา...";
 
   try {
-    const snap = await getDocs(query(collection(db, "orders"), where("receipt_number", "==", orderId)));
+    const snap = await withTimeout(
+      getDocs(query(collection(db, "orders"), where("receipt_number", "==", orderId))),
+      15000
+    );
     if (snap.empty) {
       setTrackOrderFeedback("ไม่พบออเดอร์นี้ กรุณาตรวจสอบเลข Order อีกครั้ง");
       return;
@@ -1071,7 +1109,8 @@ async function handleTrackOrderSubmit() {
     setTrackOrderFeedback("");
     renderTrackOrderResult(order);
   } catch (err) {
-    setTrackOrderFeedback("ค้นหาไม่สำเร็จ: " + err.message);
+    console.error("handleTrackOrderSubmit error:", err);
+    setTrackOrderFeedback(getFriendlyErrorMessage(err));
   } finally {
     btn.disabled = false;
     btn.textContent = "ค้นหาออเดอร์";
@@ -1082,11 +1121,16 @@ async function handleTrackOrderSubmit() {
 // ใช้เบอร์โทร/WhatsApp ที่ผูกกับทุกออเดอร์อยู่แล้วเป็นตัวระบุ + เทียบชื่อคู่กันเหมือนโหมดค้นหาออเดอร์เดียว
 let trackOrderAllUnsub = null;      // เก็บฟังก์ชันยกเลิก onSnapshot listener ปัจจุบัน
 let trackOrderAllOrders = [];       // เก็บผลลัพธ์ล่าสุดไว้ใช้ตอนกดดูรายละเอียดในลิสต์
+let trackOrderAllSlowTimer = null;  // เพิ่มใหม่: ตัวจับเวลาแจ้งเตือน "เน็ตช้า" ของ listener ปัจจุบัน
 
 function stopTrackOrderAllListener() {
   if (trackOrderAllUnsub) {
     try { trackOrderAllUnsub(); } catch (err) { /* เพิกเฉย ถ้ายกเลิกซ้ำ */ }
     trackOrderAllUnsub = null;
+  }
+  if (trackOrderAllSlowTimer) {
+    clearTimeout(trackOrderAllSlowTimer);
+    trackOrderAllSlowTimer = null;
   }
 }
 
@@ -1206,12 +1250,23 @@ function startTrackOrderAllListener(name, phone) {
   if (listEl) listEl.hidden = true;
   if (detailEl) detailEl.hidden = true;
 
+  // เพิ่มใหม่: ถ้ายังไม่ได้รับข้อมูล snapshot แรกภายในเวลาที่กำหนด แจ้งลูกค้าว่าเน็ตช้า (ยังฟังต่อเบื้องหลัง ไม่ยกเลิก)
+  let firstSnapshotReceived = false;
+  trackOrderAllSlowTimer = setTimeout(() => {
+    if (!firstSnapshotReceived) {
+      setTrackOrderAllFeedback("เชื่อมต่อระบบช้ากว่าปกติ กรุณาตรวจสอบอินเทอร์เน็ต (ระบบกำลังลองเชื่อมต่ออยู่)", "error");
+    }
+  }, 15000);
+
   // หมายเหตุ: order.whatsapp ถูกบันทึกเป็นข้อความดิบตอน checkout (ไม่ normalize) จึง query แบบ exact-match ตรงๆ ไม่น่าเชื่อถือ
   // (พิมพ์เว้นวรรค/ขีดต่างจากตอนสั่งซื้อ ก็จะหาไม่เจอ) ใช้วิธีเดียวกับโหมดค้นหาออเดอร์เดียว คือฟัง collection แล้วเทียบแบบ normalize ฝั่ง client แทน
   const q = query(collection(db, "orders"));
   trackOrderAllUnsub = onSnapshot(
     q,
     (snap) => {
+      firstSnapshotReceived = true;
+      clearTimeout(trackOrderAllSlowTimer);
+      trackOrderAllSlowTimer = null;
       const matched = snap.docs
         .map((d) => d.data())
         .filter((order) => normalizeName(order.customer_name) === normalizeName(name) && normalizePhone(order.whatsapp) === phone);
@@ -1221,7 +1276,11 @@ function startTrackOrderAllListener(name, phone) {
       renderTrackOrderAllList(matched);
     },
     (err) => {
-      setTrackOrderAllFeedback("โหลดออเดอร์ไม่สำเร็จ: " + err.message);
+      firstSnapshotReceived = true;
+      clearTimeout(trackOrderAllSlowTimer);
+      trackOrderAllSlowTimer = null;
+      console.error("startTrackOrderAllListener error:", err);
+      setTrackOrderAllFeedback(getFriendlyErrorMessage(err));
     }
   );
 }
@@ -1238,6 +1297,12 @@ async function handleTrackOrderAllSubmit() {
   setTrackOrderAllFeedback("");
   document.getElementById("trackOrderAllList").hidden = true;
   document.getElementById("trackOrderAllDetail").hidden = true;
+
+  // เพิ่มใหม่: เช็คเน็ตก่อนเริ่มฟัง realtime กันลูกค้ารอเปล่าๆ ตอนไม่มีสัญญาณ
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    setTrackOrderAllFeedback("ไม่มีสัญญาณอินเทอร์เน็ต กรุณาตรวจสอบการเชื่อมต่อแล้วลองใหม่อีกครั้ง");
+    return;
+  }
 
   if (!name || !phoneRaw) {
     setTrackOrderAllFeedback("กรุณากรอกชื่อและเบอร์โทรให้ครบ");
