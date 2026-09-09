@@ -2,10 +2,16 @@
 // ===================================================
 import { db } from "./firebase-init.js?v=20260905-fix1";
 import { collection, getDocs, doc, getDoc, query, where, onSnapshot, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import { initCart } from "./app-cart.js?v=20260909-friendlyerr1";
+import { initCart } from "./app-cart.js?v=20261101-promo1";
+// ===== ลดราคา + โปรโมชั่น + ออเดอร์ของฉัน (ระบบใหม่ — รวมในไฟล์เดียว app-promotion.js) =====
+import {
+  fetchActiveDiscounts, applyDiscountToPrice, findActiveDiscountFor,
+  initMyOrdersView, cleanupMyOrdersView
+} from "./app-promotion.js?v=20261101-promo1";
 
 const STATE = {
   songs: [], categories: [], djs: [], playlists: [], settings: {},
+  discounts: [],  // ← ลดราคาที่ active อยู่ตอนนี้ (โหลดครั้งเดียวตอน init)
   currentCategory: "all", currentDj: null, search: "",
   currentView: "home",
   currentPlayingId: null,   // id ของเพลงที่กำลังเล่น/พักอยู่ในเครื่องเล่น
@@ -30,6 +36,44 @@ function escapeHtml(str) {
 }
 
 function formatPrice(v) { return Number(v || 0).toLocaleString("en-US") + " LAK"; }
+
+// ===== เพิ่มใหม่: helper สำหรับแสดงราคาลด — ใช้แทน formatPrice ในจุดที่ต้องการแสดงส่วนลด =====
+// ทำงานร่วมกับ STATE.discounts (โหลดตอน init) — หา discount ของเพลง/เพลย์ลิสต์ แล้ว render
+// ราคาปกติ (ขีดฆ่า) + ราคาลด (เน้นสี) ถ้ามี discount active
+// ถ้าไม่มี discount → แสดงราคาปกติเหมือนเดิม (back-compat)
+function renderDiscountedPriceForSong(song) {
+  if (!song) return formatPrice(0);
+  const original = Number(song.price) || 0;
+  const discount = findActiveDiscountFor({ targetType: "song", targetId: song.id, discounts: STATE.discounts });
+  if (!discount) return formatPrice(original);
+  const { finalPrice, hasDiscount } = applyDiscountToPrice(original, discount);
+  if (!hasDiscount) return formatPrice(original);
+  return `<span class="price-original">${formatPrice(original)}</span> <span class="price-discounted">${formatPrice(finalPrice)}</span>`;
+}
+
+function renderDiscountedPriceForPlaylist(playlist) {
+  if (!playlist) return formatPrice(0);
+  const original = Number(playlist.price) || 0;
+  const discount = findActiveDiscountFor({ targetType: "playlist", targetId: playlist.id, discounts: STATE.discounts });
+  if (!discount) return formatPrice(original);
+  const { finalPrice, hasDiscount } = applyDiscountToPrice(original, discount);
+  if (!hasDiscount) return formatPrice(original);
+  return `<span class="price-original">${formatPrice(original)}</span> <span class="price-discounted">${formatPrice(finalPrice)}</span>`;
+}
+
+// สำหรับ label ปุ่ม "เพิ่มเข้าตะกร้า · X LAK" — แสดงแค่ราคาสุดท้าย (เพราะเป็น text ไม่ใช่ HTML)
+function getDiscountedPriceForSongLabel(song) {
+  if (!song) return formatPrice(0);
+  const original = Number(song.price) || 0;
+  const discount = findActiveDiscountFor({ targetType: "song", targetId: song.id, discounts: STATE.discounts });
+  if (!discount) return formatPrice(original);
+  const { finalPrice, hasDiscount } = applyDiscountToPrice(original, discount);
+  return formatPrice(hasDiscount ? finalPrice : original);
+}
+
+// ส่งออก helper ให้ app-cart.js ใช้ผ่าน initCart options (จะใช้ตอน render ตะกร้า)
+// แต่เนื่องจาก initCart ถูกเรียกก่อน STATE.discounts โหลดเสร็จ — cart จะอ่าน STATE.discounts ตอน renderCart
+// (ไม่ได้ snapshot ตอน init)
 
 function formatTime(sec) {
   if (!isFinite(sec) || sec < 0) return "0:00";
@@ -77,6 +121,16 @@ async function init() {
   STATE.djs = djSnap.docs.map(d => ({ id: d.id, ...d.data() }));
   STATE.playlists = playlistSnap.docs.map(d => ({ id: d.id, ...d.data() }));
   STATE.settings = settingsSnap.exists() ? settingsSnap.data() : {};
+
+  // ===== โหลด active discounts ครั้งเดียว (สำหรับแสดงราคาลดบนหน้าเว็บลูกค้า) =====
+  // ใช้ forceRefresh=false — ถ้ามี cache ใน pricing.js จะใช้ cache นั้น
+  // การ cache ปลอดภัยเพราะระบบ cart จะ re-resolve จาก db อีกครั้งตอน checkout (resolveCartFromDatabase)
+  try {
+    STATE.discounts = await fetchActiveDiscounts();
+  } catch (e) {
+    console.warn("โหลด discounts ไม่สำเร็จ — แสดงราคาปกติ", e);
+    STATE.discounts = [];
+  }
 
   const siteNameEl = document.getElementById("siteName");
   if (siteNameEl) siteNameEl.textContent = STATE.settings.website_name || "Music Store";
@@ -251,7 +305,7 @@ function renderSongGrid() {
         <div class="song-footer" style="display: flex; justify-content: flex-end; align-items: center; margin-top: auto;">
           <button class="cart-add-btn" type="button" data-add-cart="${s.id}" aria-label="เพิ่ม ${escapeHtml(s.song_name)} ลงตะกร้า">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
-            ${formatPrice(s.price)}
+            ${renderDiscountedPriceForSong(s)}
           </button>
         </div>
       </div>
@@ -312,7 +366,7 @@ function renderPlaylists() {
           <div style="display: flex; flex-direction: column; align-items: flex-end; justify-content: flex-end; margin-left: auto; padding-right: 8px;">
             ${pl.price ? `<button type="button" class="cart-add-btn playlist-folder-price" data-add-cart-playlist="${pl.id}" aria-label="เพิ่มเพลย์ลิสต์ ${escapeHtml(pl.playlist_name)} ลงตะกร้า">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
-              ${formatPrice(pl.price)}
+              ${renderDiscountedPriceForPlaylist(pl)}
             </button>` : ""}
           </div>
           <svg class="playlist-folder-arrow${isOpen ? "" : " is-closed"}" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
@@ -335,7 +389,7 @@ function renderPlaylists() {
                   <div style="display: inline-flex; align-items: center; gap: 4px;">
                     <button class="cart-add-btn playlist-add-cart" type="button" data-add-cart-song="${s.id}" aria-label="เพิ่ม ${escapeHtml(s.song_name)} ลงตะกร้า">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
-                      ${formatPrice(s.price)}
+                      ${renderDiscountedPriceForSong(s)}
                     </button>
                   </div>
                 </div>
@@ -712,7 +766,21 @@ function openSongModal(songId) {
   }
 
   if (descEl) descEl.textContent = song.description || "";
-  if (priceEl) priceEl.textContent = formatPrice(song.price);
+  // แสดงราคาปกติ + ราคาลด (ถ้ามี discount active) — ใช้ innerHTML เพื่อให้แสดง <s> + <strong> ได้
+  if (priceEl) {
+    const original = Number(song.price) || 0;
+    const discount = findActiveDiscountFor({ targetType: "song", targetId: song.id, discounts: STATE.discounts });
+    if (discount) {
+      const { finalPrice, hasDiscount } = applyDiscountToPrice(original, discount);
+      if (hasDiscount) {
+        priceEl.innerHTML = `<span class="price-original">${formatPrice(original)}</span> <span class="price-discounted large">${formatPrice(finalPrice)}</span>`;
+      } else {
+        priceEl.textContent = formatPrice(original);
+      }
+    } else {
+      priceEl.textContent = formatPrice(original);
+    }
+  }
 
   // meta line: แสดงข้อมูล preview ถ้ามี (เหมือนฝั่ง admin)
   // ใช้ STATE.currentPreview ของเพลงนี้ — คำนวณตามเงื่อนไขเดียวกับ playSong()
@@ -746,7 +814,7 @@ function openSongModal(songId) {
   // ปุ่มเพิ่มเข้าตะกร้า — ใช้ addToCart เดิม ไม่เปลี่ยนระบบ cart
   // เปลี่ยนเฉพาะข้อความ label ให้เป็น "เพิ่มเข้าตะกร้า" + แสดงราคาในวงเล็บ
   if (buyBtn) {
-    if (buyLabelEl) buyLabelEl.textContent = `เพิ่มเข้าตะกร้า · ${formatPrice(song.price)}`;
+    if (buyLabelEl) buyLabelEl.textContent = `เพิ่มเข้าตะกร้า · ${getDiscountedPriceForSongLabel(song)}`;
     buyBtn.setAttribute("aria-label", `เพิ่ม ${song.song_name} ลงตะกร้า`);
     buyBtn.onclick = () => {
       addToCart(song);
@@ -900,10 +968,12 @@ if (searchInputEl) {
 
 document.querySelectorAll(".bottom-nav button").forEach(btn => {
   btn.addEventListener("click", () => {
+    const tab = btn.getAttribute("data-tab");
     document.querySelectorAll(".bottom-nav button").forEach(b => b.classList.remove("active"));
     btn.classList.add("active");
-    const tab = btn.getAttribute("data-tab");
     if (tab === "home") {
+      hideMyOrdersView();
+      cleanupMyOrdersView();
       STATE.currentCategory = "all";
       STATE.currentDj = null;
       setView("home");
@@ -913,11 +983,15 @@ document.querySelectorAll(".bottom-nav button").forEach(btn => {
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
     else if (tab === "playlist") {
+      hideMyOrdersView();
+      cleanupMyOrdersView();
       setView("playlist");
       renderPlaylists();
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
     else if (tab === "category") {
+      hideMyOrdersView();
+      cleanupMyOrdersView();
       STATE.currentCategory = "all";
       STATE.currentDj = null;
       setView("category");
@@ -927,6 +1001,8 @@ document.querySelectorAll(".bottom-nav button").forEach(btn => {
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
     else if (tab === "dj") {
+      hideMyOrdersView();
+      cleanupMyOrdersView();
       STATE.currentCategory = "all";
       STATE.currentDj = null;
       setView("dj");
@@ -934,11 +1010,40 @@ document.querySelectorAll(".bottom-nav button").forEach(btn => {
       renderSongGrid();
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
+    else if (tab === "myorders") {
+      // ===== เพิ่มใหม่: tab "ออเดอร์ของฉัน" =====
+      showMyOrdersView();
+      initMyOrdersView();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
     else if (tab === "contact") {
       window.open(buildWhatsAppLink(STATE.settings.whatsapp_number, "สวัสดีครับ/ค่ะ ต้องการสอบถามเกี่ยวกับร้านเพลง"), "_blank");
     }
   });
 });
+
+// ===== เพิ่มใหม่: ซ่อน/แสดง view "ออเดอร์ของฉัน" + ซ่อน view อื่นๆ =====
+function showMyOrdersView() {
+  // ซ่อน view อื่นๆ (gridTitle, songGrid, category chips, dj, playlists, emptyState)
+  ["#gridTitle", "#songGrid", "#emptyState"].forEach(selector => {
+    const el = document.querySelector(selector);
+    if (el) el.style.display = "none";
+  });
+  const categoryChips = document.getElementById("categoryChips");
+  const djSection = document.getElementById("djSection");
+  if (categoryChips) categoryChips.style.display = "none";
+  if (djSection) djSection.style.display = "none";
+  // ซ่อน playlists container
+  const playlistsContainer = document.getElementById("playlistsContainer");
+  if (playlistsContainer) playlistsContainer.classList.add("is-closed");
+  // แสดง my orders view
+  const myOrdersView = document.getElementById("myOrdersView");
+  if (myOrdersView) myOrdersView.style.display = "block";
+}
+function hideMyOrdersView() {
+  const myOrdersView = document.getElementById("myOrdersView");
+  if (myOrdersView) myOrdersView.style.display = "none";
+}
 
 // ===== เพิ่มใหม่: ติดตามออเดอร์ (ฝั่งลูกค้า ไม่ต้อง Login) — ไม่แตะระบบเดิม =====
 // ลูกค้ากรอกเลข Order + ชื่อ + เบอร์โทร เพื่อค้นหาและตรวจสอบสถานะออเดอร์ของตัวเอง
