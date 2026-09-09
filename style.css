@@ -1345,3 +1345,204 @@ button:active {
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+/* =====================================================================
+   เพิ่มใหม่: utility classes สำหรับระบบลดราคา + โปรโมชั่น + ออเดอร์ของฉัน
+   ใช้ร่วมกันทั้งฝั่งลูกค้า (index.html) และฝั่งแอดมิน (admin.html)
+   ===================================================================== */
+
+/* ---- ราคาปกติ (ขีดฆ่า) ---- */
+.price-original {
+  color: var(--text-dim);
+  text-decoration: line-through;
+  font-size: 11px;
+  font-weight: 500;
+  margin-right: 4px;
+  opacity: 0.7;
+}
+
+/* ---- ราคาหลังลด ---- */
+.price-discounted {
+  color: var(--accent-2, #ec4899);
+  font-weight: 800;
+  font-size: 14px;
+}
+.price-discounted.large {
+  font-size: 16px;
+}
+
+/* ---- badge ส่วนลดขนาดเล็ก ---- */
+.discount-badge {
+  display: inline-block;
+  background: rgba(236, 72, 153, .15);
+  color: var(--accent-2, #ec4899);
+  border-radius: var(--radius-full, 9999px);
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  margin-left: 4px;
+}
+
+/* ---- สถานะ discount/promotion ใน list ของแอดมิน ---- */
+.discount-status-badge {
+  display: inline-block;
+  border-radius: var(--radius-full, 9999px);
+  padding: 2px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+/* ---- แถวใน receipt สำหรับส่วนลด/โปรโมชั่น ---- */
+.receipt-discount-row,
+.receipt-promo-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  font-size: 12px;
+  color: #555;
+  border-bottom: 1px dashed #ddd;
+}
+.receipt-promo-row {
+  color: #2e7d32;
+  font-weight: 600;
+}
+.receipt-discount-row {
+  color: #c2185b;
+}
+
+/* ---- หน้า "ออเดอร์ของฉัน" (ฝั่งลูกค้า) ---- */
+.my-orders-header {
+  margin-bottom: 16px;
+}
+.my-orders-header h2 {
+  font-size: 20px;
+  font-weight: 800;
+  margin: 0 0 4px;
+}
+.my-orders-header p {
+  color: var(--text-dim);
+  font-size: 13px;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.my-orders-form {
+  background: var(--surface, #131722);
+  border-radius: var(--radius, 20px);
+  padding: 18px;
+  margin-bottom: 16px;
+  border: 1px solid var(--border, rgba(255,255,255,.08));
+}
+.my-orders-form .field {
+  margin-bottom: 12px;
+}
+.my-orders-form .field label {
+  display: block;
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+.my-orders-form .field input {
+  width: 100%;
+  padding: 12px 14px;
+  background: var(--surface-2, #1c2234);
+  border: 1px solid var(--border, rgba(255,255,255,.08));
+  border-radius: var(--radius-sm, 12px);
+  color: var(--text, #f8fafc);
+  font-size: 14px;
+  box-sizing: border-box;
+}
+.my-orders-form .field input:focus {
+  outline: none;
+  border-color: var(--accent, #8b5cf6);
+}
+
+.my-orders-feedback {
+  margin-top: 10px;
+  font-size: 13px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm, 12px);
+  background: rgba(239, 68, 68, .08);
+}
+
+.my-orders-list-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.my-orders-list-header span {
+  flex: 1;
+  min-width: 0;
+}
+
+.my-order-card {
+  background: var(--surface, #131722);
+  border-radius: var(--radius, 20px);
+  padding: 14px;
+  margin-bottom: 10px;
+  border: 1px solid var(--border, rgba(255,255,255,.08));
+  transition: border-color 0.2s;
+}
+.my-order-card.expanded {
+  border-color: rgba(139, 92, 246, .3);
+}
+.my-order-card-header {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.my-order-status-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: var(--radius-full, 9999px);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.my-order-discount-badge {
+  font-size: 11px;
+  font-weight: 600;
+}
+.my-order-item-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border, rgba(255,255,255,.04));
+}
+.my-order-item-row:last-child {
+  border-bottom: none;
+}
+.my-order-zip-info a {
+  text-decoration: none;
+}
+
+/* ---- responsive: 6 ปุ่ม bottom-nav บนจอแคบ ---- */
+@media (max-width: 480px) {
+  .bottom-nav button {
+    font-size: 10px;
+    padding: 6px 4px;
+  }
+  .bottom-nav button svg {
+    width: 18px;
+    height: 18px;
+  }
+}
+
+/* ---- ปุ่ม quick action grid ที่รองรับ 11 ปุ่ม (เพิ่ม discount/promotion) ---- */
+.quick-actions {
+  /* ถ้า grid มีปุ่มเยอะ ให้แสดง 2 คอลัมน์บนมือถือ / 3 คอลัมน์บนจอกว้าง */
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+@media (min-width: 480px) {
+  .quick-actions { grid-template-columns: repeat(3, 1fr); }
+}
+@media (min-width: 720px) {
+  .quick-actions { grid-template-columns: repeat(4, 1fr); }
+}
