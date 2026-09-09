@@ -1,7 +1,7 @@
 // app-user.js — หน้า User: ดึงข้อมูลจาก Firestore, เล่นเพลงจาก Cloudinary โดยตรง
 // ===================================================
 import { db } from "./firebase-init.js?v=20260905-fix1";
-import { collection, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { collection, getDocs, doc, getDoc, query, where } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { initCart } from "./app-cart.js?v=20260905-fix1";
 
 const STATE = {
@@ -36,6 +36,17 @@ function formatTime(sec) {
   const m = Math.floor(sec / 60), s = Math.floor(sec % 60);
   return m + ":" + (s < 10 ? "0" : "") + s;
 }
+
+// ---- เพิ่มใหม่: ค่าคงที่สถานะออเดอร์ (ฝั่งลูกค้า) ----
+// คัดลอกค่ามาจาก STATUS_CONFIG ใน orders.js เพื่อแสดงผลให้ตรงกับฝั่งแอดมิน
+// ทำเป็นชุดแยกต่างหาก (ไม่ import orders.js) เพราะ orders.js มี dependency
+// สำหรับงานแอดมินล้วน ๆ (jszip/storage-adapter) ที่ไม่จำเป็นต้องโหลดในหน้าลูกค้า
+const TRACK_STATUS_CONFIG = {
+  pending_verify: { emoji: "🟡", label: "รอตรวจสอบการโอน", color: "#F5B400", bg: "rgba(245,180,0,.15)" },
+  processing:     { emoji: "🔵", label: "ชำระเงินแล้ว - กำลังส่งเพลง", color: "#3B9EFF", bg: "rgba(59,158,255,.15)" },
+  completed:      { emoji: "🟢", label: "สำเร็จ", color: "#28c76f", bg: "rgba(41,204,113,.15)" },
+  cancelled:      { emoji: "🔴", label: "ยกเลิก", color: "#ff6b6b", bg: "rgba(255,107,107,.15)" },
+};
 
 function buildWhatsAppLink(number, text) {
   const clean = String(number || "").replace(/[^0-9]/g, "");
@@ -928,5 +939,134 @@ document.querySelectorAll(".bottom-nav button").forEach(btn => {
     }
   });
 });
+
+// ===== เพิ่มใหม่: ติดตามออเดอร์ (ฝั่งลูกค้า ไม่ต้อง Login) — ไม่แตะระบบเดิม =====
+// ลูกค้ากรอกเลข Order + ชื่อ + เบอร์โทร เพื่อค้นหาและตรวจสอบสถานะออเดอร์ของตัวเอง
+function normalizePhone(v) { return String(v || "").replace(/[^0-9]/g, ""); }
+function normalizeName(v) { return String(v || "").trim().toLowerCase(); }
+
+function openTrackOrder() {
+  const backdrop = document.getElementById("trackOrderBackdrop");
+  if (backdrop) backdrop.classList.add("show");
+}
+function closeTrackOrder() {
+  const backdrop = document.getElementById("trackOrderBackdrop");
+  if (backdrop) backdrop.classList.remove("show");
+}
+
+function setTrackOrderFeedback(message, type) {
+  const el = document.getElementById("trackOrderFeedback");
+  if (!el) return;
+  el.textContent = message || "";
+  el.style.color = type === "success" ? "var(--success)" : "var(--danger)";
+}
+
+function buildTrackOrderWhatsAppText(order) {
+  const lines = (order.items || []).map((item, index) => `${index + 1}. ${item.title} — ${formatPrice(item.price)}`);
+  return [
+    `สวัสดีครับ/ค่ะ ต้องการสอบถามเกี่ยวกับ Order ของฉัน`,
+    "",
+    `🧾 Order: ${order.receipt_number || ""}`,
+    `👤 ชื่อ: ${order.customer_name || ""}`,
+    `📱 เบอร์: ${order.whatsapp || ""}`,
+    "",
+    "🛒 รายการ",
+    ...lines,
+    "",
+    `💰 ยอดรวม: ${formatPrice(order.total)}`,
+  ].join("\n");
+}
+
+function renderTrackOrderResult(order) {
+  const resultEl = document.getElementById("trackOrderResult");
+  if (!resultEl) return;
+
+  const cfg = TRACK_STATUS_CONFIG[order.status] || TRACK_STATUS_CONFIG.pending_verify;
+  const items = order.items || [];
+  const itemsHtml = items.map(item => `
+    <div class="track-order-item">
+      <span class="track-order-item-name">${escapeHtml(item.title || "เพลง")}</span>
+      <span class="track-order-item-price">${formatPrice(item.price)}</span>
+    </div>
+  `).join("");
+
+  resultEl.innerHTML = `
+    <div class="track-order-status" style="color:${cfg.color};background:${cfg.bg};">${cfg.emoji} ${escapeHtml(cfg.label)}</div>
+    <div class="track-order-row"><span>เลข Order</span><strong>${escapeHtml(order.receipt_number || "")}</strong></div>
+    <div class="track-order-row"><span>ชื่อลูกค้า</span><strong>${escapeHtml(order.customer_name || "")}</strong></div>
+    <div class="track-order-row"><span>เบอร์โทร</span><strong>${escapeHtml(order.whatsapp || "")}</strong></div>
+    <div class="track-order-items">${itemsHtml}</div>
+    <div class="track-order-total"><span>ยอดรวม</span><span>${formatPrice(order.total)}</span></div>
+    <div class="track-order-actions">
+      <button class="btn" type="button" id="trackOrderWhatsappBtn">ติดต่อแอดมินผ่าน WhatsApp</button>
+    </div>
+  `;
+  resultEl.hidden = false;
+
+  const waBtn = document.getElementById("trackOrderWhatsappBtn");
+  if (waBtn) {
+    waBtn.onclick = () => {
+      const number = STATE.settings.whatsapp_number;
+      if (!number) { showToast("ร้านยังไม่ได้ตั้งค่าเบอร์ WhatsApp", "error"); return; }
+      window.open(buildWhatsAppLink(number, buildTrackOrderWhatsAppText(order)), "_blank", "noopener");
+    };
+  }
+}
+
+async function handleTrackOrderSubmit() {
+  const idInput = document.getElementById("trackOrderId");
+  const nameInput = document.getElementById("trackOrderName");
+  const phoneInput = document.getElementById("trackOrderPhone");
+  const btn = document.getElementById("trackOrderSubmitBtn");
+  const resultEl = document.getElementById("trackOrderResult");
+
+  const orderId = idInput.value.trim();
+  const name = nameInput.value.trim();
+  const phone = phoneInput.value.trim();
+
+  if (resultEl) resultEl.hidden = true;
+  setTrackOrderFeedback("");
+
+  if (!orderId || !name || !phone) {
+    setTrackOrderFeedback("กรุณากรอกเลข Order, ชื่อ และเบอร์โทรให้ครบ");
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = "กำลังค้นหา...";
+
+  try {
+    const snap = await getDocs(query(collection(db, "orders"), where("receipt_number", "==", orderId)));
+    if (snap.empty) {
+      setTrackOrderFeedback("ไม่พบออเดอร์นี้ กรุณาตรวจสอบเลข Order อีกครั้ง");
+      return;
+    }
+    const order = snap.docs[0].data();
+    const nameMatches = normalizeName(order.customer_name) === normalizeName(name);
+    const phoneMatches = normalizePhone(order.whatsapp) === normalizePhone(phone);
+    if (!nameMatches || !phoneMatches) {
+      setTrackOrderFeedback("ไม่พบออเดอร์นี้ กรุณาตรวจสอบชื่อและเบอร์โทรให้ตรงกับตอนสั่งซื้อ");
+      return;
+    }
+    setTrackOrderFeedback("");
+    renderTrackOrderResult(order);
+  } catch (err) {
+    setTrackOrderFeedback("ค้นหาไม่สำเร็จ: " + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "ค้นหาออเดอร์";
+  }
+}
+
+const trackOrderBtnEl = document.getElementById("trackOrderBtn");
+if (trackOrderBtnEl) trackOrderBtnEl.addEventListener("click", openTrackOrder);
+const trackOrderCloseEl = document.getElementById("trackOrderClose");
+if (trackOrderCloseEl) trackOrderCloseEl.addEventListener("click", closeTrackOrder);
+const trackOrderBackdropEl = document.getElementById("trackOrderBackdrop");
+if (trackOrderBackdropEl) {
+  trackOrderBackdropEl.addEventListener("click", (e) => { if (e.target === e.currentTarget) closeTrackOrder(); });
+}
+const trackOrderSubmitBtnEl = document.getElementById("trackOrderSubmitBtn");
+if (trackOrderSubmitBtnEl) trackOrderSubmitBtnEl.addEventListener("click", handleTrackOrderSubmit);
 
 init().catch(err => showToast("โหลดข้อมูลไม่สำเร็จ: " + err.message, "error"));
