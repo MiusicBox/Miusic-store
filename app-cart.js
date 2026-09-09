@@ -173,12 +173,28 @@ export function initCart({ state, showToast, escapeHtml, formatPrice, buildWhats
       return;
     }
 
-    itemsEl.innerHTML = state.cart.map(item => {
+    // ===== คำนวณ discount + promotion แบบ sync (ใช้ cache จาก app-promotion.js) =====
+    // ทำให้ตะกร้าแสดงยอดที่ตรงกับโปรโมชั่นจริง ๆ ตั้งแต่ตอนลูกค้าเห็น ไม่ต้องรอไป checkout
+    const pricing = computeApproxPricingForDisplay();
+    // pricing.items เป็น array ที่มี original_price, discount_price, item_discount, _hadDiscount ของแต่ละไอเทม
+    const pricedItems = (pricing && pricing.items) ? pricing.items : state.cart.map(it => ({ ...it, original_price: Number(it.price) || 0, discount_price: Number(it.price) || 0, item_discount: 0, _hadDiscount: false }));
+
+    itemsEl.innerHTML = state.cart.map((item, idx) => {
       const isPlaylist = item.kind === "playlist";
       const songCount = isPlaylist ? (item.songs || []).length || (item.song_ids || []).length : 0;
+      const priced = pricedItems[idx] || { original_price: item.price, discount_price: item.price, item_discount: 0, _hadDiscount: false };
+
+      // แสดงราคาต่อไอเทม: ถ้ามี discount → แสดงราคาปกติขีดฆ่า + ราคาหลังลด
+      let priceDisplay;
+      if (priced._hadDiscount && priced.item_discount > 0) {
+        priceDisplay = `<span class="price-original">${formatPrice(priced.original_price)}</span> <span class="price-discounted">${formatPrice(priced.discount_price)}</span>`;
+      } else {
+        priceDisplay = formatPrice(item.price);
+      }
+
       const metaText = isPlaylist
-        ? `เพลย์ลิสต์ · ${songCount} เพลง · ${formatPrice(item.price)}`
-        : `${escapeHtml(item.dj_name || "เพลง Remix")} · ${formatPrice(item.price)} / เพลง`;
+        ? `เพลย์ลิสต์ · ${songCount} เพลง · ${priceDisplay}`
+        : `${escapeHtml(item.dj_name || "เพลง Remix")} · ${priceDisplay} / เพลง`;
       const viewSongsBtn = (isPlaylist && (item.songs || []).length)
         ? `<button class="cart-item-viewsongs" type="button" data-cart-view-songs="${escapeHtml(item.id)}">ดูรายการเพลงในเพลย์ลิสต์ (${songCount})</button>
            <div class="cart-item-songs" id="cartSongs-${escapeHtml(item.id)}">
@@ -192,7 +208,9 @@ export function initCart({ state, showToast, escapeHtml, formatPrice, buildWhats
           <div class="cart-item-name">${escapeHtml(item.song_name)}</div>
           <div class="cart-item-meta">${metaText}</div>
         </div>
-        <div class="cart-item-total">${formatPrice(item.price * item.quantity)}</div>
+        <div class="cart-item-total">${priced._hadDiscount && priced.item_discount > 0
+          ? `<span class="price-original">${formatPrice(priced.original_price)}</span> <span class="price-discounted">${formatPrice(priced.discount_price)}</span>`
+          : formatPrice(item.price * item.quantity)}</div>
         <button class="cart-remove" type="button" data-cart-remove="${escapeHtml(item.id)}">ลบ</button>
         ${viewSongsBtn}
       </div>
@@ -203,7 +221,31 @@ export function initCart({ state, showToast, escapeHtml, formatPrice, buildWhats
     const quantityEl = document.getElementById("cartTotalQuantity");
     const priceEl = document.getElementById("cartTotalPrice");
     if (quantityEl) quantityEl.textContent = `${quantity} เพลง`;
-    if (priceEl) priceEl.textContent = formatPrice(cartTotal());
+
+    // ===== แสดงยอดรวมแบบ 3 บรรทัด: ยอดก่อนลด / ส่วนลด / ยอดชำระ =====
+    // ถ้าไม่มีส่วนลดเลย → แสดงแบบเดิม (ยอดรวมเดียว)
+    if (priceEl) {
+      const baseTotal = cartTotal();
+      const finalTotal = (pricing && pricing.finalTotal != null) ? pricing.finalTotal : baseTotal;
+      const itemDiscount = (pricing && pricing.itemDiscountAmount) || 0;
+      const promoDiscount = (pricing && pricing.promoDiscountAmount) || 0;
+      const totalDiscount = itemDiscount + promoDiscount;
+      const promoApplied = pricing && pricing.promotionApplied;
+
+      if (totalDiscount > 0 && finalTotal < baseTotal) {
+        // มีส่วนลด → แสดง 3 บรรทัด
+        let html = `<div style="font-size:11px;color:var(--text-dim);text-decoration:line-through;">${formatPrice(baseTotal)}</div>`;
+        html += `<div style="font-size:12px;color:var(--accent-2,#ec4899);font-weight:600;">ลด ${formatPrice(totalDiscount)}</div>`;
+        if (promoApplied && promoApplied.name) {
+          html += `<div style="font-size:10px;color:var(--success);margin-top:2px;">🎁 ${escapeHtml(promoApplied.name)}</div>`;
+        }
+        html += `<div style="font-size:18px;font-weight:800;color:var(--success);margin-top:4px;">${formatPrice(finalTotal)}</div>`;
+        priceEl.innerHTML = html;
+      } else {
+        // ไม่มีส่วนลด → แสดงแบบเดิม
+        priceEl.textContent = formatPrice(baseTotal);
+      }
+    }
   }
 
   function openCart() {
@@ -294,8 +336,26 @@ export function initCart({ state, showToast, escapeHtml, formatPrice, buildWhats
           return { kind: "song", song_id: String(item.id), price: Number(item.price) || 0 };
         }
       });
-      // ไม่ส่ง discounts/promotions → computeCartPricing จะใช้ cache จาก pricing.js
-      return computeCartPricing(cartItems);
+      // ไม่ส่ง discounts/promotions → computeCartPricing จะใช้ cache จาก app-promotion.js
+      const result = computeCartPricing(cartItems);
+
+      // ===== เพิ่มใหม่: trigger async load ถ้า cache ยังว่าง (เกิดตอนลูกค้าเปิดหน้าแล้วกดตะกร้าเร็วเกินไป) =====
+      // ถ้า finalTotal === subtotal แสดงว่าไม่มีส่วนลด — แต่อาจเป็นเพราะ cache ว่าง ไม่ใช่ไม่มีจริง ๆ
+      // วิธีเช็ค: ถ้า cart มีของ แต่ finalTotal = subtotal = baseTotal แล้ว cache อาจยังว่าง
+      // ปลอดภัยสุด: trigger fetchActiveDiscounts + fetchActivePromotions (มันจะใช้ cache ถ้ามี หรือโหลดใหม่ถ้าไม่มี)
+      // เมื่อ cache พร้อมแล้ว → re-render cart รอบใหม่
+      if (cartItems.length > 0 && result.promoDiscountAmount === 0 && result.itemDiscountAmount === 0) {
+        // trigger async load (ถ้า cache มีอยู่แล้ว จะ return ทันที)
+        Promise.all([
+          fetchActiveDiscounts(),
+          fetchActivePromotions()
+        ]).then(() => {
+          // re-render cart รอบใหม่ (ตอนนี้ cache พร้อมแล้ว)
+          renderCart();
+        }).catch(() => {});
+      }
+
+      return result;
     } catch (e) {
       console.warn("computeApproxPricingForDisplay error:", e);
       return null;
