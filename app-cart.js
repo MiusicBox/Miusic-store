@@ -768,7 +768,18 @@ export function initCart({ state, showToast, escapeHtml, formatPrice, buildWhats
       order = await Promise.race([mainTask, timeoutPromise]);
     } catch (err) {
       console.error("checkoutCart error:", err);
-      setCheckoutFeedback(err?.message || "บันทึก Order ไม่สำเร็จ กรุณาลองใหม่");
+      let feedbackMessage;
+      if (typeof navigator !== "undefined" && navigator.onLine === false) {
+        // เพิ่มใหม่: ไม่มีเน็ต
+        feedbackMessage = "ไม่มีสัญญาณอินเทอร์เน็ต กรุณาตรวจสอบการเชื่อมต่อแล้วลองใหม่อีกครั้ง";
+      } else if (!err?.code && err?.message) {
+        // ข้อความที่ระบบโยนเองอยู่แล้ว (เช่น timeout ด้านบน) เป็นภาษาไทยที่เข้าใจง่ายอยู่แล้ว ใช้ตรงๆ ได้เลย
+        feedbackMessage = err.message;
+      } else {
+        // เพิ่มใหม่: error ดิบจาก Firebase (มี err.code) แปลเป็นข้อความที่ลูกค้าอ่านเข้าใจแทน
+        feedbackMessage = "บันทึก Order ไม่สำเร็จ ระบบขัดข้องชั่วคราว กรุณาลองใหม่อีกครั้ง";
+      }
+      setCheckoutFeedback(feedbackMessage);
       submitting = false;
       if (btn) { btn.disabled = false; btn.textContent = "ยืนยันสั่งซื้อ"; }
       return;
