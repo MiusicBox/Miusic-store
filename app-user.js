@@ -2,10 +2,10 @@
 // ===================================================
 import { db } from "./firebase-init.js?v=20260905-fix1";
 import { collection, getDocs, doc, getDoc, query, where, onSnapshot, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import { initCart } from "./app-cart.js?v=20261103-cartfix2";
+import { initCart } from "./app-cart.js?v=20261101-promo1";
 // ===== ลดราคา + โปรโมชั่น + ออเดอร์ของฉัน (ระบบใหม่ — รวมในไฟล์เดียว app-promotion.js) =====
 import {
-  fetchActiveDiscounts, fetchActivePromotions, applyDiscountToPrice, findActiveDiscountFor,
+  fetchActiveDiscounts, applyDiscountToPrice, findActiveDiscountFor,
   initMyOrdersView, cleanupMyOrdersView
 } from "./app-promotion.js?v=20261101-promo1";
 
@@ -122,17 +122,13 @@ async function init() {
   STATE.playlists = playlistSnap.docs.map(d => ({ id: d.id, ...d.data() }));
   STATE.settings = settingsSnap.exists() ? settingsSnap.data() : {};
 
-  // ===== โหลด active discounts + promotions ครั้งเดียว (สำหรับแสดงราคาลดบนหน้าเว็บ + คำนวณในตะกร้า) =====
-  // โหลดทั้งคู่พร้อมกัน เพื่อให้ cache ของ app-promotion.js เต็ม → renderCart จะใช้ cache คำนวณส่วนลดได้ทันที
+  // ===== โหลด active discounts ครั้งเดียว (สำหรับแสดงราคาลดบนหน้าเว็บลูกค้า) =====
+  // ใช้ forceRefresh=false — ถ้ามี cache ใน pricing.js จะใช้ cache นั้น
   // การ cache ปลอดภัยเพราะระบบ cart จะ re-resolve จาก db อีกครั้งตอน checkout (resolveCartFromDatabase)
   try {
-    await Promise.all([
-      fetchActiveDiscounts(),
-      fetchActivePromotions()
-    ]);
-    STATE.discounts = await fetchActiveDiscounts(); // เก็บใน STATE สำหรับการ render ราคาบนการ์ดเพลง
+    STATE.discounts = await fetchActiveDiscounts();
   } catch (e) {
-    console.warn("โหลด discounts/promotions ไม่สำเร็จ — แสดงราคาปกติ", e);
+    console.warn("โหลด discounts ไม่สำเร็จ — แสดงราคาปกติ", e);
     STATE.discounts = [];
   }
 
