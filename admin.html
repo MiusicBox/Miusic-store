@@ -100,6 +100,19 @@
         border-radius:999px; padding:6px 14px; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap;
       }
       #view-orders .status-filter button.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+      /* ---- เพิ่มใหม่: ช่องค้นหาในประวัติออเดอร์ (ค้นจากข้อมูลออเดอร์จริง) ---- */
+      #view-orders .history-search {
+        display:flex; align-items:center; gap:8px; padding:0 16px; margin:14px 0 0;
+      }
+      #view-orders .history-search .search-box { flex:1; }
+      #view-orders .history-search .search-box input {
+        width:100%;
+      }
+      #view-orders .history-search .search-clear {
+        border:1px solid rgba(255,255,255,.14); background:rgba(255,255,255,.06); color:var(--text-dim);
+        border-radius:8px; padding:8px 12px; font-size:13px; font-weight:600; cursor:pointer; white-space:nowrap;
+      }
+      #view-orders .history-search .search-clear:hover { background:rgba(255,255,255,.10); color:var(--text); }
       #view-orders .status-badge {
         display:inline-flex; align-items:center; gap:4px; border-radius:999px; padding:3px 10px;
         font-size:12px; font-weight:700; width:fit-content;
@@ -205,6 +218,13 @@
       </div>
 
       <div class="section-title" style="margin-top:22px;">ประวัติออเดอร์</div>
+      <!-- เพิ่มใหม่: ช่องค้นหาในประวัติออเดอร์ — ค้นจากข้อมูลออเดอร์จริง (ชื่อลูกค้า/เบอร์/เพลง/เพลย์ลิสต์/เลขออเดอร์/ชื่อ ZIP) -->
+      <div class="history-search">
+        <div class="search-box">
+          <input id="ordHistorySearch" type="text" placeholder="🔍 ค้นหาออเดอร์: ชื่อลูกค้า, เบอร์ WhatsApp, ชื่อเพลง, เพลย์ลิสต์, เลขออเดอร์..." autocomplete="off">
+        </div>
+        <button type="button" class="search-clear" id="ordHistorySearchClear" title="ล้างการค้นหา">✕ ล้าง</button>
+      </div>
       <div class="status-filter" id="ordStatusFilter"></div>
       <div id="ordHistoryList" class="container" style="padding:0 16px 24px;"></div>
     </div>
