@@ -19,7 +19,7 @@
 // ===================================================
 import { db, auth } from "./firebase-init.js?v=20260905-fix1";
 import {
-  collection, doc, getDocs, setDoc, updateDoc, deleteDoc, query, onSnapshot
+  collection, doc, getDocs, setDoc, updateDoc, deleteDoc, query, onSnapshot, where
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 // ============================================================================
@@ -511,7 +511,7 @@ async function handleSaveDiscount() {
   if (discountValue <= 0) { disc_showToast("กรุณากรอกค่าส่วนลด (ต้องมากกว่า 0)", "error"); return; }
   if (discountType === "percent" && discountValue > 100) { disc_showToast("เปอร์เซ็นต์ส่วนลดต้องไม่เกิน 100", "error"); return; }
   if (discountType === "fixed" && originalPrice > 0 && discountValue > originalPrice) {
-    disc_showToast("ส่วนลดเป็นจำนวนเงินมากกว่าราคาเพลง — ระบบจะตั้งราคาสุดท้ายเป็น 0 LAK แต่แนะนำให้ลดค่าส่วนลด", "error"); return;
+    disc_showToast(`ส่วนลดเป็นจำนวนเงิน (${discountValue.toLocaleString()} LAK) มากกว่าราคาเพลง/เพลย์ลิสต์ (${originalPrice.toLocaleString()} LAK) — กรุณาลดค่าส่วนลดให้ไม่เกินราคาสินค้า`, "error"); return;
   }
 
   const startAt = disc_fromLocalDatetimeInput(document.getElementById("fDiscStartAt").value);
@@ -899,7 +899,11 @@ export function initPromotionsView() {
 
 let MY_ORDERS_STATE = {
   initialized: false,
-  unsubscribe: null,
+  // เพิ่มใหม่ (แก้บั๊กความปลอดภัย): เดิม unsubscribe ตัวเดียวฟัง query(collection("orders")) ทั้งคอลเลกชัน
+  // (ดึงออเดอร์ของ "ทุกคน" มาที่เครื่องลูกค้าแล้วค่อยกรองด้วย JS) — ตอนนี้แยกเป็น 2 query ที่กรองด้วย
+  // where("whatsapp","==",...) ที่ระดับ Firestore ก่อน (ดูช่วง handleSearchMyOrders ด้านล่าง)
+  unsubscribeRaw: null,
+  unsubscribeNormalized: null,
   customerName: "",
   customerWhatsapp: "",
   allOrders: [],
@@ -1026,9 +1030,13 @@ async function handleSearchMyOrders() {
   MY_ORDERS_STATE.customerName = name;
   MY_ORDERS_STATE.customerWhatsapp = phone;
 
-  if (MY_ORDERS_STATE.unsubscribe) {
-    MY_ORDERS_STATE.unsubscribe();
-    MY_ORDERS_STATE.unsubscribe = null;
+  if (MY_ORDERS_STATE.unsubscribeRaw) {
+    MY_ORDERS_STATE.unsubscribeRaw();
+    MY_ORDERS_STATE.unsubscribeRaw = null;
+  }
+  if (MY_ORDERS_STATE.unsubscribeNormalized) {
+    MY_ORDERS_STATE.unsubscribeNormalized();
+    MY_ORDERS_STATE.unsubscribeNormalized = null;
   }
 
   const listContainer = document.getElementById("myOrdersListContainer");
@@ -1037,24 +1045,44 @@ async function handleSearchMyOrders() {
   const listEl = document.getElementById("myOrdersList");
   if (listEl) listEl.innerHTML = '<div class="empty-state">⏳ กำลังค้นหาออเดอร์ของคุณ...</div>';
 
+  // ===== แก้บั๊กความปลอดภัย (2026-09-10): เดิม query(collection(db,"orders")) ดึงออเดอร์ "ทั้งร้าน" ของทุกคน
+  // มาที่เครื่องลูกค้าก่อนแล้วค่อยกรองด้วย JS — ใครก็เปิด DevTools ดูออเดอร์คนอื่นได้หมด
+  // ตอนนี้กรองด้วย where("whatsapp","==", ...) ที่ระดับ Firestore ก่อน ทำให้ดึงเฉพาะออเดอร์ที่เบอร์ตรงจริง ๆ
+  // ยิง 2 query คู่กัน (ค่าที่ลูกค้าพิมพ์ดิบ ๆ + ค่าที่ตัดเหลือแต่ตัวเลข) เพราะตอน checkout ระบบเดิมบันทึก
+  // order.whatsapp ตามที่ลูกค้าพิมพ์ไว้ตรง ๆ ไม่ได้ normalize ก่อนเก็บ แล้วรวมผลลัพธ์ + กรองชื่อซ้ำด้วย logic เดิม
+  // หมายเหตุ: ถ้าเบอร์ที่เคยสั่งซื้อไว้มีรูปแบบสัญลักษณ์อื่น (เช่น มีขีด/วงเล็บ) ที่ไม่ตรงกับ 2 ค่านี้เป๊ะ ๆ
+  // อาจหาออเดอร์นั้นไม่เจอ — ถ้าเจอกรณีนี้ แจ้งมาได้ จะเพิ่ม query เพิ่มเติมให้ครอบคลุมรูปแบบที่พบจริง
   try {
-    const q = query(collection(db, "orders"));
-    MY_ORDERS_STATE.unsubscribe = onSnapshot(q, (snap) => {
-      const allOrders = [];
-      snap.forEach(d => allOrders.push({ _docId: d.id, ...d.data() }));
-      const myOrders = allOrders.filter(o => {
+    const mergedById = new Map();
+    const applyMerge = () => {
+      const merged = Array.from(mergedById.values()).filter(o => {
         const oName = myOrders_normalizeName(o.customer_name || "");
         const oPhone = myOrders_normalizePhone(o.whatsapp || "");
         if (oPhone !== phone) return false;
         return oName === nameNorm || oName.includes(nameNorm) || nameNorm.includes(oName);
       });
-      myOrders.sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
-      MY_ORDERS_STATE.myOrders = myOrders;
-      renderMyOrdersList(myOrders);
-    }, (err) => {
+      merged.sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
+      MY_ORDERS_STATE.myOrders = merged;
+      renderMyOrdersList(merged);
+    };
+    const onErr = (err) => {
       console.error("myOrders onSnapshot error:", err);
       if (listEl) listEl.innerHTML = `<div class="empty-state">⚠️ โหลดออเดอร์ไม่สำเร็จ: ${myOrders_escapeHtml(err.message || "")}</div>`;
-    });
+    };
+
+    const qRaw = query(collection(db, "orders"), where("whatsapp", "==", whatsapp));
+    MY_ORDERS_STATE.unsubscribeRaw = onSnapshot(qRaw, (snap) => {
+      snap.forEach(d => mergedById.set(d.id, { _docId: d.id, ...d.data() }));
+      applyMerge();
+    }, onErr);
+
+    if (phone !== whatsapp) {
+      const qNorm = query(collection(db, "orders"), where("whatsapp", "==", phone));
+      MY_ORDERS_STATE.unsubscribeNormalized = onSnapshot(qNorm, (snap) => {
+        snap.forEach(d => mergedById.set(d.id, { _docId: d.id, ...d.data() }));
+        applyMerge();
+      }, onErr);
+    }
   } catch (err) {
     console.error("handleSearchMyOrders error:", err);
     if (listEl) listEl.innerHTML = `<div class="empty-state">⚠️ โหลดออเดอร์ไม่สำเร็จ: ${myOrders_escapeHtml(err.message || "")}</div>`;
@@ -1062,9 +1090,13 @@ async function handleSearchMyOrders() {
 }
 
 function handleClearMyOrders() {
-  if (MY_ORDERS_STATE.unsubscribe) {
-    MY_ORDERS_STATE.unsubscribe();
-    MY_ORDERS_STATE.unsubscribe = null;
+  if (MY_ORDERS_STATE.unsubscribeRaw) {
+    MY_ORDERS_STATE.unsubscribeRaw();
+    MY_ORDERS_STATE.unsubscribeRaw = null;
+  }
+  if (MY_ORDERS_STATE.unsubscribeNormalized) {
+    MY_ORDERS_STATE.unsubscribeNormalized();
+    MY_ORDERS_STATE.unsubscribeNormalized = null;
   }
   MY_ORDERS_STATE.myOrders = [];
   MY_ORDERS_STATE.expandedOrderIds = new Set();
@@ -1224,8 +1256,12 @@ export function initMyOrdersView() {
 }
 
 export function cleanupMyOrdersView() {
-  if (MY_ORDERS_STATE.unsubscribe) {
-    MY_ORDERS_STATE.unsubscribe();
-    MY_ORDERS_STATE.unsubscribe = null;
+  if (MY_ORDERS_STATE.unsubscribeRaw) {
+    MY_ORDERS_STATE.unsubscribeRaw();
+    MY_ORDERS_STATE.unsubscribeRaw = null;
+  }
+  if (MY_ORDERS_STATE.unsubscribeNormalized) {
+    MY_ORDERS_STATE.unsubscribeNormalized();
+    MY_ORDERS_STATE.unsubscribeNormalized = null;
   }
 }
