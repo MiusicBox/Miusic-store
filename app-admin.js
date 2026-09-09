@@ -361,7 +361,8 @@ function renderSongList(list) {
       ${songSelectMode ? `<input type="checkbox" class="song-select-chk" data-id="${s.id}" ${selectedSongIds.has(s.id) ? "checked" : ""} style="width:20px;height:20px;flex-shrink:0;">` : ""}
       <img src="${s.cover_url || ""}">
       <div class="info"><div class="n1">${escapeHtml(s.song_name)}</div>
-      <div class="n2">${escapeHtml(s.dj_name || "-")} · ${escapeHtml(s.category_name || "-")} · ${formatPrice(s.price)}</div></div>
+      <div class="n2">${escapeHtml(s.dj_name || "-")} · ${escapeHtml(s.category_name || "-")} · ${formatPrice(s.price)}</div>
+      ${!s.full_file_url ? `<div class="n2" style="color:var(--danger);">⚠️ ยังไม่มีไฟล์เต็ม (WAV) บน Cloud</div>` : ""}</div>
       <div class="row-actions">
         <button class="icon-btn" data-menu="${s.id}" title="เมนู">⋮</button>
       </div>
