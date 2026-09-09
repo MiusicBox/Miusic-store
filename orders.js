@@ -272,7 +272,7 @@ function getReceiptNumber(orderId, createdAt) {
 }
 
 const state = {
-  songs: [],        // เพลงทั้งหมด (status: active) จาก collection "songs"
+  songs: [],        // เพลงทั้งหมดที่ไม่ได้ถูกซ่อน (status !== "hidden") จาก collection "songs"
   playlists: [],     // เพลย์ลิสต์ที่ตั้งราคาเหมาไว้แล้ว จาก collection "playlists"
   searchResults: [],
   // ---- ตะกร้าออเดอร์ที่กำลังกรอก (รองรับผสม): แต่ละรายการเป็น
@@ -300,11 +300,17 @@ const state = {
   storeName: "Music Store",
 };
 
-/* ---------------- โหลดเพลงจริงจาก Firestore ---------------- */
+/* ---------------- โหลดเพลงจริงจาก Firestore ----------------
+   หมายเหตุ (แก้ไข 2026-09): เดิมใช้ where("status","==","active") กรองฝั่ง Firestore ซึ่งต้องตรงคำเป๊ะๆ
+   ทำให้เพลงที่ status ไม่ตรงคำว่า "active" แบบเป๊ะ (พิมพ์ใหญ่-เล็กไม่ตรง/มีช่องว่างเกิน/ไม่มีฟิลด์นี้จากข้อมูลเก่า)
+   หายไปจากช่องค้นหาตอนสร้างออเดอร์แบบไม่มี error ให้เห็น ทั้งที่หน้าเว็บลูกค้า (app-user.js) และหน้า
+   "จัดการเพลง" ยังเห็นเพลงพวกนี้ปกติ — เปลี่ยนมาโหลดเพลงทั้งหมดแล้วกรองฝั่ง client แบบเดียวกับ app-user.js
+   (ตัดออกเฉพาะที่สั่งซ่อนชัดเจนว่า "hidden" เท่านั้น) เพื่อให้ตรงกันทั้ง 3 จุดในระบบ */
 async function loadSongsFromDatabase() {
-  const q = query(collection(db, "songs"), where("status", "==", "active"));
-  const snap = await getDocs(q);
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const snap = await getDocs(collection(db, "songs"));
+  return snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .filter(s => String(s.status || "").trim().toLowerCase() !== "hidden");
 }
 
 /* ---------------- โหลดออเดอร์ทั้งหมดจาก Firestore ---------------- */
