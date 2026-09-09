@@ -2,7 +2,7 @@
 // ===================================================
 import { db } from "./firebase-init.js?v=20260905-fix1";
 import { collection, getDocs, doc, getDoc, query, where, onSnapshot, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import { initCart } from "./app-cart.js?v=20261102-cartfix1";
+import { initCart } from "./app-cart.js?v=20261103-cartfix2";
 // ===== ลดราคา + โปรโมชั่น + ออเดอร์ของฉัน (ระบบใหม่ — รวมในไฟล์เดียว app-promotion.js) =====
 import {
   fetchActiveDiscounts, fetchActivePromotions, applyDiscountToPrice, findActiveDiscountFor,
