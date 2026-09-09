@@ -43,6 +43,8 @@
         <button id="qaManageCats">🗂️<br>จัดการหมวดหมู่</button>
         <button id="qaManageDjs">🎧<br>จัดการ DJ</button>
         <button id="qaOrders">🧾<br>จัดการออเดอร์</button>
+        <button id="qaDiscounts">🏷️<br>ลดราคา</button>
+        <button id="qaPromotions">🎁<br>โปรโมชั่น</button>
         <button id="qaSettings">🔧<br>ตั้งค่าเว็บไซต์</button>
         <button id="qaManageAdmins" style="display:none;">👤<br>จัดการแอดมิน</button>
       </div>
@@ -175,6 +177,9 @@
           <div class="stat-card"><div class="num" id="ordStatSingleCount">0</div><div class="label">ออเดอร์เพลงเดี่ยว (สำเร็จ)</div></div>
           <div class="stat-card"><div class="num" id="ordStatPlaylistCount">0</div><div class="label">ออเดอร์ยกเพลย์ลิสต์ (สำเร็จ)</div></div>
         </div>
+        <div class="stat-grid" style="margin-bottom:16px;">
+          <div class="stat-card" style="grid-column:span 2;"><div class="num" id="ordStatDiscount" style="color:var(--accent-2,#ec4899);">0</div><div class="label">ส่วนลด/โปรโมชั่นรวม (LAK) — เฉพาะสำเร็จ</div></div>
+        </div>
 
         <div style="font-weight:800;margin-bottom:10px;">สร้างออเดอร์ใหม่</div>
 
@@ -253,6 +258,28 @@
       </div>
       <p style="color:var(--text-dim);font-size:13px;padding:0 16px;margin-top:-4px;">แอดมินหลักเพิ่ม/ลบ/แก้ไขแอดมินคนอื่นได้ทั้งหมด ส่วนแอดมินย่อยจะเข้าหน้านี้ไม่ได้และไม่เห็นเมนูนี้</p>
       <div id="adminList" class="container" style="padding:10px 16px 24px;"></div>
+    </div>
+
+    <!-- ===================== ลดราคา (Discounts) ===================== -->
+    <div id="view-discounts" class="view" style="display:none;">
+      <div class="container" style="padding:14px 16px 6px;display:flex;gap:8px;align-items:center;">
+        <button class="icon-btn back-btn">←</button>
+        <div style="flex:1;font-weight:800;">ลดราคา</div>
+        <button class="icon-btn" id="addDiscountBtn" style="background:var(--accent);color:#fff;">＋</button>
+      </div>
+      <p style="color:var(--text-dim);font-size:13px;padding:0 16px;margin-top:-4px;">ลดราคาเฉพาะเพลง/เพลย์ลิสต์ — ตั้งวันเริ่ม/สิ้นสุดและเปิด/ปิดได้ เมื่อหมดเวลาระบบกลับไปใช้ราคาปกติอัตโนมัติ</p>
+      <div id="discountList" class="container" style="padding:10px 16px 24px;"></div>
+    </div>
+
+    <!-- ===================== โปรโมชั่น (Promotions) ===================== -->
+    <div id="view-promotions" class="view" style="display:none;">
+      <div class="container" style="padding:14px 16px 6px;display:flex;gap:8px;align-items:center;">
+        <button class="icon-btn back-btn">←</button>
+        <div style="flex:1;font-weight:800;">โปรโมชั่น</div>
+        <button class="icon-btn" id="addPromotionBtn" style="background:var(--accent);color:#fff;">＋</button>
+      </div>
+      <p style="color:var(--text-dim);font-size:13px;padding:0 16px;margin-top:-4px;">โปรโมชั่นคำนวณอัตโนมัติในตะกร้า — ไม่ต้องกรอกรหัส ตัวอย่าง: ซื้อครบ 3 เพลง ลด 10% / ครบ 5 ลด 20% / ครบ 10 ลด 30%</p>
+      <div id="promotionList" class="container" style="padding:10px 16px 24px;"></div>
     </div>
   </div>
 
@@ -378,6 +405,112 @@
         <input type="file" id="playlistCoverInput" accept="image/*" style="position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;">
       </div>
       <button class="btn" id="playlistSaveBtn">บันทึก</button>
+    </div>
+  </div>
+
+  <!-- ===================== Modal: ลดราคา ===================== -->
+  <div class="modal-backdrop" id="discountFormBackdrop">
+    <div class="modal">
+      <div class="modal-header"><h3 id="discountFormTitle">เพิ่มลดราคา</h3><button class="modal-close" id="discountFormClose">✕</button></div>
+      <div class="field">
+        <label>เป้าหมาย (เลือกเพลงหรือเพลย์ลิสต์) *</label>
+        <select id="fDiscTarget"></select>
+      </div>
+      <div class="field">
+        <label>ประเภทส่วนลด *</label>
+        <select id="fDiscType">
+          <option value="percent">ลดเป็นเปอร์เซ็นต์ (%)</option>
+          <option value="fixed">ลดเป็นจำนวนเงิน (LAK)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>ค่าส่วนลด *</label>
+        <input id="fDiscValue" type="number" min="0" step="1" placeholder="เช่น 10 (สำหรับ %) หรือ 5000 (สำหรับ LAK)">
+      </div>
+      <div id="discountPriceHint" style="font-size:12px;color:var(--text-dim);margin-top:-4px;margin-bottom:10px;"></div>
+      <div class="field">
+        <label>วันเริ่มต้น *</label>
+        <input id="fDiscStartAt" type="datetime-local">
+      </div>
+      <div class="field">
+        <label>วันสิ้นสุด *</label>
+        <input id="fDiscEndAt" type="datetime-local">
+      </div>
+      <div class="field">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+          <input type="checkbox" id="fDiscActive" checked>
+          <span>เปิดใช้งานทันที (ถ้าไม่เลือก จะถูกปิดไว้ชั่วคราว)</span>
+        </label>
+      </div>
+      <div id="discountFormNote" style="font-size:12px;color:var(--text-dim);margin-top:-6px;margin-bottom:14px;"></div>
+      <button class="btn" id="discountSaveBtn">บันทึก</button>
+    </div>
+  </div>
+
+  <!-- ===================== Modal: โปรโมชั่น ===================== -->
+  <div class="modal-backdrop" id="promotionFormBackdrop">
+    <div class="modal">
+      <div class="modal-header"><h3 id="promotionFormTitle">สร้างโปรโมชั่น</h3><button class="modal-close" id="promotionFormClose">✕</button></div>
+      <div class="field">
+        <label>ชื่อโปรโมชั่น * (เช่น "ซื้อ 3 ลด 10%")</label>
+        <input id="fPromoName" placeholder="ซื้อ 3 ลด 10%">
+      </div>
+      <div class="field">
+        <label>คำอธิบาย (ไม่บังคับ)</label>
+        <textarea id="fPromoDesc" placeholder="รายละเอียดเพิ่มเติม"></textarea>
+      </div>
+      <div class="field">
+        <label>ประเภทโปรโมชั่น *</label>
+        <select id="fPromoType">
+          <option value="cart_percent">ลด % ของยอดที่เข้าโปร</option>
+          <option value="cart_fixed">ลดจำนวนเงินตายตัว (LAK)</option>
+          <option value="buy_x_get_y_percent">ซื้อ X ครบ → ลด %</option>
+        </select>
+        <div id="fPromoTypeHint" style="font-size:11px;color:var(--text-dim);margin-top:4px;"></div>
+      </div>
+      <div class="field">
+        <label>จำนวนเพลงขั้นต่ำ (ถ้าไม่มีใส่ 0)</label>
+        <input id="fPromoMinQty" type="number" min="0" step="1" placeholder="เช่น 3 = ต้องมีอย่างน้อย 3 เพลงในตะกร้า">
+      </div>
+      <div class="field">
+        <label>ยอดรวมขั้นต่ำ LAK (ถ้าไม่มีใส่ 0)</label>
+        <input id="fPromoMinSubtotal" type="number" min="0" step="100" placeholder="เช่น 30000 = ต้องมียอดอย่างน้อย 30,000 LAK">
+      </div>
+      <div class="field">
+        <label>ค่าส่วนลด * (เปอร์เซ็นต์ หรือ LAK — ตามประเภท)</label>
+        <input id="fPromoValue" type="number" min="0" step="1" placeholder="เช่น 10 (สำหรับ %) หรือ 5000 (สำหรับ LAK)">
+      </div>
+      <div class="field">
+        <label>ใช้กับ *</label>
+        <select id="fPromoAppliesTo">
+          <option value="all">เพลงทุกเพลง</option>
+          <option value="category">เฉพาะหมวดหมู่ (เช่น DJ)</option>
+        </select>
+      </div>
+      <div class="field" id="fPromoCategoryRow" style="display:none;">
+        <label>หมวดหมู่ที่เข้าโปร *</label>
+        <select id="fPromoCategory"></select>
+      </div>
+      <div class="field">
+        <label>วันเริ่มต้น *</label>
+        <input id="fPromoStartAt" type="datetime-local">
+      </div>
+      <div class="field">
+        <label>วันสิ้นสุด *</label>
+        <input id="fPromoEndAt" type="datetime-local">
+      </div>
+      <div class="field">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+          <input type="checkbox" id="fPromoActive" checked>
+          <span>เปิดใช้งานทันที</span>
+        </label>
+      </div>
+      <div class="field">
+        <label>ลำดับความสำคัญ (น้อย = เช็คก่อน — แต่ระบบใช้ "best discount wins" อยู่แล้ว)</label>
+        <input id="fPromoPriority" type="number" min="0" step="1" value="100">
+      </div>
+      <div id="promotionFormNote" style="font-size:12px;color:var(--text-dim);margin-top:-6px;margin-bottom:14px;"></div>
+      <button class="btn" id="promotionSaveBtn">บันทึก</button>
     </div>
   </div>
 
@@ -755,6 +888,6 @@
 
   <div class="toast" id="toast"></div>
 
-  <script type="module" src="app-admin.js?v=20260908-songdetail4"></script>
+  <script type="module" src="app-admin.js?v=20261101-disc-promo1"></script>
 </body>
 </html>
