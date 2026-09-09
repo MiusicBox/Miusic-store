@@ -136,6 +136,24 @@
   #modalMetaLine {
     font-size:11px; color:var(--text-dim); text-align:center; line-height:1.5;
   }
+
+  /* ---- เพิ่มใหม่: ปุ่ม + popup ติดตามออเดอร์ (ฝั่งลูกค้า) — ไม่แตะระบบเดิม ใช้คลาส .modal/.field เดิม ---- */
+  .track-order-btn { margin-right:6px; }
+  .track-order-modal .track-order-intro { color:var(--text-dim); font-size:13px; margin-top:0; margin-bottom:16px; }
+  .track-order-result { margin-top:6px; padding-top:14px; border-top:1px solid rgba(255,255,255,.1); }
+  .track-order-status {
+    display:inline-flex; align-items:center; gap:6px; padding:5px 12px; border-radius:999px;
+    font-size:12.5px; font-weight:700; margin-bottom:14px;
+  }
+  .track-order-row { display:flex; justify-content:space-between; gap:12px; margin:6px 0; font-size:13.5px; }
+  .track-order-row span:first-child { color:var(--text-dim); }
+  .track-order-items { display:flex; flex-direction:column; gap:6px; margin:10px 0; max-height:38vh; overflow:auto; }
+  .track-order-item { display:flex; justify-content:space-between; gap:10px; font-size:13px; padding:8px 10px; border:1px solid rgba(255,255,255,.08); border-radius:9px; }
+  .track-order-item-name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .track-order-item-price { white-space:nowrap; color:var(--text-dim); }
+  .track-order-total { margin-top:8px; padding-top:10px; border-top:1px solid rgba(255,255,255,.1); display:flex; justify-content:space-between; font-weight:800; font-size:15px; }
+  .track-order-actions { display:flex; gap:8px; margin-top:16px; }
+  .track-order-actions > * { flex:1; }
 </style>
 </head>
 <body>
@@ -147,6 +165,9 @@
         <span id="siteName">Music Store</span>
       </div>
       <div class="cart-toggle-wrap">
+        <button class="icon-btn track-order-btn" id="trackOrderBtn" type="button" aria-label="ติดตามออเดอร์">
+          📦
+        </button>
         <button class="icon-btn cart-toggle-btn" id="cartToggleBtn" type="button" aria-label="เปิดตะกร้าสินค้า">
           🛒 <span id="cartBadge" class="cart-badge" hidden>0</span>
         </button>
@@ -335,6 +356,34 @@
     </div>
   </div>
 
+  <!-- เพิ่มใหม่: popup ติดตามออเดอร์ (ฝั่งลูกค้า ไม่ต้อง Login) -->
+  <div class="modal-backdrop" id="trackOrderBackdrop" aria-hidden="true">
+    <div class="modal track-order-modal">
+      <div class="modal-header">
+        <h3>ติดตามออเดอร์</h3>
+        <button class="modal-close" id="trackOrderClose" type="button">✕</button>
+      </div>
+      <p class="track-order-intro">กรอกเลข Order พร้อมชื่อและเบอร์โทร/WhatsApp ที่ใช้ตอนสั่งซื้อ เพื่อตรวจสอบสถานะ</p>
+
+      <div class="field">
+        <label for="trackOrderId">เลข Order *</label>
+        <input id="trackOrderId" placeholder="เช่น RCPT-20260909-ABC123">
+      </div>
+      <div class="field">
+        <label for="trackOrderName">ชื่อลูกค้า *</label>
+        <input id="trackOrderName" autocomplete="name" placeholder="ชื่อที่ใช้ตอนสั่งซื้อ">
+      </div>
+      <div class="field">
+        <label for="trackOrderPhone">เบอร์โทร/WhatsApp *</label>
+        <input id="trackOrderPhone" autocomplete="tel" placeholder="20xxxxxxxx">
+      </div>
+      <button class="btn" id="trackOrderSubmitBtn" type="button">ค้นหาออเดอร์</button>
+      <div id="trackOrderFeedback" class="cart-feedback"></div>
+
+      <div id="trackOrderResult" class="track-order-result" hidden></div>
+    </div>
+  </div>
+
   <div class="toast" id="toast"></div>
 
   <!-- สคริปต์สลับการ เปิด-ปิด Dropdown -->
@@ -354,6 +403,6 @@
   </script>
 
   <!-- เปลี่ยนเลข v ทุกครั้งที่อัปโหลดไฟล์ใหม่ เพื่อไม่ให้มือถือใช้ไฟล์ JS จาก cache -->
-  <script type="module" src="app-user.js?v=20260905-fix2"></script>
+  <script type="module" src="app-user.js?v=20260909-trackorder1"></script>
 </body>
 </html>
