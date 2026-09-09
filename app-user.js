@@ -2,7 +2,7 @@
 // ===================================================
 import { db } from "./firebase-init.js?v=20260905-fix1";
 import { collection, getDocs, doc, getDoc, query, where } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import { initCart } from "./app-cart.js?v=20260909-receipt1";
+import { initCart } from "./app-cart.js?v=20260909-perf1";
 
 const STATE = {
   songs: [], categories: [], djs: [], playlists: [], settings: {},
@@ -54,7 +54,7 @@ function buildWhatsAppLink(number, text) {
 }
 
 function debounce(fn, wait) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), wait); }; }
-const { loadCart, bindCartEvents, addToCart } = initCart({
+const { loadCart, bindCartEvents, addToCart, getLastOrderRecord, showReceipt } = initCart({
   state: STATE,
   showToast,
   escapeHtml,
@@ -948,6 +948,24 @@ function normalizeName(v) { return String(v || "").trim().toLowerCase(); }
 function openTrackOrder() {
   const backdrop = document.getElementById("trackOrderBackdrop");
   if (backdrop) backdrop.classList.add("show");
+  // เพิ่มใหม่: ถ้ามีออเดอร์ล่าสุดที่จำไว้ในเครื่องนี้ ให้เติมข้อมูลให้อัตโนมัติ + เสนอปุ่มดูใบเสร็จอีกครั้งแบบไม่ต้องค้นหา
+  const record = getLastOrderRecord ? getLastOrderRecord() : null;
+  const quickEl = document.getElementById("trackOrderQuick");
+  if (record && quickEl) {
+    document.getElementById("trackOrderId").value = record.receiptNumber || "";
+    document.getElementById("trackOrderName").value = record.order?.customer_name || "";
+    document.getElementById("trackOrderPhone").value = record.order?.whatsapp || "";
+    quickEl.hidden = false;
+    const quickBtn = document.getElementById("trackOrderQuickBtn");
+    if (quickBtn) {
+      quickBtn.onclick = () => {
+        closeTrackOrder();
+        showReceipt(record.order, record.receiptNumber, STATE.settings.whatsapp_number, record.contacted);
+      };
+    }
+  } else if (quickEl) {
+    quickEl.hidden = true;
+  }
 }
 function closeTrackOrder() {
   const backdrop = document.getElementById("trackOrderBackdrop");
