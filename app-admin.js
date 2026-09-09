@@ -14,6 +14,8 @@ import { resolveCurrentAdminRole, initAdminsView } from "./admin-roles.js";
 import {
   analyzeSongFile, analyzeSongUrl, recalculateFromManualBar, manualPreviewWindow, BAR_SECONDS
 } from "./song-analyzer.js?v=20260908-previewrange1";
+// ===== ลดราคา + โปรโมชั่น (ระบบใหม่ — รวมในไฟล์เดียว app-promotion.js) =====
+import { initDiscountsView, initPromotionsView } from "./app-promotion.js?v=20261101-promo1";
 
 const CACHE = { songs: [], categories: [], djs: [], playlists: [] };
 let currentAdminRole = null; // "main" | "sub" — ของบัญชีที่ล็อกอินอยู่ตอนนี้
@@ -314,6 +316,13 @@ document.getElementById("qaSettings").addEventListener("click", () => { showView
 document.getElementById("qaManageAdmins").addEventListener("click", () => {
   if (currentAdminRole !== "main") { showToast("เฉพาะแอดมินหลักเท่านั้นที่เข้าหน้านี้ได้", "error"); return; }
   showView("view-admins"); initAdminsView();
+});
+// ===== ลดราคา + โปรโมชั่น (ใช้ได้ทั้งแอดมินหลัก + แอดมินย่อย ตามที่ผู้ใช้ระบุ) =====
+document.getElementById("qaDiscounts").addEventListener("click", () => {
+  showView("view-discounts"); initDiscountsView();
+});
+document.getElementById("qaPromotions").addEventListener("click", () => {
+  showView("view-promotions"); initPromotionsView();
 });
 
 async function loadDashboard() {
