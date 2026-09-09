@@ -325,6 +325,12 @@ export function initCart({ state, showToast, escapeHtml, formatPrice, buildWhats
   // ใช้ state.cart (price ที่ snapshot ตอน addToCart) — ไม่ใช่ราคา db ล่าสุด
   // ดังนั้นยอดที่แสดงใน checkout summary อาจไม่ตรงกับยอดสุดท้าย 100% (ถ้า admin เพิ่งเปลี่ยนราคา/ส่วนลด)
   // แต่ระบบจะ re-resolve จาก db ตอนกดยืนยันสั่งซื้อ → ยอดที่เก็บใน order ถูกต้องเสมอ
+  // ===== ตัวแปรกัน infinite loop =====
+  // ถ้า cache ยังว่าง → trigger async load แล้ว re-render
+  // แต่ re-render จะเรียก computeApproxPricingForDisplay อีก → อาจเกิดลูปไม่รู้จบ
+  // ใช้ flag กัน re-render ซ้ำ
+  let _pricingReRenderPending = false;
+
   function computeApproxPricingForDisplay() {
     // ใช้ cart state ปัจจุบัน — แปลงเป็น cartItems format ที่ computeCartPricing ต้องการ
     try {
@@ -339,20 +345,25 @@ export function initCart({ state, showToast, escapeHtml, formatPrice, buildWhats
       // ไม่ส่ง discounts/promotions → computeCartPricing จะใช้ cache จาก app-promotion.js
       const result = computeCartPricing(cartItems);
 
-      // ===== เพิ่มใหม่: trigger async load ถ้า cache ยังว่าง (เกิดตอนลูกค้าเปิดหน้าแล้วกดตะกร้าเร็วเกินไป) =====
-      // ถ้า finalTotal === subtotal แสดงว่าไม่มีส่วนลด — แต่อาจเป็นเพราะ cache ว่าง ไม่ใช่ไม่มีจริง ๆ
-      // วิธีเช็ค: ถ้า cart มีของ แต่ finalTotal = subtotal = baseTotal แล้ว cache อาจยังว่าง
-      // ปลอดภัยสุด: trigger fetchActiveDiscounts + fetchActivePromotions (มันจะใช้ cache ถ้ามี หรือโหลดใหม่ถ้าไม่มี)
-      // เมื่อ cache พร้อมแล้ว → re-render cart รอบใหม่
-      if (cartItems.length > 0 && result.promoDiscountAmount === 0 && result.itemDiscountAmount === 0) {
-        // trigger async load (ถ้า cache มีอยู่แล้ว จะ return ทันที)
+      // ===== trigger async load ถ้า cache ยังว่าง (เกิดตอนลูกค้าเปิดหน้าแล้วกดตะกร้าเร็วเกินไป) =====
+      // ถ้าไม่มีส่วนลดเลย → อาจเป็นเพราะ cache ว่าง → trigger fetch + re-render
+      // แต่กัน infinite loop ด้วย _pricingReRenderPending flag
+      if (cartItems.length > 0 && result.promoDiscountAmount === 0 && result.itemDiscountAmount === 0 && !_pricingReRenderPending) {
+        _pricingReRenderPending = true;
         Promise.all([
           fetchActiveDiscounts(),
           fetchActivePromotions()
         ]).then(() => {
+          _pricingReRenderPending = false;
           // re-render cart รอบใหม่ (ตอนนี้ cache พร้อมแล้ว)
-          renderCart();
-        }).catch(() => {});
+          // แต่เช็คก่อนว่า cart modal เปิดอยู่ (กัน re-render ถ้าปิดไปแล้ว)
+          const cartBackdrop = document.getElementById("cartBackdrop");
+          if (cartBackdrop && cartBackdrop.classList.contains("show")) {
+            renderCart();
+          }
+        }).catch(() => {
+          _pricingReRenderPending = false;
+        });
       }
 
       return result;
