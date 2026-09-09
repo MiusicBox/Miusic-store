@@ -4,6 +4,10 @@ import { db } from "./firebase-init.js?v=20260905-fix1";
 import {
   collection, doc, query, where, getDoc, getDocs, setDoc
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+// ===== ลดราคา + โปรโมชั่น (ระบบใหม่) — import มาจาก app-promotion.js กลาง (รวมไฟล์เดียว) =====
+import {
+  fetchActiveDiscounts, fetchActivePromotions, computeCartPricing, clearPricingCache
+} from "./app-promotion.js?v=20261101-promo1";
 
 const CART_STORAGE_KEY = "music_store_cart_v1";
 const CHECKOUT_ORDER_KEY = "music_store_checkout_order_v1";
@@ -220,19 +224,82 @@ export function initCart({ state, showToast, escapeHtml, formatPrice, buildWhats
   function renderCheckoutSummary() {
     const el = document.getElementById("checkoutSummary");
     if (!el) return;
-    el.innerHTML = `
+    // คำนวณ approximate ส่วนลด/โปรโมชั่นแบบ sync (ใช้ cache ที่โหลดไว้ใน app-user.js)
+    // ค่าที่แสดงตรงนี้เป็น "โดยประมาณ" — ระบบจะคำนวณใหม่ทั้งหมดตอนกดยืนยันสั่งซื้อ
+    const approxPricing = computeApproxPricingForDisplay();
+    const promoApplied = approxPricing?.promotionApplied;
+    const itemDiscount = approxPricing?.itemDiscountAmount || 0;
+    const promoDiscount = approxPricing?.promoDiscountAmount || 0;
+    const totalDiscount = itemDiscount + promoDiscount;
+    const baseTotal = cartTotal();
+    const finalTotal = approxPricing?.finalTotal ?? baseTotal;
+
+    let rows = `
       <div class="cart-summary-row">
         <span style="color:var(--text-dim);">รายการ</span>
         <strong>${cartQuantity()} เพลง</strong>
-      </div>
-      <div class="cart-summary-row">
-        <span style="color:var(--text-dim);">ยอดรวมโดยประมาณ</span>
-        <strong style="color:var(--success);">${formatPrice(cartTotal())}</strong>
-      </div>
+      </div>`;
+
+    if (totalDiscount > 0 && finalTotal < baseTotal) {
+      rows += `
+        <div class="cart-summary-row">
+          <span style="color:var(--text-dim);">ยอดรวมก่อนลด</span>
+          <strong style="color:var(--text-dim);text-decoration:line-through;">${formatPrice(baseTotal)}</strong>
+        </div>`;
+      if (itemDiscount > 0) {
+        rows += `
+          <div class="cart-summary-row">
+            <span style="color:var(--accent-2,#ec4899);">🏷️ ส่วนลดจากราคาปกติ</span>
+            <strong style="color:var(--accent-2,#ec4899);">-${formatPrice(itemDiscount)}</strong>
+          </div>`;
+      }
+      if (promoApplied && promoDiscount > 0) {
+        rows += `
+          <div class="cart-summary-row">
+            <span style="color:var(--success);">🎁 ${escapeHtml(promoApplied.name || 'โปรโมชั่น')}</span>
+            <strong style="color:var(--success);">-${formatPrice(promoDiscount)}</strong>
+          </div>`;
+      }
+      rows += `
+        <div class="cart-summary-row">
+          <span style="color:var(--text-dim);">ยอดชำระ</span>
+          <strong style="color:var(--success);">${formatPrice(finalTotal)}</strong>
+        </div>`;
+    } else {
+      rows += `
+        <div class="cart-summary-row">
+          <span style="color:var(--text-dim);">ยอดรวมโดยประมาณ</span>
+          <strong style="color:var(--success);">${formatPrice(baseTotal)}</strong>
+        </div>`;
+    }
+    rows += `
       <div style="font-size:11px;color:var(--text-dim);margin-top:8px;">
         ระบบจะตรวจสอบราคาและรายการล่าสุดจากฐานข้อมูลอีกครั้งก่อนสร้าง Order
-      </div>
-    `;
+      </div>`;
+    el.innerHTML = rows;
+  }
+
+  // ===== เพิ่มใหม่: คำนวณ approximate ส่วนลด/โปรโมชั่นแบบ sync (อ่าน cache จาก pricing.js) =====
+  // ใช้ state.cart (price ที่ snapshot ตอน addToCart) — ไม่ใช่ราคา db ล่าสุด
+  // ดังนั้นยอดที่แสดงใน checkout summary อาจไม่ตรงกับยอดสุดท้าย 100% (ถ้า admin เพิ่งเปลี่ยนราคา/ส่วนลด)
+  // แต่ระบบจะ re-resolve จาก db ตอนกดยืนยันสั่งซื้อ → ยอดที่เก็บใน order ถูกต้องเสมอ
+  function computeApproxPricingForDisplay() {
+    // ใช้ cart state ปัจจุบัน — แปลงเป็น cartItems format ที่ computeCartPricing ต้องการ
+    try {
+      const cartItems = state.cart.map(item => {
+        if (item.kind === "playlist") {
+          const plId = String(item.id).replace(/^playlist:/, "");
+          return { kind: "playlist", playlist_id: plId, price: Number(item.price) || 0 };
+        } else {
+          return { kind: "song", song_id: String(item.id), price: Number(item.price) || 0 };
+        }
+      });
+      // ไม่ส่ง discounts/promotions → computeCartPricing จะใช้ cache จาก pricing.js
+      return computeCartPricing(cartItems);
+    } catch (e) {
+      console.warn("computeApproxPricingForDisplay error:", e);
+      return null;
+    }
   }
 
   // ---- เพิ่มใหม่: จำชื่อ+เบอร์โทร/WhatsApp ของลูกค้าไว้ในเครื่อง (localStorage) เพื่อเติมฟอร์มอัตโนมัติตอนสั่งซื้อครั้งถัดไป ----
@@ -414,12 +481,34 @@ export function initCart({ state, showToast, escapeHtml, formatPrice, buildWhats
 
     const settings = settingsSnap.exists() ? settingsSnap.data() : {};
 
+    // ===== ลดราคา + โปรโมชั่น (ระบบใหม่) — โหลด active discounts/promotions พร้อมกัน =====
+    // ใช้ cache ที่โหลดไว้แล้วใน app-user.js init() — ถ้าไม่มี cache จะโหลดใหม่
+    // forceRefresh = true เพื่อให้ checkout ได้ข้อมูลล่าสุดเสมอ (กัน admin เพิ่งเปลี่ยนส่วนลดตอนลูกค้ากำลัง checkout)
+    let activeDiscounts = [];
+    let activePromotions = [];
+    try {
+      [activeDiscounts, activePromotions] = await Promise.all([
+        fetchActiveDiscounts(true),
+        fetchActivePromotions(true)
+      ]);
+    } catch (e) {
+      console.warn("โหลด discounts/promotions ไม่สำเร็จ — คำนวณราคาปกติ", e);
+    }
+
     // ===== กรณีเดิม (1): มีเพลย์ลิสต์เดียวล้วนๆ ไม่มีเพลงเดี่ยวปน — คงพฤติกรรมเดิมทุกประการ =====
     if (playlistResolutions.length === 1 && singleSongItems.length === 0) {
       const { playlist, songs } = playlistResolutions[0];
+      // คำนวณ discount + promotion (ถ้ามี)
+      const cartItems = [{ kind: "playlist", playlist_id: playlist.id, price: Number(playlist.price) }];
+      const pricing = computeCartPricing(cartItems, activeDiscounts, activePromotions);
       return {
         items: songs.map(s => ({ song_id: s.song_id, title: s.title, price: s.price, quantity: 1 })),
-        total: Number(playlist.price),
+        total: pricing.finalTotal,  // ← ยอดสุดท้าย (เก็บใน order.total เหมือนเดิม)
+        subtotal: pricing.subtotal,
+        discountSubtotal: pricing.discountSubtotal,
+        discountAmount: pricing.discountAmount,
+        promotionApplied: pricing.promotionApplied,
+        finalTotal: pricing.finalTotal,
         orderType: "playlist",
         playlist,
         playlistIds: [playlist.id],
@@ -429,11 +518,28 @@ export function initCart({ state, showToast, escapeHtml, formatPrice, buildWhats
 
     // ===== กรณีเดิม (2): มีแต่เพลงเดี่ยว ไม่มีเพลย์ลิสต์เลย — คงพฤติกรรมเดิมทุกประการ =====
     if (playlistResolutions.length === 0) {
-      const total = singleSongItems.reduce((sum, item) => sum + item.price, 0);
-      if (!Number.isFinite(total) || total < 0) throw new Error("คำนวณยอดรวมจากฐานข้อมูลไม่สำเร็จ");
+      const baseTotal = singleSongItems.reduce((sum, item) => sum + item.price, 0);
+      if (!Number.isFinite(baseTotal) || baseTotal < 0) throw new Error("คำนวณยอดรวมจากฐานข้อมูลไม่สำเร็จ");
+      // คำนวณ discount + promotion โดยใช้ category_id ของแต่ละเพลง (สำหรับ promotion หมวดหมู่)
+      const cartItems = singleSongItems.map(item => {
+        const songSnap = songSnaps.find((s, idx) => songEntries[idx] && songEntries[idx].id === item.song_id);
+        const songData = songSnap?.data() || {};
+        return {
+          kind: "song",
+          song_id: item.song_id,
+          price: item.price,
+          category_id: songData.category_id || songData.categoryId || null
+        };
+      });
+      const pricing = computeCartPricing(cartItems, activeDiscounts, activePromotions);
       return {
         items: singleSongItems,
-        total,
+        total: pricing.finalTotal,
+        subtotal: pricing.subtotal,
+        discountSubtotal: pricing.discountSubtotal,
+        discountAmount: pricing.discountAmount,
+        promotionApplied: pricing.promotionApplied,
+        finalTotal: pricing.finalTotal,
         orderType: "single",
         playlist: null,
         playlistIds: [],
@@ -451,14 +557,40 @@ export function initCart({ state, showToast, escapeHtml, formatPrice, buildWhats
       song_ids: songs.map(s => s.song_id), // เก็บ snapshot ไอดีเพลงในเพลย์ลิสต์ไว้ ใช้อ้างอิงฝั่ง Admin (ไม่กระทบระบบเดิม)
       song_titles: songs.map(s => s.title) // เก็บ snapshot ชื่อเพลงคู่กัน ใช้แสดงในใบเสร็จ/ข้อความ WhatsApp เท่านั้น ไม่ใช้คิดราคา
     }));
-    const songLineItems = singleSongItems.map(item => ({ kind: "song", ...item }));
+    const songLineItems = singleSongItems.map((item, idx) => {
+      const songSnap = songSnaps[idx];
+      const songData = songSnap?.data() || {};
+      return {
+        kind: "song",
+        song_id: item.song_id,
+        title: item.title,
+        price: item.price,
+        quantity: 1,
+        category_id: songData.category_id || songData.categoryId || null
+      };
+    });
     const items = [...songLineItems, ...playlistLineItems];
-    const total = items.reduce((sum, item) => sum + item.price, 0);
-    if (!Number.isFinite(total) || total < 0) throw new Error("คำนวณยอดรวมจากฐานข้อมูลไม่สำเร็จ");
+    const baseTotal = items.reduce((sum, item) => sum + item.price, 0);
+    if (!Number.isFinite(baseTotal) || baseTotal < 0) throw new Error("คำนวณยอดรวมจากฐานข้อมูลไม่สำเร็จ");
+
+    // คำนวณ discount + promotion (กรณี mixed)
+    const cartItems = items.map(item => ({
+      kind: item.kind,
+      song_id: item.song_id,
+      playlist_id: item.playlist_id,
+      price: item.price,
+      category_id: item.category_id || null
+    }));
+    const pricing = computeCartPricing(cartItems, activeDiscounts, activePromotions);
 
     return {
       items,
-      total,
+      total: pricing.finalTotal,
+      subtotal: pricing.subtotal,
+      discountSubtotal: pricing.discountSubtotal,
+      discountAmount: pricing.discountAmount,
+      promotionApplied: pricing.promotionApplied,
+      finalTotal: pricing.finalTotal,
       orderType: "mixed",
       playlist: null,
       playlistIds: playlistResolutions.map(r => r.playlist.id),
@@ -637,6 +769,42 @@ export function initCart({ state, showToast, escapeHtml, formatPrice, buildWhats
     }
   }
 
+  // ===== เพิ่มใหม่: สร้างแถวส่วนลด/โปรโมชั่นสำหรับใบเสร็จ =====
+  // อ่านจาก order.subtotal, order.discount_amount, order.promotion_applied (snapshot ตอนสั่ง)
+  // ถ้า order เก่าไม่มี field เหล่านี้ → ไม่แสดงแถวพิเศษ (back-compat)
+  function buildReceiptDiscountRows(order) {
+    const subtotal = order.subtotal;
+    const discountAmount = order.discount_amount;
+    const promotionApplied = order.promotion_applied;
+    const finalTotal = order.final_total ?? order.total;
+    // ถ้าไม่มีข้อมูลส่วนลดเลย → ไม่แสดงแถวพิเศษ (order เก่าก่อน deploy ระบบใหม่)
+    if (subtotal == null && discountAmount == null && !promotionApplied) return "";
+    // ถ้าส่วนลดเป็น 0 และไม่มี promotion → ไม่แสดง
+    const hasDiscount = (discountAmount && discountAmount > 0) || (promotionApplied && promotionApplied.discount_amount > 0);
+    if (!hasDiscount) return "";
+
+    let rows = "";
+    if (subtotal != null && subtotal !== finalTotal) {
+      rows += `<div class="receipt-line receipt-discount-row"><span>ยอดรวมก่อนลด</span><span>${formatPrice(subtotal)}</span></div>`;
+    }
+    if (promotionApplied && promotionApplied.name) {
+      const promoAmount = promotionApplied.discount_amount || 0;
+      if (promoAmount > 0) {
+        rows += `<div class="receipt-line receipt-promo-row"><span>🎁 โปรโมชั่น: ${escapeHtml(promotionApplied.name)}</span><span>-${formatPrice(promoAmount)}</span></div>`;
+      }
+    }
+    if (discountAmount && discountAmount > 0) {
+      // ถ้า promotionApplied มี discount_amount แล้ว → discountAmount รวม item-level + promo
+      // ถ้ามี promotionApplied อยู่ → แสดงเฉพาะส่วนต่างของ item-level (ถ้ามี)
+      const promoAmount = promotionApplied?.discount_amount || 0;
+      const itemDiscount = discountAmount - promoAmount;
+      if (itemDiscount > 0) {
+        rows += `<div class="receipt-line receipt-discount-row"><span>ส่วนลดจากราคาปกติ</span><span>-${formatPrice(itemDiscount)}</span></div>`;
+      }
+    }
+    return rows;
+  }
+
   function showReceipt(order, receiptNumber, adminWhatsappNumber, alreadyContacted) {
     receiptContacted = !!alreadyContacted;
     const date = order.created_at ? new Date(order.created_at) : new Date();
@@ -659,7 +827,8 @@ export function initCart({ state, showToast, escapeHtml, formatPrice, buildWhats
           <div><span>WhatsApp</span><strong>${escapeHtml(order.whatsapp)}</strong></div>
         </div>
         <div class="receipt-items">${buildReceiptItemRows(order) || '<div class="receipt-empty">ไม่มีรายการสินค้า</div>'}</div>
-        <div class="receipt-total"><span>รวมทั้งสิ้น</span><strong>${formatPrice(order.total)}</strong></div>
+        ${buildReceiptDiscountRows(order)}
+        <div class="receipt-total"><span>รวมทั้งสิ้น</span><strong>${formatPrice(order.final_total ?? order.total)}</strong></div>
         <div class="receipt-thanks">ขอบคุณที่ใช้บริการ</div>
       </div>
     `;
@@ -746,14 +915,20 @@ export function initCart({ state, showToast, escapeHtml, formatPrice, buildWhats
           customer_name: customerName,
           whatsapp,
           items: resolved.items, // Order Items ทั้งหมดของตะกร้า ณ ขณะสั่งซื้อ
-          total: resolved.total,
+          total: resolved.total, // ← ยอดสุดท้าย (final_total) — เก็บเหมือนเดิมเพื่อ back-compat กับ orders.js เดิม
           order_type: resolved.orderType, // "single" | "playlist" | "mixed"
           playlist_id: resolved.orderType === "playlist" ? (resolved.playlist?.id || null) : null,
           playlist_name: resolved.orderType === "playlist" ? (resolved.playlist?.playlist_name || null) : null,
           store_name: resolved.settings.website_name || "Music Store",
           status: "pending_verify",
           created_at: createdAt,
-          receipt_number: receiptNumber
+          receipt_number: receiptNumber,
+          // ===== ฟิลด์ใหม่: บันทึก snapshot การคำนวณส่วนลด/โปรโมชั่น ณ เวลาที่สั่ง =====
+          // เก็บไว้ให้ order เก่าไม่เปลี่ยนราคาแม้ admin แก้ promotion ภายหลัง (เพราะเป็น snapshot)
+          subtotal: resolved.subtotal ?? resolved.total,
+          discount_amount: resolved.discountAmount ?? 0,
+          promotion_applied: resolved.promotionApplied ?? null,
+          final_total: resolved.finalTotal ?? resolved.total
         };
         // playlist_ids เป็นฟิลด์เสริมสำหรับ Order แบบผสม (เพลง+เพลย์ลิสต์ หรือหลายเพลย์ลิสต์) เท่านั้น
         // ระบบเดิม (resolveOrderSongs ใน orders.js) อ่านฟิลด์นี้อยู่แล้วสำหรับสร้าง ZIP ดาวน์โหลด จึงไม่ต้องแก้ไฟล์นั้นเพิ่ม
