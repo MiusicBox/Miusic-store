@@ -1,0 +1,1231 @@
+// app-promotion.js — ไฟล์รวมระบบ ลดราคา + โปรโมชั่น + ออเดอร์ของฉัน + helper คำนวณราคา
+// ===================================================
+// ไฟล์นี้รวม 4 ระบบเข้าด้วยกัน:
+//   1. PRICING HELPERS (คำนวณส่วนลด/โปรโมชั่น) — ใช้ทั้งฝั่ง customer และ admin
+//   2. DISCOUNTS CRUD (admin จัดการลดราคา per-song/per-playlist)
+//   3. PROMOTIONS CRUD (admin จัดการโปรโมชั่น cart-wide)
+//   4. MY ORDERS VIEW (ลูกค้าติดตามออเดอร์ของตัวเองแบบ realtime)
+//
+// กฎสำคัญ (สอดคล้องกับที่ผู้ใช้ระบุ):
+//   1. เพลงที่มี "ราคาลด" อยู่แล้ว → ห้ามนำมาคิดโปรโมชั่นซ้ำ
+//   2. โปรโมชั่นที่ active และอยู่ในช่วงวันเริ่ม/สิ้นสุดเท่านั้นที่ใช้ได้
+//   3. ถ้าหมดเวลา discount หรือ promotion → กลับไปใช้ราคาปกติอัตโนมัติ
+//   4. Order บันทึกราคาจริง ณ เวลาสั่ง (snapshot) — Admin แก้ promotion ภายหลัง Order เก่าไม่เปลี่ยนราคา
+//   5. Best discount wins — ถ้ามีหลายโปรโมชั่นเข้าเงื่อนไข → เลือกอันที่ลดมากที่สุด
+//
+// หมายเหตุด้าน back-compat:
+//   - order.total ยังคงไว้ (ตั้งเท่ากับ final_total) ให้โค้ดเดิมใน orders.js ที่อ่าน order.total ยังทำงานได้
+//   - field ใหม่: subtotal, discount_amount, promotion_applied (object หรือ null), final_total
+// ===================================================
+import { db, auth } from "./firebase-init.js?v=20260905-fix1";
+import {
+  collection, doc, getDocs, setDoc, updateDoc, deleteDoc, query, onSnapshot
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+// ============================================================================
+// PART 1: PRICING HELPERS (คำนวณส่วนลด + โปรโมชั่น)
+// ============================================================================
+
+// ---------------- ตัวช่วยเช็ควันที่ ----------------
+function isWithinDateRange(startIso, endIso, nowMs) {
+  const now = (nowMs != null) ? nowMs : Date.now();
+  if (startIso) {
+    const t = new Date(startIso).getTime();
+    if (!isNaN(t) && now < t) return false;
+  }
+  if (endIso) {
+    const t = new Date(endIso).getTime();
+    if (!isNaN(t) && now > t) return false;
+  }
+  return true;
+}
+
+// ---------------- เก็บ cache ของ discounts/promotions ----------------
+let _discountsCache = null;
+let _promotionsCache = null;
+let _discountsAllCache = null;
+let _promotionsAllCache = null;
+
+// ---------------- ดึง discount ที่ active ทั้งหมด ----------------
+export async function fetchActiveDiscounts(forceRefresh) {
+  if (_discountsCache && !forceRefresh) return _discountsCache;
+  try {
+    const snap = await getDocs(collection(db, "discounts"));
+    const now = Date.now();
+    const items = [];
+    snap.forEach(d => {
+      const data = d.data();
+      if (data && data.active !== false && isWithinDateRange(data.start_at, data.end_at, now)) {
+        items.push({ id: d.id, ...data });
+      }
+    });
+    _discountsCache = items;
+    return items;
+  } catch (err) {
+    console.warn("fetchActiveDiscounts error:", err);
+    return [];
+  }
+}
+
+// ---------------- ดึง promotions ที่ active ทั้งหมด ----------------
+export async function fetchActivePromotions(forceRefresh) {
+  if (_promotionsCache && !forceRefresh) return _promotionsCache;
+  try {
+    const snap = await getDocs(collection(db, "promotions"));
+    const now = Date.now();
+    const items = [];
+    snap.forEach(d => {
+      const data = d.data();
+      if (data && data.active !== false && isWithinDateRange(data.start_at, data.end_at, now)) {
+        items.push({ id: d.id, ...data });
+      }
+    });
+    items.sort((a, b) => (a.priority ?? 100) - (b.priority ?? 100));
+    _promotionsCache = items;
+    return items;
+  } catch (err) {
+    console.warn("fetchActivePromotions error:", err);
+    return [];
+  }
+}
+
+// ---------------- ดึง discounts ทั้งหมด (admin view รวม inactive) ----------------
+export async function fetchAllDiscounts() {
+  try {
+    const snap = await getDocs(collection(db, "discounts"));
+    const items = [];
+    snap.forEach(d => items.push({ id: d.id, ...d.data() }));
+    items.sort((a, b) => (b.updated_at || "").localeCompare(a.updated_at || ""));
+    _discountsAllCache = items;
+    return items;
+  } catch (err) {
+    console.warn("fetchAllDiscounts error:", err);
+    return [];
+  }
+}
+
+export async function fetchAllPromotions() {
+  try {
+    const snap = await getDocs(collection(db, "promotions"));
+    const items = [];
+    snap.forEach(d => items.push({ id: d.id, ...d.data() }));
+    items.sort((a, b) => (b.updated_at || "").localeCompare(a.updated_at || ""));
+    _promotionsAllCache = items;
+    return items;
+  } catch (err) {
+    console.warn("fetchAllPromotions error:", err);
+    return [];
+  }
+}
+
+// ---------------- ล้าง cache (หลัง admin save/delete) ----------------
+export function clearPricingCache() {
+  _discountsCache = null;
+  _promotionsCache = null;
+  _discountsAllCache = null;
+  _promotionsAllCache = null;
+}
+
+// ---------------- หา discount ที่ active ของ song/playlist ----------------
+export function findActiveDiscountFor({ targetType, targetId, discounts } = {}) {
+  if (!targetType || !targetId) return null;
+  const list = discounts || _discountsCache || [];
+  return list.find(d => d.target_type === targetType && d.target_id === targetId) || null;
+}
+
+// ---------------- คำนวณราคาหลัง discount ของ item เดียว ----------------
+export function applyDiscountToPrice(originalPrice, discount) {
+  if (!discount || typeof originalPrice !== "number" || isNaN(originalPrice)) {
+    return { finalPrice: originalPrice, discountAmount: 0, hasDiscount: false };
+  }
+  const value = Number(discount.discount_value) || 0;
+  let finalPrice = originalPrice;
+  if (discount.discount_type === "percent") {
+    const pct = Math.max(0, Math.min(100, value));
+    finalPrice = Math.round(originalPrice * (100 - pct) / 100);
+  } else if (discount.discount_type === "fixed") {
+    finalPrice = Math.max(0, originalPrice - value);
+  }
+  finalPrice = Math.round(finalPrice);
+  const discountAmount = Math.max(0, originalPrice - finalPrice);
+  return { finalPrice, discountAmount, hasDiscount: discountAmount > 0 };
+}
+
+// ---------------- ตรวจสอบว่า item อยู่ในโปรโมชั่นหรือไม่ ----------------
+export function isItemInPromotionScope(item, promotion) {
+  if (!promotion) return false;
+  const appliesTo = promotion.applies_to || "all";
+  if (appliesTo === "all") return true;
+  if (appliesTo === "category") {
+    if (item.kind && item.kind !== "song") return false;
+    const catId = item.category_id || item.categoryId || null;
+    if (!catId || !promotion.category_id) return false;
+    return catId === promotion.category_id;
+  }
+  return false;
+}
+
+// ---------------- คำนวณ promotion ที่เข้าเงื่อนไขและเลือกอันที่ลดมากที่สุด ----------------
+export function computeBestPromotion(items, promotions) {
+  if (!Array.isArray(items) || items.length === 0 || !Array.isArray(promotions) || promotions.length === 0) {
+    const subtotal = (items || []).reduce((s, it) => s + (Number(it.price) || 0), 0);
+    return { bestPromotion: null, eligibleCount: 0, discountAmount: 0, subtotal };
+  }
+  const subtotal = items.reduce((s, it) => s + (Number(it.price) || 0), 0);
+  let bestDiscount = 0;
+  let bestEligibleCount = 0;
+  let bestPromoObj = null;
+  for (const promo of promotions) {
+    const eligibleItems = items.filter(it => {
+      if (it._hadDiscount) return false;
+      if (it.kind === "playlist") return false;
+      return isItemInPromotionScope(it, promo);
+    });
+    const eligibleCount = eligibleItems.length;
+    if (eligibleCount === 0) continue;
+    if (promo.min_quantity && eligibleCount < promo.min_quantity) continue;
+    const eligibleSubtotal = eligibleItems.reduce((s, it) => s + (Number(it.price) || 0), 0);
+    if (promo.min_subtotal && eligibleSubtotal < promo.min_subtotal) continue;
+    let promoDiscount = 0;
+    if (promo.type === "cart_percent") {
+      const pct = Math.max(0, Math.min(100, Number(promo.discount_value) || 0));
+      promoDiscount = Math.round(eligibleSubtotal * pct / 100);
+    } else if (promo.type === "cart_fixed") {
+      promoDiscount = Math.min(eligibleSubtotal, Math.round(Number(promo.discount_value) || 0));
+    } else if (promo.type === "buy_x_get_y_percent") {
+      const pct = Math.max(0, Math.min(100, Number(promo.discount_value) || 0));
+      promoDiscount = Math.round(eligibleSubtotal * pct / 100);
+    } else {
+      continue;
+    }
+    if (promoDiscount > bestDiscount) {
+      bestDiscount = promoDiscount;
+      bestEligibleCount = eligibleCount;
+      bestPromoObj = promo;
+    }
+  }
+  return {
+    bestPromotion: bestPromoObj,
+    eligibleCount: bestEligibleCount,
+    discountAmount: bestDiscount,
+    subtotal
+  };
+}
+
+// ---------------- คำนวณราคาสุดท้ายของตะกร้า ----------------
+export function computeCartPricing(cartItems, discounts, promotions) {
+  const dList = discounts || _discountsCache || [];
+  const pList = promotions || _promotionsCache || [];
+  if (!Array.isArray(cartItems) || cartItems.length === 0) {
+    return { subtotal: 0, discountSubtotal: 0, itemDiscountAmount: 0, promoDiscountAmount: 0, discountAmount: 0, promotionApplied: null, finalTotal: 0, items: [] };
+  }
+  const itemsWithDiscount = cartItems.map(it => {
+    const originalPrice = Number(it.price) || 0;
+    let discount = null;
+    if (it.kind === "playlist") {
+      discount = findActiveDiscountFor({ targetType: "playlist", targetId: it.playlist_id || it.id, discounts: dList });
+    } else {
+      discount = findActiveDiscountFor({ targetType: "song", targetId: it.song_id || it.id, discounts: dList });
+    }
+    const { finalPrice, discountAmount, hasDiscount } = applyDiscountToPrice(originalPrice, discount);
+    return {
+      ...it,
+      original_price: originalPrice,
+      discount_price: finalPrice,
+      item_discount: discountAmount,
+      _hadDiscount: hasDiscount,
+      _discountMeta: discount || null
+    };
+  });
+  const subtotal = itemsWithDiscount.reduce((s, it) => s + it.original_price, 0);
+  const discountSubtotal = itemsWithDiscount.reduce((s, it) => s + it.discount_price, 0);
+  const itemDiscountAmount = subtotal - discountSubtotal;
+  const promoInput = itemsWithDiscount.map(it => ({ ...it, price: it.discount_price }));
+  const { bestPromotion, eligibleCount, discountAmount: promoDiscountAmount } = computeBestPromotion(promoInput, pList);
+  const finalTotal = Math.max(0, discountSubtotal - promoDiscountAmount);
+  const discountAmount = itemDiscountAmount + promoDiscountAmount;
+  let promotionApplied = null;
+  if (bestPromotion) {
+    promotionApplied = {
+      id: bestPromotion.id,
+      name: bestPromotion.name || "",
+      type: bestPromotion.type || "",
+      discount_value: Number(bestPromotion.discount_value) || 0,
+      applies_to: bestPromotion.applies_to || "all",
+      category_id: bestPromotion.category_id || null,
+      eligible_count: eligibleCount,
+      discount_amount: promoDiscountAmount,
+      snapshot_at: new Date().toISOString()
+    };
+  }
+  return {
+    subtotal, discountSubtotal, itemDiscountAmount, promoDiscountAmount,
+    discountAmount, promotionApplied, finalTotal, items: itemsWithDiscount
+  };
+}
+
+// ---------------- ฟอร์แมตวันที่สำหรับแสดงในหน้า admin ----------------
+export function formatDateTime(iso) {
+  if (!iso) return "-";
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "-";
+    return d.toLocaleString("th-TH", {
+      day: "2-digit", month: "2-digit", year: "numeric",
+      hour: "2-digit", minute: "2-digit"
+    });
+  } catch (e) {
+    return "-";
+  }
+}
+
+// ---------------- ตรวจสอบสถานะ discount/promotion ----------------
+export function getDiscountStatus(item) {
+  if (!item) return { status: "inactive", label: "ปิดใช้งาน", color: "var(--text-dim)" };
+  if (item.active === false) return { status: "inactive", label: "ปิดใช้งาน", color: "var(--text-dim)" };
+  const now = Date.now();
+  const start = item.start_at ? new Date(item.start_at).getTime() : null;
+  const end = item.end_at ? new Date(item.end_at).getTime() : null;
+  if (start && !isNaN(start) && now < start) return { status: "scheduled", label: "ยังไม่เริ่ม", color: "#F5B400" };
+  if (end && !isNaN(end) && now > end) return { status: "expired", label: "หมดเวลา", color: "var(--danger)" };
+  return { status: "active", label: "ใช้งานอยู่", color: "var(--success)" };
+}
+
+// ============================================================================
+// PART 2: DISCOUNTS CRUD (admin จัดการลดราคา per-song/per-playlist)
+// ============================================================================
+
+// ใช้ toast/confirm ตัวเดียวกับหน้า admin หลัก (window.__showToast / window.__openConfirm)
+function disc_showToast(msg, type) {
+  if (window.__showToast) { window.__showToast(msg, type); return; }
+  const el = document.getElementById("toast");
+  if (!el) return;
+  el.textContent = msg;
+  el.className = "toast show" + (type ? " " + type : "");
+  clearTimeout(disc_showToast._t);
+  disc_showToast._t = setTimeout(() => { el.className = "toast"; }, 2600);
+}
+function disc_openConfirm(text, onOk) {
+  if (window.__openConfirm) { window.__openConfirm(text, onOk); return; }
+  if (window.confirm(text)) onOk();
+}
+function disc_escapeHtml(str) {
+  return String(str == null ? "" : str)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+let DISCOUNTS_CACHE = [];
+let SONGS_CACHE = [];
+let PLAYLISTS_CACHE = [];
+let editingDiscountId = null;
+let disc_listenersBound = false;
+
+async function disc_loadData() {
+  try {
+    const [songsSnap, plSnap, dSnap] = await Promise.all([
+      getDocs(collection(db, "songs")),
+      getDocs(collection(db, "playlists")),
+      getDocs(collection(db, "discounts"))
+    ]);
+    SONGS_CACHE = songsSnap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(s => s.status !== "hidden");
+    PLAYLISTS_CACHE = plSnap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(p => Number(p.price) > 0);
+    DISCOUNTS_CACHE = dSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    DISCOUNTS_CACHE.sort((a, b) => (b.updated_at || "").localeCompare(a.updated_at || ""));
+    renderDiscountList();
+    populateTargetSelects();
+  } catch (err) {
+    console.error(err);
+    disc_showToast("โหลดข้อมูลไม่สำเร็จ: " + (err.message || err), "error");
+  }
+}
+
+function renderDiscountList() {
+  const wrap = document.getElementById("discountList");
+  if (!wrap) return;
+  if (DISCOUNTS_CACHE.length === 0) {
+    wrap.innerHTML = '<div class="empty-state">ยังไม่มีรายการลดราคา — กด "เพิ่มลดราคา" เพื่อสร้างใหม่</div>';
+    return;
+  }
+  wrap.innerHTML = DISCOUNTS_CACHE.map(d => {
+    const status = getDiscountStatus(d);
+    const targetLabel = d.target_type === "playlist" ? "🎵 เพลย์ลิสต์" : "🎼 เพลง";
+    const targetTypeIcon = d.target_type === "playlist" ? "🎵" : "🎼";
+    let valueLabel = "";
+    if (d.discount_type === "percent") valueLabel = `ลด ${d.discount_value}%`;
+    else if (d.discount_type === "fixed") valueLabel = `ลด ${Number(d.discount_value).toLocaleString()} LAK`;
+    return `
+      <div class="list-row discount-row" data-id="${disc_escapeHtml(d.id)}">
+        <div class="info">
+          <div class="n1">${disc_escapeHtml(d.target_name || "(ไม่พบชื่อ)")}
+            <span class="discount-status-badge" style="background:${status.color === 'var(--success)' ? 'rgba(16,185,129,.15)' : status.color === 'var(--danger)' ? 'rgba(239,68,68,.15)' : status.color === '#F5B400' ? 'rgba(245,180,0,.15)' : 'rgba(148,163,184,.15)'}; color:${status.color};">${status.label}</span>
+          </div>
+          <div class="n2">${targetTypeIcon} ${targetLabel} · ${valueLabel}</div>
+          <div class="n2" style="font-size:11px;color:var(--text-dim);">เริ่ม: ${formatDateTime(d.start_at)} · สิ้นสุด: ${formatDateTime(d.end_at)}</div>
+        </div>
+        <div class="row-actions">
+          <button class="icon-btn" data-edit-disc="${disc_escapeHtml(d.id)}" title="แก้ไข">✎</button>
+          <button class="icon-btn" data-toggle-disc="${disc_escapeHtml(d.id)}" title="${d.active === false ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}">${d.active === false ? '🔒' : '🔓'}</button>
+          <button class="icon-btn danger" data-del-disc="${disc_escapeHtml(d.id)}" title="ลบ">🗑</button>
+        </div>
+      </div>`;
+  }).join("");
+
+  wrap.querySelectorAll("[data-edit-disc]").forEach(b => b.addEventListener("click", () => openEditDiscount(b.getAttribute("data-edit-disc"))));
+  wrap.querySelectorAll("[data-del-disc]").forEach(b => b.addEventListener("click", () => confirmDeleteDiscount(b.getAttribute("data-del-disc"))));
+  wrap.querySelectorAll("[data-toggle-disc]").forEach(b => b.addEventListener("click", () => toggleDiscountActive(b.getAttribute("data-toggle-disc"))));
+}
+
+function populateTargetSelects() {
+  const targetSelect = document.getElementById("fDiscTarget");
+  if (!targetSelect) return;
+  if (editingDiscountId) return;
+  let opts = ['<option value="">— เลือกเพลง/เพลย์ลิสต์ —</option>'];
+  if (SONGS_CACHE.length > 0) {
+    opts.push('<optgroup label="เพลง">');
+    SONGS_CACHE.forEach(s => {
+      const price = Number(s.price) || 0;
+      opts.push(`<option value="song:${disc_escapeHtml(s.id)}" data-name="${disc_escapeHtml(s.song_name || '')}" data-price="${price}">🎼 ${disc_escapeHtml(s.song_name || '(ไม่มีชื่อ)')} — ${price.toLocaleString()} LAK</option>`);
+    });
+    opts.push('</optgroup>');
+  }
+  if (PLAYLISTS_CACHE.length > 0) {
+    opts.push('<optgroup label="เพลย์ลิสต์">');
+    PLAYLISTS_CACHE.forEach(p => {
+      const price = Number(p.price) || 0;
+      opts.push(`<option value="playlist:${disc_escapeHtml(p.id)}" data-name="${disc_escapeHtml(p.playlist_name || '')}" data-price="${price}">🎵 ${disc_escapeHtml(p.playlist_name || '(ไม่มีชื่อ)')} — ${price.toLocaleString()} LAK</option>`);
+    });
+    opts.push('</optgroup>');
+  }
+  targetSelect.innerHTML = opts.join("");
+}
+
+function disc_toLocalDatetimeInput(d) {
+  if (!(d instanceof Date) || isNaN(d.getTime())) return "";
+  const pad = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function disc_fromLocalDatetimeInput(value) {
+  if (!value) return null;
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
+function resetDiscountForm() {
+  editingDiscountId = null;
+  document.getElementById("discountFormTitle").textContent = "เพิ่มลดราคา";
+  document.getElementById("fDiscTarget").disabled = false;
+  document.getElementById("fDiscTarget").value = "";
+  document.getElementById("fDiscType").value = "percent";
+  document.getElementById("fDiscValue").value = "";
+  const now = new Date();
+  const end = new Date(); end.setDate(end.getDate() + 7);
+  document.getElementById("fDiscStartAt").value = disc_toLocalDatetimeInput(now);
+  document.getElementById("fDiscEndAt").value = disc_toLocalDatetimeInput(end);
+  document.getElementById("fDiscActive").checked = true;
+  document.getElementById("discountFormNote").textContent = "";
+  document.getElementById("discountPriceHint").textContent = "";
+  populateTargetSelects();
+}
+
+function openAddDiscount() {
+  resetDiscountForm();
+  document.getElementById("discountFormBackdrop").classList.add("show");
+}
+
+function openEditDiscount(id) {
+  const d = DISCOUNTS_CACHE.find(x => x.id === id);
+  if (!d) return;
+  resetDiscountForm();
+  editingDiscountId = id;
+  document.getElementById("discountFormTitle").textContent = "แก้ไขลดราคา";
+  document.getElementById("fDiscType").value = d.discount_type || "percent";
+  document.getElementById("fDiscValue").value = d.discount_value || "";
+  if (d.start_at) document.getElementById("fDiscStartAt").value = disc_toLocalDatetimeInput(new Date(d.start_at));
+  if (d.end_at) document.getElementById("fDiscEndAt").value = disc_toLocalDatetimeInput(new Date(d.end_at));
+  document.getElementById("fDiscActive").checked = d.active !== false;
+
+  populateTargetSelects();
+  const targetValue = d.target_type + ":" + d.target_id;
+  const exists = Array.from(document.getElementById("fDiscTarget").options).some(o => o.value === targetValue);
+  if (!exists) {
+    const opt = document.createElement("option");
+    opt.value = targetValue;
+    opt.textContent = (d.target_type === "playlist" ? "🎵 " : "🎼 ") + (d.target_name || "(เพลงที่ถูกลบไปแล้ว)");
+    opt.dataset.name = d.target_name || "(เพลงที่ถูกลบไปแล้ว)";
+    opt.dataset.price = "0";
+    document.getElementById("fDiscTarget").appendChild(opt);
+  }
+  document.getElementById("fDiscTarget").value = targetValue;
+  document.getElementById("fDiscTarget").disabled = true;
+  document.getElementById("discountFormNote").textContent = "หากต้องการเปลี่ยนเป้าหมาย กรุณาลบรายการนี้และสร้างใหม่";
+  updatePriceHint();
+  document.getElementById("discountFormBackdrop").classList.add("show");
+}
+
+function updatePriceHint() {
+  const targetSel = document.getElementById("fDiscTarget");
+  const typeSel = document.getElementById("fDiscType");
+  const valueInput = document.getElementById("fDiscValue");
+  const hintEl = document.getElementById("discountPriceHint");
+  if (!hintEl) return;
+  const opt = targetSel.options[targetSel.selectedIndex];
+  if (!opt || !opt.dataset.price) { hintEl.textContent = ""; return; }
+  const original = Number(opt.dataset.price) || 0;
+  const dtype = typeSel.value;
+  const dval = Number(valueInput.value) || 0;
+  if (original <= 0 || dval <= 0) { hintEl.textContent = ""; return; }
+  let final = original;
+  if (dtype === "percent") {
+    const pct = Math.max(0, Math.min(100, dval));
+    final = Math.round(original * (100 - pct) / 100);
+  } else if (dtype === "fixed") {
+    final = Math.max(0, original - dval);
+  }
+  const discAmount = original - final;
+  hintEl.textContent = `ราคาปกติ ${original.toLocaleString()} LAK → หลังลด ${final.toLocaleString()} LAK (ลด ${discAmount.toLocaleString()} LAK)`;
+  hintEl.style.color = discAmount > 0 ? "var(--accent-2)" : "var(--text-dim)";
+}
+
+async function handleSaveDiscount() {
+  const btn = document.getElementById("discountSaveBtn");
+  const targetSel = document.getElementById("fDiscTarget");
+
+  const targetValue = targetSel.value;
+  if (!targetValue) { disc_showToast("กรุณาเลือกเพลงหรือเพลย์ลิสต์", "error"); return; }
+  const [targetType, targetId] = targetValue.split(":");
+  if (!targetType || !targetId) { disc_showToast("ค่าเป้าหมายไม่ถูกต้อง", "error"); return; }
+
+  const opt = targetSel.options[targetSel.selectedIndex];
+  const targetName = opt?.dataset?.name || "(unknown)";
+  const originalPrice = Number(opt?.dataset?.price) || 0;
+
+  const discountType = document.getElementById("fDiscType").value;
+  const discountValue = Number(document.getElementById("fDiscValue").value) || 0;
+  if (discountValue <= 0) { disc_showToast("กรุณากรอกค่าส่วนลด (ต้องมากกว่า 0)", "error"); return; }
+  if (discountType === "percent" && discountValue > 100) { disc_showToast("เปอร์เซ็นต์ส่วนลดต้องไม่เกิน 100", "error"); return; }
+  if (discountType === "fixed" && originalPrice > 0 && discountValue > originalPrice) {
+    disc_showToast("ส่วนลดเป็นจำนวนเงินมากกว่าราคาเพลง — ระบบจะตั้งราคาสุดท้ายเป็น 0 LAK แต่แนะนำให้ลดค่าส่วนลด", "error"); return;
+  }
+
+  const startAt = disc_fromLocalDatetimeInput(document.getElementById("fDiscStartAt").value);
+  const endAt = disc_fromLocalDatetimeInput(document.getElementById("fDiscEndAt").value);
+  if (!startAt) { disc_showToast("กรุณาตั้งวันเริ่มต้น", "error"); return; }
+  if (!endAt) { disc_showToast("กรุณาตั้งวันสิ้นสุด", "error"); return; }
+  if (new Date(endAt) <= new Date(startAt)) { disc_showToast("วันสิ้นสุดต้องหลังวันเริ่มต้น", "error"); return; }
+
+  const active = document.getElementById("fDiscActive").checked;
+
+  btn.disabled = true; btn.textContent = "กำลังบันทึก...";
+  try {
+    const now = new Date().toISOString();
+    const currentUser = auth.currentUser;
+    const payload = {
+      target_type: targetType,
+      target_id: targetId,
+      target_name: targetName,
+      discount_type: discountType,
+      discount_value: discountValue,
+      start_at: startAt,
+      end_at: endAt,
+      active: active,
+      updated_at: now,
+      updated_by: currentUser ? currentUser.email : ""
+    };
+
+    if (!editingDiscountId) {
+      const dup = DISCOUNTS_CACHE.find(d => d.target_type === targetType && d.target_id === targetId && d.active !== false);
+      if (dup) {
+        disc_showToast(`มีลดราคาของ "${targetName}" อยู่แล้ว — แนะนำให้แก้ไขของเดิมแทนสร้างใหม่`, "error");
+        btn.disabled = false; btn.textContent = "บันทึก";
+        return;
+      }
+    }
+
+    if (editingDiscountId) {
+      const existing = DISCOUNTS_CACHE.find(d => d.id === editingDiscountId);
+      if (existing) payload.created_by = existing.created_by || payload.updated_by;
+      await updateDoc(doc(db, "discounts", editingDiscountId), payload);
+      disc_showToast("บันทึกแล้ว", "success");
+    } else {
+      payload.created_at = now;
+      payload.created_by = currentUser ? currentUser.email : "";
+      await setDoc(doc(collection(db, "discounts")), payload);
+      disc_showToast("สร้างลดราคาใหม่แล้ว", "success");
+    }
+    document.getElementById("discountFormBackdrop").classList.remove("show");
+    clearPricingCache();
+    await disc_loadData();
+  } catch (err) {
+    disc_showToast("บันทึกไม่สำเร็จ: " + (err.message || err), "error");
+  }
+  btn.disabled = false; btn.textContent = "บันทึก";
+}
+
+function confirmDeleteDiscount(id) {
+  const d = DISCOUNTS_CACHE.find(x => x.id === id);
+  if (!d) return;
+  disc_openConfirm(
+    `ต้องการลบรายการลดราคาของ "${d.target_name || ''}" หรือไม่? ลูกค้าที่เพิ่งสั่งซื้อไปจะยังเห็นราคาเดิมใน order ของตัวเอง (เพราะ order เก็บ snapshot ไว้)`,
+    async () => {
+      try {
+        await deleteDoc(doc(db, "discounts", id));
+        disc_showToast("ลบแล้ว", "success");
+        clearPricingCache();
+        await disc_loadData();
+      } catch (err) {
+        disc_showToast("ลบไม่สำเร็จ: " + (err.message || err), "error");
+      }
+    }
+  );
+}
+
+async function toggleDiscountActive(id) {
+  const d = DISCOUNTS_CACHE.find(x => x.id === id);
+  if (!d) return;
+  try {
+    await updateDoc(doc(db, "discounts", id), {
+      active: d.active === false ? true : false,
+      updated_at: new Date().toISOString()
+    });
+    disc_showToast(d.active === false ? "เปิดใช้งานแล้ว" : "ปิดใช้งานแล้ว", "success");
+    clearPricingCache();
+    await disc_loadData();
+  } catch (err) {
+    disc_showToast("เปลี่ยนสถานะไม่สำเร็จ: " + (err.message || err), "error");
+  }
+}
+
+export function initDiscountsView() {
+  document.getElementById("addDiscountBtn").addEventListener("click", openAddDiscount);
+  if (!disc_listenersBound) {
+    document.getElementById("discountFormClose").addEventListener("click", () => document.getElementById("discountFormBackdrop").classList.remove("show"));
+    document.getElementById("discountSaveBtn").addEventListener("click", handleSaveDiscount);
+    document.getElementById("fDiscTarget").addEventListener("change", updatePriceHint);
+    document.getElementById("fDiscType").addEventListener("change", updatePriceHint);
+    document.getElementById("fDiscValue").addEventListener("input", updatePriceHint);
+    disc_listenersBound = true;
+  }
+  disc_loadData();
+}
+
+// ============================================================================
+// PART 3: PROMOTIONS CRUD (admin จัดการโปรโมชั่น cart-wide)
+// ============================================================================
+
+function promo_showToast(msg, type) {
+  if (window.__showToast) { window.__showToast(msg, type); return; }
+  const el = document.getElementById("toast");
+  if (!el) return;
+  el.textContent = msg;
+  el.className = "toast show" + (type ? " " + type : "");
+  clearTimeout(promo_showToast._t);
+  promo_showToast._t = setTimeout(() => { el.className = "toast"; }, 2600);
+}
+function promo_openConfirm(text, onOk) {
+  if (window.__openConfirm) { window.__openConfirm(text, onOk); return; }
+  if (window.confirm(text)) onOk();
+}
+function promo_escapeHtml(str) {
+  return String(str == null ? "" : str)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+let PROMOTIONS_CACHE = [];
+let CATEGORIES_CACHE = [];
+let editingPromoId = null;
+let promo_listenersBound = false;
+
+async function promo_loadData() {
+  try {
+    const [pSnap, cSnap] = await Promise.all([
+      getDocs(collection(db, "promotions")),
+      getDocs(collection(db, "categories"))
+    ]);
+    PROMOTIONS_CACHE = pSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    PROMOTIONS_CACHE.sort((a, b) => (b.updated_at || "").localeCompare(a.updated_at || ""));
+    CATEGORIES_CACHE = cSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderPromotionList();
+    populateCategorySelect();
+  } catch (err) {
+    console.error(err);
+    promo_showToast("โหลดข้อมูลไม่สำเร็จ: " + (err.message || err), "error");
+  }
+}
+
+function renderPromotionList() {
+  const wrap = document.getElementById("promotionList");
+  if (!wrap) return;
+  if (PROMOTIONS_CACHE.length === 0) {
+    wrap.innerHTML = '<div class="empty-state">ยังไม่มีโปรโมชั่น — กด "สร้างโปรโมชั่น" เพื่อสร้างใหม่</div>';
+    return;
+  }
+  wrap.innerHTML = PROMOTIONS_CACHE.map(p => {
+    const status = getDiscountStatus(p);
+    const appliesToLabel = p.applies_to === "category" ? `เฉพาะหมวด: ${promo_escapeHtml(p.category_name || '-')}` : "ทุกเพลง";
+    const minQtyLabel = p.min_quantity ? `ซื้อครบ ${p.min_quantity} เพลง` : "ไม่มีขั้นต่ำ";
+    const valueLabel = p.type === "cart_percent" || p.type === "buy_x_get_y_percent" ? `ลด ${p.discount_value}%` : `ลด ${Number(p.discount_value).toLocaleString()} LAK`;
+    const typeLabel = p.type === "buy_x_get_y_percent" ? "ซื้อ X ลด %" : (p.type === "cart_percent" ? "ลด % ทั้งยอด" : "ลดจำนวนเงิน");
+    return `
+      <div class="list-row promotion-row" data-id="${promo_escapeHtml(p.id)}">
+        <div class="info">
+          <div class="n1">${promo_escapeHtml(p.name || '(ไม่มีชื่อ)')}
+            <span class="discount-status-badge" style="background:${status.color === 'var(--success)' ? 'rgba(16,185,129,.15)' : status.color === 'var(--danger)' ? 'rgba(239,68,68,.15)' : status.color === '#F5B400' ? 'rgba(245,180,0,.15)' : 'rgba(148,163,184,.15)'}; color:${status.color};">${status.label}</span>
+          </div>
+          <div class="n2">${typeLabel} · ${valueLabel} · ${minQtyLabel} · ${appliesToLabel}</div>
+          <div class="n2" style="font-size:11px;color:var(--text-dim);">เริ่ม: ${formatDateTime(p.start_at)} · สิ้นสุด: ${formatDateTime(p.end_at)}${p.description ? ' · ' + promo_escapeHtml(p.description) : ''}</div>
+        </div>
+        <div class="row-actions">
+          <button class="icon-btn" data-edit-promo="${promo_escapeHtml(p.id)}" title="แก้ไข">✎</button>
+          <button class="icon-btn" data-toggle-promo="${promo_escapeHtml(p.id)}" title="${p.active === false ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}">${p.active === false ? '🔒' : '🔓'}</button>
+          <button class="icon-btn danger" data-del-promo="${promo_escapeHtml(p.id)}" title="ลบ">🗑</button>
+        </div>
+      </div>`;
+  }).join("");
+
+  wrap.querySelectorAll("[data-edit-promo]").forEach(b => b.addEventListener("click", () => openEditPromotion(b.getAttribute("data-edit-promo"))));
+  wrap.querySelectorAll("[data-del-promo]").forEach(b => b.addEventListener("click", () => confirmDeletePromotion(b.getAttribute("data-del-promo"))));
+  wrap.querySelectorAll("[data-toggle-promo]").forEach(b => b.addEventListener("click", () => togglePromotionActive(b.getAttribute("data-toggle-promo"))));
+}
+
+function populateCategorySelect() {
+  const sel = document.getElementById("fPromoCategory");
+  if (!sel) return;
+  let opts = ['<option value="">— เลือกหมวดหมู่ —</option>'];
+  CATEGORIES_CACHE.forEach(c => {
+    opts.push(`<option value="${promo_escapeHtml(c.id)}" data-name="${promo_escapeHtml(c.category_name || '')}">${promo_escapeHtml(c.category_name || '(ไม่มีชื่อ)')}</option>`);
+  });
+  sel.innerHTML = opts.join("");
+}
+
+function promo_toLocalDatetimeInput(d) {
+  if (!(d instanceof Date) || isNaN(d.getTime())) return "";
+  const pad = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function promo_fromLocalDatetimeInput(value) {
+  if (!value) return null;
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
+function resetPromotionForm() {
+  editingPromoId = null;
+  document.getElementById("promotionFormTitle").textContent = "สร้างโปรโมชั่น";
+  document.getElementById("fPromoName").value = "";
+  document.getElementById("fPromoDesc").value = "";
+  document.getElementById("fPromoType").value = "cart_percent";
+  document.getElementById("fPromoMinQty").value = "";
+  document.getElementById("fPromoMinSubtotal").value = "";
+  document.getElementById("fPromoValue").value = "";
+  document.getElementById("fPromoAppliesTo").value = "all";
+  document.getElementById("fPromoCategoryRow").style.display = "none";
+  document.getElementById("fPromoCategory").value = "";
+  const now = new Date();
+  const end = new Date(); end.setDate(end.getDate() + 7);
+  document.getElementById("fPromoStartAt").value = promo_toLocalDatetimeInput(now);
+  document.getElementById("fPromoEndAt").value = promo_toLocalDatetimeInput(end);
+  document.getElementById("fPromoActive").checked = true;
+  document.getElementById("fPromoPriority").value = "100";
+  document.getElementById("promotionFormNote").textContent = "";
+  updatePromoTypeHint();
+  updateAppliesToRow();
+}
+
+function openAddPromotion() {
+  resetPromotionForm();
+  document.getElementById("promotionFormBackdrop").classList.add("show");
+}
+
+function openEditPromotion(id) {
+  const p = PROMOTIONS_CACHE.find(x => x.id === id);
+  if (!p) return;
+  resetPromotionForm();
+  editingPromoId = id;
+  document.getElementById("promotionFormTitle").textContent = "แก้ไขโปรโมชั่น";
+  document.getElementById("fPromoName").value = p.name || "";
+  document.getElementById("fPromoDesc").value = p.description || "";
+  document.getElementById("fPromoType").value = p.type || "cart_percent";
+  document.getElementById("fPromoMinQty").value = p.min_quantity || "";
+  document.getElementById("fPromoMinSubtotal").value = p.min_subtotal || "";
+  document.getElementById("fPromoValue").value = p.discount_value || "";
+  document.getElementById("fPromoAppliesTo").value = p.applies_to || "all";
+  if (p.applies_to === "category" && p.category_id) {
+    document.getElementById("fPromoCategoryRow").style.display = "block";
+    document.getElementById("fPromoCategory").value = p.category_id;
+  }
+  if (p.start_at) document.getElementById("fPromoStartAt").value = promo_toLocalDatetimeInput(new Date(p.start_at));
+  if (p.end_at) document.getElementById("fPromoEndAt").value = promo_toLocalDatetimeInput(new Date(p.end_at));
+  document.getElementById("fPromoActive").checked = p.active !== false;
+  document.getElementById("fPromoPriority").value = p.priority || 100;
+  updatePromoTypeHint();
+  updateAppliesToRow();
+  document.getElementById("promotionFormBackdrop").classList.add("show");
+}
+
+function updateAppliesToRow() {
+  const appliesTo = document.getElementById("fPromoAppliesTo").value;
+  document.getElementById("fPromoCategoryRow").style.display = (appliesTo === "category") ? "block" : "none";
+}
+
+function updatePromoTypeHint() {
+  const type = document.getElementById("fPromoType").value;
+  const hintEl = document.getElementById("fPromoTypeHint");
+  if (!hintEl) return;
+  const hints = {
+    cart_percent: "ลด % ของยอดรวมเพลงที่เข้าโปร (เช่น ลด 10% = ทุกเพลงที่เข้าโปรหัก 10%)",
+    cart_fixed: "ลดจำนวนเงินตายตัว (เช่น ลด 5,000 LAK จากยอดรวมที่เข้าโปร)",
+    buy_x_get_y_percent: "ซื้อครบ X เพลง → ลด Y% ของยอดเพลงที่เข้าโปร (ตั้งค่า min_quantity = X, discount_value = Y%)"
+  };
+  hintEl.textContent = hints[type] || "";
+  hintEl.style.color = "var(--text-dim)";
+}
+
+async function handleSavePromotion() {
+  const btn = document.getElementById("promotionSaveBtn");
+  const name = document.getElementById("fPromoName").value.trim();
+  const description = document.getElementById("fPromoDesc").value.trim();
+  const type = document.getElementById("fPromoType").value;
+  const minQty = Number(document.getElementById("fPromoMinQty").value) || 0;
+  const minSubtotal = Number(document.getElementById("fPromoMinSubtotal").value) || 0;
+  const value = Number(document.getElementById("fPromoValue").value) || 0;
+  const appliesTo = document.getElementById("fPromoAppliesTo").value;
+  const categorySel = document.getElementById("fPromoCategory");
+  const categoryId = categorySel.value;
+  const categoryName = categorySel.options[categorySel.selectedIndex]?.dataset?.name || "";
+  const startAt = promo_fromLocalDatetimeInput(document.getElementById("fPromoStartAt").value);
+  const endAt = promo_fromLocalDatetimeInput(document.getElementById("fPromoEndAt").value);
+  const active = document.getElementById("fPromoActive").checked;
+  const priority = Number(document.getElementById("fPromoPriority").value) || 100;
+
+  if (!name) { promo_showToast("กรุณาตั้งชื่อโปรโมชั่น", "error"); return; }
+  if (value <= 0) { promo_showToast("กรุณากรอกค่าส่วนลด (ต้องมากกว่า 0)", "error"); return; }
+  if ((type === "cart_percent" || type === "buy_x_get_y_percent") && value > 100) { promo_showToast("เปอร์เซ็นต์ต้องไม่เกิน 100", "error"); return; }
+  if (!startAt) { promo_showToast("กรุณาตั้งวันเริ่มต้น", "error"); return; }
+  if (!endAt) { promo_showToast("กรุณาตั้งวันสิ้นสุด", "error"); return; }
+  if (new Date(endAt) <= new Date(startAt)) { promo_showToast("วันสิ้นสุดต้องหลังวันเริ่มต้น", "error"); return; }
+  if (appliesTo === "category" && !categoryId) { promo_showToast("กรุณาเลือกหมวดหมู่", "error"); return; }
+  if (type === "buy_x_get_y_percent" && minQty <= 0) { promo_showToast("ประเภท 'ซื้อ X ลด %' ต้องตั้ง min_quantity มากกว่า 0", "error"); return; }
+
+  btn.disabled = true; btn.textContent = "กำลังบันทึก...";
+  try {
+    const now = new Date().toISOString();
+    const currentUser = auth.currentUser;
+    const payload = {
+      name, description, type, min_quantity: minQty, min_subtotal: minSubtotal,
+      discount_value: value, applies_to: appliesTo,
+      category_id: appliesTo === "category" ? categoryId : null,
+      category_name: appliesTo === "category" ? categoryName : "",
+      start_at: startAt, end_at: endAt, active, priority,
+      updated_at: now, updated_by: currentUser ? currentUser.email : ""
+    };
+    if (editingPromoId) {
+      const existing = PROMOTIONS_CACHE.find(p => p.id === editingPromoId);
+      if (existing) payload.created_by = existing.created_by || payload.updated_by;
+      await updateDoc(doc(db, "promotions", editingPromoId), payload);
+      promo_showToast("บันทึกแล้ว", "success");
+    } else {
+      payload.created_at = now;
+      payload.created_by = currentUser ? currentUser.email : "";
+      await setDoc(doc(collection(db, "promotions")), payload);
+      promo_showToast("สร้างโปรโมชั่นใหม่แล้ว", "success");
+    }
+    document.getElementById("promotionFormBackdrop").classList.remove("show");
+    clearPricingCache();
+    await promo_loadData();
+  } catch (err) {
+    promo_showToast("บันทึกไม่สำเร็จ: " + (err.message || err), "error");
+  }
+  btn.disabled = false; btn.textContent = "บันทึก";
+}
+
+function confirmDeletePromotion(id) {
+  const p = PROMOTIONS_CACHE.find(x => x.id === id);
+  if (!p) return;
+  promo_openConfirm(
+    `ต้องการลบโปรโมชั่น "${p.name || ''}" หรือไม่? ออเดอร์เก่าจะยังเห็นส่วนลดเดิม (เพราะ order เก็บ snapshot ไว้)`,
+    async () => {
+      try {
+        await deleteDoc(doc(db, "promotions", id));
+        promo_showToast("ลบแล้ว", "success");
+        clearPricingCache();
+        await promo_loadData();
+      } catch (err) {
+        promo_showToast("ลบไม่สำเร็จ: " + (err.message || err), "error");
+      }
+    }
+  );
+}
+
+async function togglePromotionActive(id) {
+  const p = PROMOTIONS_CACHE.find(x => x.id === id);
+  if (!p) return;
+  try {
+    await updateDoc(doc(db, "promotions", id), {
+      active: p.active === false ? true : false,
+      updated_at: new Date().toISOString()
+    });
+    promo_showToast(p.active === false ? "เปิดใช้งานแล้ว" : "ปิดใช้งานแล้ว", "success");
+    clearPricingCache();
+    await promo_loadData();
+  } catch (err) {
+    promo_showToast("เปลี่ยนสถานะไม่สำเร็จ: " + (err.message || err), "error");
+  }
+}
+
+export function initPromotionsView() {
+  document.getElementById("addPromotionBtn").addEventListener("click", openAddPromotion);
+  if (!promo_listenersBound) {
+    document.getElementById("promotionFormClose").addEventListener("click", () => document.getElementById("promotionFormBackdrop").classList.remove("show"));
+    document.getElementById("promotionSaveBtn").addEventListener("click", handleSavePromotion);
+    document.getElementById("fPromoType").addEventListener("change", updatePromoTypeHint);
+    document.getElementById("fPromoAppliesTo").addEventListener("change", updateAppliesToRow);
+    promo_listenersBound = true;
+  }
+  promo_loadData();
+}
+
+// ============================================================================
+// PART 4: MY ORDERS VIEW (ลูกค้าติดตามออเดอร์ของตัวเองแบบ realtime)
+// ============================================================================
+
+let MY_ORDERS_STATE = {
+  initialized: false,
+  unsubscribe: null,
+  customerName: "",
+  customerWhatsapp: "",
+  allOrders: [],
+  myOrders: [],
+  expandedOrderIds: new Set()
+};
+
+const MY_ORDER_STATUS_CONFIG = {
+  pending_verify: { emoji: "🟡", label: "รอตรวจสอบการโอน", color: "#F5B400", bg: "rgba(245,180,0,.15)" },
+  processing:     { emoji: "🔵", label: "ชำระเงินแล้ว - กำลังส่งเพลง", color: "#3B9EFF", bg: "rgba(59,158,255,.15)" },
+  completed:      { emoji: "🟢", label: "สำเร็จ", color: "#28c76f", bg: "rgba(41,204,113,.15)" },
+  cancelled:      { emoji: "🔴", label: "ยกเลิก", color: "#ff6b6b", bg: "rgba(255,107,107,.15)" },
+};
+
+function myOrders_escapeHtml(str) {
+  return String(str == null ? "" : str)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+function myOrders_formatPrice(v) { return Number(v || 0).toLocaleString("en-US") + " LAK"; }
+function myOrders_normalizePhone(v) { return String(v || "").replace(/[^0-9]/g, ""); }
+function myOrders_normalizeName(v) { return String(v || "").trim().toLowerCase(); }
+
+function myOrders_showToast(message, type) {
+  const el = document.getElementById("toast");
+  if (!el) return;
+  el.textContent = message;
+  el.className = "toast show" + (type ? " " + type : "");
+  clearTimeout(myOrders_showToast._t);
+  myOrders_showToast._t = setTimeout(() => { el.className = "toast"; }, 2600);
+}
+
+const MY_ORDERS_INFO_KEY = "music_store_my_orders_info_v1";
+
+function saveMyOrdersInfo(name, whatsapp) {
+  try { localStorage.setItem(MY_ORDERS_INFO_KEY, JSON.stringify({ name, whatsapp })); } catch (_) {}
+}
+function loadMyOrdersInfo() {
+  try {
+    const raw = localStorage.getItem(MY_ORDERS_INFO_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (_) { return null; }
+}
+
+function renderMyOrdersForm() {
+  const container = document.getElementById("myOrdersView");
+  if (!container) return;
+  const saved = loadMyOrdersInfo();
+  const savedName = saved?.name || "";
+  const savedWhatsapp = saved?.whatsapp || "";
+
+  container.innerHTML = `
+    <div class="my-orders-header">
+      <h2>📦 ออเดอร์ของฉัน</h2>
+      <p>กรอกชื่อและเบอร์ WhatsApp ที่ใช้สั่งซื้อ — ระบบจะแสดงออเดอร์ทั้งหมดของคุณแบบ realtime</p>
+    </div>
+    <div class="my-orders-form">
+      <div class="field">
+        <label>ชื่อที่ใช้สั่งซื้อ *</label>
+        <input id="myOrdersName" type="text" placeholder="ชื่อ-นามสกุล" value="${myOrders_escapeHtml(savedName)}" autocomplete="off">
+      </div>
+      <div class="field">
+        <label>เบอร์ WhatsApp ที่ใช้สั่งซื้อ *</label>
+        <input id="myOrdersWhatsapp" type="tel" inputmode="numeric" placeholder="20XXXXXXXX" value="${myOrders_escapeHtml(savedWhatsapp)}" autocomplete="off">
+      </div>
+      <button class="btn" id="myOrdersSearchBtn" type="button">🔍 ดูออเดอร์ของฉัน</button>
+      <div id="myOrdersFeedback" class="my-orders-feedback" style="display:none;"></div>
+    </div>
+    <div id="myOrdersListContainer" style="display:none;">
+      <div class="my-orders-list-header">
+        <span id="myOrdersCountText" style="color:var(--text-dim);font-size:13px;"></span>
+        <button class="btn secondary" id="myOrdersRefreshBtn" type="button" style="padding:6px 12px;font-size:13px;">🔄 รีเฟรช</button>
+        <button class="btn secondary" id="myOrdersClearBtn" type="button" style="padding:6px 12px;font-size:13px;">↺ เปลี่ยนชื่อ/เบอร์</button>
+      </div>
+      <div id="myOrdersList"></div>
+    </div>
+  `;
+
+  const searchBtn = document.getElementById("myOrdersSearchBtn");
+  if (searchBtn) searchBtn.addEventListener("click", handleSearchMyOrders);
+  const refreshBtn = document.getElementById("myOrdersRefreshBtn");
+  if (refreshBtn) refreshBtn.addEventListener("click", () => {
+    myOrders_showToast("ข้อมูลอัปเดตอัตโนมัติอยู่แล้ว", "success");
+  });
+  const clearBtn = document.getElementById("myOrdersClearBtn");
+  if (clearBtn) clearBtn.addEventListener("click", handleClearMyOrders);
+
+  if (savedName && savedWhatsapp) {
+    setTimeout(() => handleSearchMyOrders(), 100);
+  }
+}
+
+async function handleSearchMyOrders() {
+  const nameInput = document.getElementById("myOrdersName");
+  const whatsappInput = document.getElementById("myOrdersWhatsapp");
+  const feedback = document.getElementById("myOrdersFeedback");
+  if (!nameInput || !whatsappInput) return;
+
+  const name = nameInput.value.trim();
+  const whatsapp = whatsappInput.value.trim();
+  const phone = myOrders_normalizePhone(whatsapp);
+  const nameNorm = myOrders_normalizeName(name);
+
+  if (!name || !phone) {
+    if (feedback) {
+      feedback.textContent = "กรุณากรอกชื่อและเบอร์ WhatsApp ให้ครบ";
+      feedback.style.color = "var(--danger)";
+      feedback.style.display = "block";
+    }
+    return;
+  }
+  if (phone.length < 8) {
+    if (feedback) {
+      feedback.textContent = "เบอร์ WhatsApp ไม่ถูกต้อง (ต้องมีอย่างน้อย 8 หลัก)";
+      feedback.style.color = "var(--danger)";
+      feedback.style.display = "block";
+    }
+    return;
+  }
+
+  if (feedback) feedback.style.display = "none";
+
+  saveMyOrdersInfo(name, whatsapp);
+  MY_ORDERS_STATE.customerName = name;
+  MY_ORDERS_STATE.customerWhatsapp = phone;
+
+  if (MY_ORDERS_STATE.unsubscribe) {
+    MY_ORDERS_STATE.unsubscribe();
+    MY_ORDERS_STATE.unsubscribe = null;
+  }
+
+  const listContainer = document.getElementById("myOrdersListContainer");
+  if (listContainer) listContainer.style.display = "block";
+
+  const listEl = document.getElementById("myOrdersList");
+  if (listEl) listEl.innerHTML = '<div class="empty-state">⏳ กำลังค้นหาออเดอร์ของคุณ...</div>';
+
+  try {
+    const q = query(collection(db, "orders"));
+    MY_ORDERS_STATE.unsubscribe = onSnapshot(q, (snap) => {
+      const allOrders = [];
+      snap.forEach(d => allOrders.push({ _docId: d.id, ...d.data() }));
+      const myOrders = allOrders.filter(o => {
+        const oName = myOrders_normalizeName(o.customer_name || "");
+        const oPhone = myOrders_normalizePhone(o.whatsapp || "");
+        if (oPhone !== phone) return false;
+        return oName === nameNorm || oName.includes(nameNorm) || nameNorm.includes(oName);
+      });
+      myOrders.sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
+      MY_ORDERS_STATE.myOrders = myOrders;
+      renderMyOrdersList(myOrders);
+    }, (err) => {
+      console.error("myOrders onSnapshot error:", err);
+      if (listEl) listEl.innerHTML = `<div class="empty-state">⚠️ โหลดออเดอร์ไม่สำเร็จ: ${myOrders_escapeHtml(err.message || "")}</div>`;
+    });
+  } catch (err) {
+    console.error("handleSearchMyOrders error:", err);
+    if (listEl) listEl.innerHTML = `<div class="empty-state">⚠️ โหลดออเดอร์ไม่สำเร็จ: ${myOrders_escapeHtml(err.message || "")}</div>`;
+  }
+}
+
+function handleClearMyOrders() {
+  if (MY_ORDERS_STATE.unsubscribe) {
+    MY_ORDERS_STATE.unsubscribe();
+    MY_ORDERS_STATE.unsubscribe = null;
+  }
+  MY_ORDERS_STATE.myOrders = [];
+  MY_ORDERS_STATE.expandedOrderIds = new Set();
+  try { localStorage.removeItem(MY_ORDERS_INFO_KEY); } catch (_) {}
+  renderMyOrdersForm();
+}
+
+function renderMyOrdersList(orders) {
+  const listEl = document.getElementById("myOrdersList");
+  const countEl = document.getElementById("myOrdersCountText");
+  if (!listEl) return;
+  if (countEl) {
+    countEl.textContent = `พบ ${orders.length} ออเดอร์ · อัปเดตอัตโนมัติเรียลไทม์`;
+  }
+  if (orders.length === 0) {
+    listEl.innerHTML = `
+      <div class="empty-state">
+        ยังไม่พบออเดอร์ของคุณ<br>
+        <small style="color:var(--text-dim);">ตรวจสอบชื่อและเบอร์ WhatsApp ว่าถูกต้องตรงกับที่ใช้สั่งซื้อ</small>
+      </div>`;
+    return;
+  }
+  listEl.innerHTML = orders.map(o => renderOneOrderCard(o)).join("");
+
+  listEl.querySelectorAll("[data-toggle-order]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const id = btn.getAttribute("data-toggle-order");
+      if (MY_ORDERS_STATE.expandedOrderIds.has(id)) {
+        MY_ORDERS_STATE.expandedOrderIds.delete(id);
+      } else {
+        MY_ORDERS_STATE.expandedOrderIds.add(id);
+      }
+      renderMyOrdersList(MY_ORDERS_STATE.myOrders);
+    });
+  });
+}
+
+function renderOneOrderCard(order) {
+  const orderId = order._docId || "";
+  const cfg = MY_ORDER_STATUS_CONFIG[order.status] || MY_ORDER_STATUS_CONFIG.pending_verify;
+  const date = order.created_at ? new Date(order.created_at) : null;
+  const dateStr = date ? date.toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" }) : "-";
+  const receiptNumber = order.receipt_number || "-";
+  const items = order.items || [];
+
+  const finalTotal = (order.final_total != null) ? Number(order.final_total) : Number(order.total || 0);
+  const subtotal = (order.subtotal != null) ? Number(order.subtotal) : finalTotal;
+  const discountAmount = Number(order.discount_amount || 0);
+  const promotionApplied = order.promotion_applied;
+
+  const isExpanded = MY_ORDERS_STATE.expandedOrderIds.has(orderId);
+
+  const itemSummary = items.length > 0
+    ? items.slice(0, 3).map(i => myOrders_escapeHtml(i.title || "เพลง")).join(", ") + (items.length > 3 ? ` +${items.length - 3}` : "")
+    : "-";
+
+  let discountBadge = "";
+  if (discountAmount > 0) {
+    const parts = [];
+    if (promotionApplied && promotionApplied.name) parts.push(`🎁 ${myOrders_escapeHtml(promotionApplied.name)}`);
+    const promoAmount = promotionApplied?.discount_amount || 0;
+    const itemDiscount = discountAmount - promoAmount;
+    if (itemDiscount > 0) parts.push(`🏷️ ลดราคาปกติ`);
+    discountBadge = `<div class="my-order-discount-badge" style="color:var(--accent-2,#ec4899);font-size:12px;margin-top:4px;">⚡ ${parts.join(" + ")} · ลด ${myOrders_formatPrice(discountAmount)}</div>`;
+  }
+
+  let expandedHtml = "";
+  if (isExpanded) {
+    const itemRows = items.map(item => {
+      if (item.kind === "playlist") {
+        const songTitles = Array.isArray(item.song_titles) ? item.song_titles : [];
+        const songLines = songTitles.map(t => `<div style="padding:2px 0 2px 14px;font-size:11px;color:var(--text-dim);">• ${myOrders_escapeHtml(t)}</div>`).join("");
+        return `
+          <div class="my-order-item-row" style="border-bottom:none;flex-direction:column;align-items:stretch;gap:2px;">
+            <div style="display:flex;justify-content:space-between;">
+              <strong>🎶 ${myOrders_escapeHtml(item.title || "เพลย์ลิสต์")}</strong>
+              <strong>${myOrders_formatPrice(item.price)}</strong>
+            </div>
+            ${songLines}
+          </div>`;
+      }
+      return `
+        <div class="my-order-item-row">
+          <div>${myOrders_escapeHtml(item.title || "เพลง")}</div>
+          <strong>${myOrders_formatPrice(item.price)}</strong>
+        </div>`;
+    }).join("");
+
+    let discountRows = "";
+    if (subtotal !== finalTotal && subtotal > 0) {
+      discountRows += `<div class="my-order-item-row" style="border-top:1px dashed var(--border);margin-top:6px;padding-top:6px;"><span style="color:var(--text-dim);">ยอดรวมก่อนลด</span><span>${myOrders_formatPrice(subtotal)}</span></div>`;
+    }
+    if (promotionApplied && promotionApplied.name) {
+      const promoAmount = promotionApplied.discount_amount || 0;
+      if (promoAmount > 0) {
+        discountRows += `<div class="my-order-item-row" style="color:var(--success);"><span>🎁 ${myOrders_escapeHtml(promotionApplied.name)}</span><span>-${myOrders_formatPrice(promoAmount)}</span></div>`;
+      }
+    }
+    if (discountAmount > 0) {
+      const promoAmount = promotionApplied?.discount_amount || 0;
+      const itemDiscount = discountAmount - promoAmount;
+      if (itemDiscount > 0) {
+        discountRows += `<div class="my-order-item-row" style="color:var(--accent-2,#ec4899);"><span>🏷️ ส่วนลดจากราคาปกติ</span><span>-${myOrders_formatPrice(itemDiscount)}</span></div>`;
+      }
+    }
+
+    let zipInfo = "";
+    if (order.zip_download_url && (order.status === "processing" || order.status === "completed")) {
+      zipInfo = `
+        <div class="my-order-zip-info" style="margin-top:10px;padding:10px;background:rgba(16,185,129,.08);border-radius:10px;">
+          <div style="font-size:12px;color:var(--success);font-weight:600;margin-bottom:6px;">📦 ไฟล์เพลงพร้อมดาวน์โหลด</div>
+          <a href="${myOrders_escapeHtml(order.zip_download_url)}" target="_blank" rel="noopener" class="btn" style="display:inline-block;padding:8px 16px;font-size:13px;">⬇️ ดาวน์โหลด ZIP (${myOrders_escapeHtml(order.zip_file_name || 'Order.zip')})</a>
+        </div>`;
+    } else if (order.status === "processing") {
+      zipInfo = `<div style="margin-top:10px;font-size:12px;color:var(--accent);">⏳ แอดมินกำลังเตรียมไฟล์ ZIP ส่งให้คุณ — รอสักครู่</div>`;
+    } else if (order.status === "pending_verify") {
+      zipInfo = `<div style="margin-top:10px;font-size:12px;color:var(--text-dim);">⏳ รอแอดมินตรวจสอบการโอนเงิน — หลังยืนยันแล้วไฟล์จะถูกเตรียมให้</div>`;
+    }
+
+    expandedHtml = `
+      <div class="my-order-detail" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
+        <div style="font-size:12px;color:var(--text-dim);margin-bottom:6px;">รายการสินค้า (${items.length})</div>
+        ${itemRows || '<div class="empty-state" style="padding:6px 0;">ไม่มีรายการ</div>'}
+        ${discountRows}
+        <div class="my-order-item-row" style="border-top:1px solid var(--border);margin-top:6px;padding-top:6px;font-weight:800;">
+          <span>ยอดชำระ</span>
+          <strong style="color:var(--success);">${myOrders_formatPrice(finalTotal)}</strong>
+        </div>
+        ${zipInfo}
+      </div>`;
+  }
+
+  return `
+    <div class="my-order-card${isExpanded ? ' expanded' : ''}" data-order-id="${myOrders_escapeHtml(orderId)}">
+      <div class="my-order-card-header" data-toggle-order="${myOrders_escapeHtml(orderId)}" style="cursor:pointer;">
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap;">
+            <span class="my-order-status-badge" style="background:${cfg.bg};color:${cfg.color};">${cfg.emoji} ${cfg.label}</span>
+            <span style="font-size:11px;color:var(--text-dim);">#${myOrders_escapeHtml(receiptNumber)}</span>
+          </div>
+          <div style="font-size:14px;font-weight:600;margin-bottom:2px;">${itemSummary}</div>
+          <div style="font-size:11px;color:var(--text-dim);">${dateStr}</div>
+          ${discountBadge}
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:16px;font-weight:800;color:var(--success);">${myOrders_formatPrice(finalTotal)}</div>
+          <div style="font-size:11px;color:var(--text-dim);">${isExpanded ? '▲ ซ่อน' : '▼ ดู'}รายละเอียด</div>
+        </div>
+      </div>
+      ${expandedHtml}
+    </div>
+  `;
+}
+
+export function initMyOrdersView() {
+  renderMyOrdersForm();
+}
+
+export function cleanupMyOrdersView() {
+  if (MY_ORDERS_STATE.unsubscribe) {
+    MY_ORDERS_STATE.unsubscribe();
+    MY_ORDERS_STATE.unsubscribe = null;
+  }
+}
