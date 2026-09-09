@@ -463,6 +463,137 @@ export function initCart({ state, showToast, escapeHtml, formatPrice, buildWhats
     ].join("\n");
   }
 
+  // ===== เพิ่มใหม่: ใบเสร็จหลังสั่งซื้อสำเร็จ (ฝั่งลูกค้า) — โครงหน้าเดียวกับใบเสร็จฝั่งแอดมิน =====
+  // ปุ่ม WhatsApp บนใบเสร็จนี้ถูกปรับให้เป็น "ติดต่อแอดมินเพื่อชำระเงิน" (ไม่ใช่ส่งใบเสร็จหาเบอร์ลูกค้าแบบฝั่งแอดมิน)
+  // และสร้างข้อความอัตโนมัติด้วย buildAdminWhatsAppText เดิมที่มีอยู่แล้วด้านบน (ใช้ซ้ำ ไม่สร้างข้อความใหม่)
+  function buildReceiptItemRows(order) {
+    const items = order.items || [];
+    if (order.order_type === "playlist") {
+      const playlistName = order.playlist_name || "เพลย์ลิสต์";
+      const songLines = items.map(item => `
+        <div class="receipt-line" style="border-bottom:none;padding:4px 0 4px 14px;">
+          <small>• ${escapeHtml(item.title || "เพลง")}</small>
+        </div>
+      `).join("");
+      return `
+        <div class="receipt-line" style="flex-direction:column;align-items:stretch;gap:2px;">
+          <div style="display:flex;justify-content:space-between;">
+            <strong>🎶 ${escapeHtml(playlistName)}</strong>
+            <strong>${formatPrice(order.total)}</strong>
+          </div>
+          <small style="color:#666;">ยกเพลย์ลิสต์ · ${items.length} เพลง</small>
+        </div>
+        ${songLines}
+      `;
+    }
+
+    return items.map(item => {
+      if (item.kind !== "playlist") {
+        return `
+          <div class="receipt-line">
+            <div><strong>${escapeHtml(item.title || "เพลง")}</strong></div>
+            <strong>${formatPrice(item.price)}</strong>
+          </div>
+        `;
+      }
+      // เพลย์ลิสต์ในออเดอร์ผสม — ใช้ song_titles ที่ snapshot ไว้ตอนสั่งซื้อ (resolveCartFromDatabase) โดยตรง ไม่ query ซ้ำ
+      const songTitles = Array.isArray(item.song_titles) ? item.song_titles : [];
+      const songLines = songTitles.map(name => `
+        <div class="receipt-line" style="border-bottom:none;padding:4px 0 4px 14px;">
+          <small>• ${escapeHtml(name)}</small>
+        </div>
+      `).join("");
+      return `
+        <div class="receipt-line" style="flex-direction:column;align-items:stretch;gap:2px;">
+          <div style="display:flex;justify-content:space-between;">
+            <strong>🎶 ${escapeHtml(item.title || "เพลย์ลิสต์")}</strong>
+            <strong>${formatPrice(item.price)}</strong>
+          </div>
+          <small style="color:#666;">ยกเพลย์ลิสต์ · ${songTitles.length} เพลง</small>
+        </div>
+        ${songLines}
+      `;
+    }).join("");
+  }
+
+  // แคปเฉพาะส่วนใบเสร็จสีขาว (.receipt-paper) เป็นรูป — โค้ดเดียวกับฝั่งแอดมิน (captureReceiptCanvas/downloadReceiptAsImage ใน orders.js)
+  async function captureReceiptCanvas() {
+    const target = document.querySelector("#receiptContent .receipt-paper");
+    if (!target) return null;
+    const mod = await import("https://esm.sh/html2canvas@1.4.1");
+    const html2canvas = mod.default;
+    return html2canvas(target, { backgroundColor: "#ffffff", scale: 2, useCORS: true });
+  }
+
+  async function downloadReceiptAsImage(receiptNumber) {
+    try {
+      const canvas = await captureReceiptCanvas();
+      if (!canvas) { showToast("ไม่พบใบเสร็จให้บันทึก", "error"); return; }
+      const dataUrl = canvas.toDataURL("image/png");
+      const link = document.createElement("a");
+      link.href = dataUrl;
+      link.download = `receipt-${receiptNumber || "order"}.png`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      showToast("บันทึกรูปใบเสร็จสำเร็จ", "success");
+    } catch (err) {
+      showToast("บันทึกรูปใบเสร็จไม่สำเร็จ: " + err.message, "error");
+    }
+  }
+
+  function closeReceipt() {
+    const backdrop = document.getElementById("receiptBackdrop");
+    if (!backdrop) return;
+    backdrop.classList.remove("show");
+    backdrop.setAttribute("aria-hidden", "true");
+  }
+
+  function showReceipt(order, receiptNumber, adminWhatsappNumber) {
+    const date = order.created_at ? new Date(order.created_at) : new Date();
+    const dateText = Number.isNaN(date.getTime())
+      ? "-"
+      : date.toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" });
+
+    const content = document.getElementById("receiptContent");
+    if (!content) return;
+    content.innerHTML = `
+      <div class="receipt-paper">
+        <div class="receipt-head">
+          <h2>${escapeHtml(order.store_name || "Music Store")}</h2>
+          <div>ใบเสร็จรับเงิน</div>
+          <small>เลขที่ ${escapeHtml(receiptNumber)}</small>
+          <small>${escapeHtml(dateText)}</small>
+        </div>
+        <div class="receipt-customer">
+          <div><span>ลูกค้า</span><strong>${escapeHtml(order.customer_name)}</strong></div>
+          <div><span>WhatsApp</span><strong>${escapeHtml(order.whatsapp)}</strong></div>
+        </div>
+        <div class="receipt-items">${buildReceiptItemRows(order) || '<div class="receipt-empty">ไม่มีรายการสินค้า</div>'}</div>
+        <div class="receipt-total"><span>รวมทั้งสิ้น</span><strong>${formatPrice(order.total)}</strong></div>
+        <div class="receipt-thanks">ขอบคุณที่ใช้บริการ</div>
+      </div>
+    `;
+
+    const backdrop = document.getElementById("receiptBackdrop");
+    if (backdrop) {
+      backdrop.classList.add("show");
+      backdrop.setAttribute("aria-hidden", "false");
+    }
+
+    const waBtn = document.getElementById("receiptWhatsAppBtn");
+    if (waBtn) {
+      waBtn.onclick = () => {
+        const number = String(adminWhatsappNumber || "").replace(/[^0-9]/g, "");
+        if (!number) { showToast("ร้านยังไม่ได้ตั้งค่าเบอร์ WhatsApp", "error"); return; }
+        const text = buildAdminWhatsAppText(order, receiptNumber, order.store_name);
+        window.open(buildWhatsAppLink(number, text), "_blank", "noopener");
+      };
+    }
+    const downloadBtn = document.getElementById("receiptDownloadImgBtn");
+    if (downloadBtn) downloadBtn.onclick = () => downloadReceiptAsImage(receiptNumber);
+  }
+
   async function checkoutCart() {
     if (submitting) return;
     const nameInput = document.getElementById("checkoutCustomerName");
@@ -551,17 +682,12 @@ export function initCart({ state, showToast, escapeHtml, formatPrice, buildWhats
     if (whatsappInput) whatsappInput.value = "";
     setCheckoutFeedback(`บันทึก Order ${receiptNumber} สำเร็จแล้ว`, "success");
 
-    const number = String(resolvedSettings.whatsapp_number || "").replace(/[^0-9]/g, "");
-    if (number) {
-      const text = buildAdminWhatsAppText(order, receiptNumber, order.store_name);
-      window.open(buildWhatsAppLink(number, text), "_blank", "noopener");
-    } else {
-      showToast("บันทึก Order แล้ว แต่ร้านยังไม่ได้ตั้งค่าเบอร์ WhatsApp", "error");
-    }
-    setTimeout(closeCheckout, 900);
-
     submitting = false;
     if (btn) { btn.disabled = false; btn.textContent = "ยืนยันสั่งซื้อ"; }
+
+    // เดิม: เปิด WhatsApp หาแอดมินอัตโนมัติทันที — เปลี่ยนเป็นแสดงใบเสร็จก่อน แล้วให้ลูกค้ากดปุ่มเองเพื่อติดต่อแอดมิน
+    closeCheckout();
+    showReceipt(order, receiptNumber, resolvedSettings.whatsapp_number);
   }
 
   function bindCartEvents() {
@@ -604,6 +730,11 @@ export function initCart({ state, showToast, escapeHtml, formatPrice, buildWhats
     });
     document.getElementById("checkoutCartBtn")?.addEventListener("click", openCheckout);
     document.getElementById("submitCartOrderBtn")?.addEventListener("click", checkoutCart);
+    // เพิ่มใหม่: ปิด popup ใบเสร็จ
+    document.getElementById("receiptClose")?.addEventListener("click", closeReceipt);
+    document.getElementById("receiptBackdrop")?.addEventListener("click", event => {
+      if (event.target === event.currentTarget) closeReceipt();
+    });
   }
 
   return {
