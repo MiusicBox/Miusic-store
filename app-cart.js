@@ -135,6 +135,12 @@ export function initCart({ state, showToast, escapeHtml, formatPrice, buildWhats
       kind,
       quantity: 1
     };
+    // เพิ่มใหม่ (แก้บั๊ก): เก็บ category_id ไว้ตั้งแต่ตอนเพิ่มลงตะกร้า เพื่อให้ computeApproxPricingForDisplay()
+    // คำนวณโปรโมชั่นแบบ "เฉพาะหมวดหมู่" (เช่น DJ) ได้ตั้งแต่ตอนแสดงตะกร้า/หน้าสรุปก่อนสั่งซื้อ
+    // ไม่ใช่คำนวณถูกแค่ตอน checkout จริงเหมือนเดิม (ซึ่งทำให้ตะกร้าโชว์ราคาไม่ตรงกับใบเสร็จ)
+    if (kind === "song") {
+      entry.category_id = song.category_id || song.categoryId || null;
+    }
     if (kind === "playlist") {
       entry.song_ids = Array.isArray(song.song_ids) ? song.song_ids.map(String) : [];
       entry.songs = Array.isArray(song.songs)
@@ -333,7 +339,9 @@ export function initCart({ state, showToast, escapeHtml, formatPrice, buildWhats
           const plId = String(item.id).replace(/^playlist:/, "");
           return { kind: "playlist", playlist_id: plId, price: Number(item.price) || 0 };
         } else {
-          return { kind: "song", song_id: String(item.id), price: Number(item.price) || 0 };
+          // เพิ่มใหม่ (แก้บั๊ก): ส่ง category_id ต่อให้ computeCartPricing เพื่อให้ promotion แบบ "เฉพาะหมวดหมู่"
+          // (เช่น DJ) ถูกคำนวณและแสดงผลตั้งแต่ตอนอยู่ในตะกร้า ตรงกับที่ resolveCartFromDatabase() คำนวณตอน checkout จริง
+          return { kind: "song", song_id: String(item.id), price: Number(item.price) || 0, category_id: item.category_id || null };
         }
       });
       // ไม่ส่ง discounts/promotions → computeCartPricing จะใช้ cache จาก app-promotion.js
