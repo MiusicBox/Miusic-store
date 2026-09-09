@@ -154,6 +154,23 @@
   .track-order-total { margin-top:8px; padding-top:10px; border-top:1px solid rgba(255,255,255,.1); display:flex; justify-content:space-between; font-weight:800; font-size:15px; }
   .track-order-actions { display:flex; gap:8px; margin-top:16px; }
   .track-order-actions > * { flex:1; }
+
+  /* ---- เพิ่มใหม่: ใบเสร็จหลังสั่งซื้อ (ฝั่งลูกค้า) — คัดลอกสไตล์ .receipt-* จาก admin.html ให้เหมือนกันทุกประการ ---- */
+  #receiptBackdrop .receipt-paper {
+    background:#fff; color:#171717; border-radius:12px; padding:22px; max-width:460px; margin:auto;
+  }
+  #receiptBackdrop .receipt-head { text-align:center; border-bottom:1px dashed #bbb; padding-bottom:14px; }
+  #receiptBackdrop .receipt-head h2 { margin:0 0 4px; font-size:21px; }
+  #receiptBackdrop .receipt-head small { display:block; color:#666; margin-top:3px; }
+  #receiptBackdrop .receipt-customer { padding:14px 0; border-bottom:1px solid #e5e5e5; }
+  #receiptBackdrop .receipt-customer div { display:flex; justify-content:space-between; gap:12px; margin:4px 0; }
+  #receiptBackdrop .receipt-customer span { color:#666; }
+  #receiptBackdrop .receipt-items { padding:10px 0; }
+  #receiptBackdrop .receipt-line { display:flex; justify-content:space-between; gap:12px; padding:8px 0; border-bottom:1px solid #eee; }
+  #receiptBackdrop .receipt-line small { display:block; color:#666; margin-top:3px; }
+  #receiptBackdrop .receipt-total { display:flex; justify-content:space-between; padding-top:14px; font-size:18px; }
+  #receiptBackdrop .receipt-thanks { text-align:center; color:#666; margin-top:20px; font-size:12px; }
+  #receiptBackdrop .receipt-empty { color:#666; text-align:center; padding:12px; }
 </style>
 </head>
 <body>
@@ -384,6 +401,21 @@
     </div>
   </div>
 
+  <!-- เพิ่มใหม่: ใบเสร็จหลังสั่งซื้อ (ฝั่งลูกค้า) — โครงสร้างเดียวกับ #receiptBackdrop ในหน้าแอดมิน -->
+  <div class="modal-backdrop" id="receiptBackdrop" aria-hidden="true">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>ใบเสร็จ</h3>
+        <button class="modal-close" id="receiptClose" type="button">✕</button>
+      </div>
+      <div id="receiptContent"></div>
+      <div style="display:flex;gap:8px;margin-top:14px;">
+        <button class="btn secondary" id="receiptWhatsAppBtn" type="button" style="flex:1;">ติดต่อแอดมินผ่าน WhatsApp เพื่อชำระเงิน</button>
+        <button class="btn" id="receiptDownloadImgBtn" type="button" style="flex:1;">ดาวน์โหลดใบเสร็จเป็นรูป</button>
+      </div>
+    </div>
+  </div>
+
   <div class="toast" id="toast"></div>
 
   <!-- สคริปต์สลับการ เปิด-ปิด Dropdown -->
@@ -403,6 +435,6 @@
   </script>
 
   <!-- เปลี่ยนเลข v ทุกครั้งที่อัปโหลดไฟล์ใหม่ เพื่อไม่ให้มือถือใช้ไฟล์ JS จาก cache -->
-  <script type="module" src="app-user.js?v=20260909-trackorder1"></script>
+  <script type="module" src="app-user.js?v=20260909-trackorder2"></script>
 </body>
 </html>
