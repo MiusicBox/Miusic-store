@@ -397,9 +397,11 @@ button:active {
   box-sizing: border-box;
 }
 
+/* เปลี่ยนใหม่ (2026-09-10 รอบ 2): ลดขนาดราคาลงอีกนิด (เดิม 12px) เพื่อให้ badge เล็กลง
+   ไม่ไปเบียดชื่อ/จำนวนเพลงในแถวหัวเพลย์ลิสต์ */
 .playlist-folder-price {
   flex-shrink: 0;
-  font-size: 12px;
+  font-size: 10.5px;
   font-weight: 700;
   color: var(--success);
   white-space: nowrap;
@@ -409,6 +411,12 @@ button:active {
   cursor: pointer;
   margin-left: 8px;
 }
+
+/* เพิ่มใหม่ (2026-09-10 รอบ 2): ย่อขนาด font ของราคาเดิม/ราคาลด เฉพาะตอนอยู่ใน badge นี้
+   (ไม่กระทบ .price-original/.price-discounted ที่ใช้ที่อื่น เช่น popup รายละเอียดเพลง) */
+.playlist-folder-price .price-original { font-size: 9.5px; }
+.playlist-folder-price .price-discounted { font-size: 11px; }
+
 
 .playlist-folder-arrow {
   flex-shrink: 0;
@@ -1374,20 +1382,21 @@ button:active {
    ===================================================================== */
 
 /* ---- ราคาปกติ (ขีดฆ่า) ---- */
+/* เปลี่ยนใหม่ (2026-09-10 รอบ 2): ราคาที่ขีดฆ่าเปลี่ยนเป็นสีขาวตามที่แจ้ง (เดิมเป็นสีเทาจาง) */
 .price-original {
-  color: var(--text-dim);
+  color: var(--text);
   text-decoration: line-through;
   font-size: 11px;
   font-weight: 500;
   margin-right: 4px;
-  opacity: 0.7;
+  opacity: 1;
 }
 
-/* ---- ราคาหลังลด ---- */
-/* เปลี่ยนใหม่ (2026-09-10): ราคาหลังลดเปลี่ยนเป็นสีเขียว (--success) ตามที่แจ้ง
-   เดิมเป็นสีชมพู (--accent-2) — ราคาปกติที่ขีดฆ่ายังเป็นสีเทาเดิม ไม่กระทบ */
+/* ---- ราคาหลังลด/โปรโมชั่น ---- */
+/* เปลี่ยนใหม่ (2026-09-10 รอบ 2): กลับไปใช้สีชมพู-แดง (--accent-2) ตามสีเดิมของระบบ
+   ส่วนราคาปกติ (ไม่มีส่วนลด) ยังเป็นสีเขียวอยู่ — มาจาก .cart-add-btn ที่ตั้ง color เขียวไว้เป็น base */
 .price-discounted {
-  color: var(--success);
+  color: var(--accent-2, #ec4899);
   font-weight: 800;
   font-size: 14px;
 }
