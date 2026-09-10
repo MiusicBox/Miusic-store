@@ -343,6 +343,7 @@ button:active {
   padding: 10px 12px;
   text-align: left;
   cursor: pointer;
+  position: relative; /* เพิ่มใหม่ (2026-09-10): ให้ .playlist-folder-price ยึดมุมขวาล่างของแถวนี้ */
 }
 
 .playlist-folder-btn:hover {
@@ -391,6 +392,9 @@ button:active {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  /* เพิ่มใหม่ (2026-09-10): เผื่อพื้นที่ด้านขวาให้ badge ราคาที่ย้ายไปมุมขวาล่างแล้ว ไม่ทับตัวหนังสือ */
+  padding-right: 110px;
+  box-sizing: border-box;
 }
 
 .playlist-folder-price {
@@ -731,6 +735,24 @@ button:active {
   padding: 0;
   display: inline-flex;
   align-items: center;
+}
+
+/* เพิ่มใหม่ (แก้บั๊ก 2026-09-10): .cart-add-btn ไม่เคยมี CSS ของตัวเองมาก่อน
+   ทำให้ browser ใช้สไตล์ default ของ <button> (พื้นหลังขาว/เทาเป็นก้อน) จนไปบังชื่อเพลง
+   เพิ่ม base style นี้เพื่อล้าง default ของ browser เท่านั้น ไม่กระทบ class ที่ผสมอยู่แล้ว
+   (.playlist-folder-price / .playlist-add-cart ยังคงทำงานทับได้ตามเดิม) */
+.cart-add-btn {
+  background: transparent;
+  border: none;
+  margin: 0;
+  padding: 0;
+  -webkit-appearance: none;
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--success);
+  cursor: pointer;
 }
 
 .buy-btn {
@@ -1362,8 +1384,10 @@ button:active {
 }
 
 /* ---- ราคาหลังลด ---- */
+/* เปลี่ยนใหม่ (2026-09-10): ราคาหลังลดเปลี่ยนเป็นสีเขียว (--success) ตามที่แจ้ง
+   เดิมเป็นสีชมพู (--accent-2) — ราคาปกติที่ขีดฆ่ายังเป็นสีเทาเดิม ไม่กระทบ */
 .price-discounted {
-  color: var(--accent-2, #ec4899);
+  color: var(--success);
   font-weight: 800;
   font-size: 14px;
 }
