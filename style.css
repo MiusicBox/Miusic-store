@@ -412,10 +412,8 @@ button:active {
   margin-left: 8px;
 }
 
-/* เพิ่มใหม่ (2026-09-10 รอบ 2): ย่อขนาด font ของราคาเดิม/ราคาลด เฉพาะตอนอยู่ใน badge นี้
-   (ไม่กระทบ .price-original/.price-discounted ที่ใช้ที่อื่น เช่น popup รายละเอียดเพลง) */
-.playlist-folder-price .price-original { font-size: 9.5px; }
-.playlist-folder-price .price-discounted { font-size: 11px; }
+/* เอาออก (2026-09-10 รอบ 3): ยกเลิกการย่อขนาดราคาโปรโมชั่น/ลดราคาในนี้ตามที่แจ้ง
+   ให้ตัวหนังสือราคาโปรโมชั่น/ลดราคาที่นี่มีขนาดเท่ากับราคาโปรโมชั่น/ลดราคาของเพลงเดี่ยว (ค่า default ของ .price-original/.price-discounted) */
 
 
 .playlist-folder-arrow {
@@ -604,6 +602,7 @@ button:active {
   gap: 10px;
   box-shadow: none;
   transition: all 0.2s ease;
+  position: relative; /* เพิ่มใหม่ (2026-09-10 รอบ 3): ให้ .song-footer ยึดมุมขวาล่างของการ์ดนี้ */
 }
 
 .song-card:first-child {
@@ -709,6 +708,9 @@ button:active {
   margin-top: 1px;
   font-weight: 500;
   width: 100%;
+  /* เพิ่มใหม่ (2026-09-10 รอบ 3): เผื่อที่ด้านขวาให้ badge ราคาที่ย้ายไปมุมขวาล่างแล้ว */
+  padding-right: 110px;
+  box-sizing: border-box;
 }
 
 .song-dj {
@@ -722,16 +724,24 @@ button:active {
   display: flex;
   align-items: center;
   gap: 4px;
+  /* เพิ่มใหม่ (2026-09-10 รอบ 3): เผื่อที่ด้านขวาให้ badge ราคาที่ย้ายไปมุมขวาล่างแล้ว */
+  padding-right: 110px;
+  box-sizing: border-box;
 }
 
+/* เปลี่ยนใหม่ (2026-09-10 รอบ 3): ย้ายราคาไปมุมขวาล่างของการ์ด + ใส่พื้นหลังเงา
+   เหมือนกับ .playlist-item-price ที่ใช้ในรายการเพลงของเพลย์ลิสต์ ตามที่แจ้ง */
 .song-footer {
-  display: flex;
-  flex-direction: row;
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  display: inline-flex;
   align-items: center;
-  justify-content: flex-end;
-  margin-top: 0;
   gap: 8px;
-  flex-shrink: 0;
+  background: var(--surface-2);
+  padding: 3px 8px;
+  border-radius: 8px 0 0 0;
+  z-index: 1;
 }
 
 .song-price {
