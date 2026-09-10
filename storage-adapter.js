@@ -10,7 +10,10 @@
 //   2. เปลี่ยนค่า ACTIVE_PROVIDER เป็น "r2"
 //   3. เสร็จ — โค้ดที่เหลือไม่ต้องแก้
 // ===================================================
-import { CLOUDINARY_CLOUD_NAME, CLOUDINARY_UPLOAD_PRESET } from "./firebase-init.js";
+// ค่า Cloudinary — ย้ายมาจาก firebase-init.js (2026-09-10) เพราะมีแค่ไฟล์นี้ไฟล์เดียวที่ใช้
+// (ทำให้ firebase-init.js เรียก getStorageProvider() จากไฟล์นี้ได้โดยไม่เกิด import วนกลับไปมา)
+const CLOUDINARY_CLOUD_NAME = "g4nmb7ho";
+const CLOUDINARY_UPLOAD_PRESET = "music_store_unsigned";
 
 // สร้าง Error สำหรับกรณีอัปโหลดถูกยกเลิก (ให้ผู้เรียกเช็คได้ด้วย err.name === "AbortError")
 function makeAbortError() {
@@ -82,20 +85,70 @@ const CloudinaryProvider = {
   },
 };
 
-// ---------------- R2 Provider (เตรียมโครงไว้ — ยังไม่เปิดใช้งานจริง) ----------------
-// ยังไม่ implement เพราะการอัปโหลดตรงจาก browser ไป R2 ต้องมี backend เซ็น (presign) request
-// ให้ก่อนเสมอ — ไม่สามารถฝัง R2 Access Key/Secret ไว้ในโค้ดฝั่งเว็บได้
+// ---------------- R2 Provider (ใช้งานจริง — อัปโหลดผ่าน Worker backend ของเว็บเอง) ----------------
+// อัปโหลดตรงจาก browser ไป R2 ทำไม่ได้ (ต้องเซ็น request ด้วย Access Key/Secret ซึ่งห้ามฝังฝั่งเว็บ)
+// จึงส่งไฟล์มาที่ endpoint "/api/upload" ของเว็บเราเอง (same-origin, ดู worker/index.js) แล้วให้ Worker
+// เขียนต่อเข้า R2 ผ่าน binding แทน — โครง progress/timeout/retry/abort เหมือน CloudinaryProvider ทุกจุด
+// เพื่อให้ผู้เรียก (app-admin.js/orders.js ผ่าน firebase-init.js) เห็นพฤติกรรมเหมือนเดิมทุกประการ
 const R2Provider = {
   name: "r2",
-  async upload() {
-    throw new Error("R2Provider ยังไม่เปิดใช้งาน — ต้องตั้งค่า backend สำหรับสร้าง presigned URL ก่อนใช้งานจริง");
+
+  async upload(file, { folder = "", resourceType = "auto" } = {}, onProgress, signal) {
+    return new Promise((resolve, reject) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      if (folder) formData.append("folder", folder);
+      if (resourceType) formData.append("resourceType", resourceType);
+
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", "/api/upload");
+
+      if (signal) {
+        if (signal.aborted) { reject(makeAbortError()); return; }
+        signal.addEventListener("abort", () => xhr.abort());
+      }
+
+      xhr.upload.onprogress = (e) => {
+        if (onProgress && e.lengthComputable) {
+          onProgress(Math.round((e.loaded / e.total) * 100), e.loaded, e.total);
+        }
+      };
+      xhr.onload = () => {
+        try {
+          const data = JSON.parse(xhr.responseText);
+          if (xhr.status >= 200 && xhr.status < 300 && data.url) {
+            resolve({ url: data.url, publicId: data.publicId, provider: "r2" });
+          } else {
+            // ปฏิเสธจาก backend เอง (เช่น ตั้งค่า bucket ผิด, ไฟล์ไม่ถูกต้อง) — ไม่ใช่ปัญหาเครือข่าย
+            // จึงไม่ติด retryable=true เพราะลองใหม่ไปก็จะพังซ้ำเหมือนเดิม (เหมือน CloudinaryProvider)
+            reject(new Error(data.error || `อัปโหลดไม่สำเร็จ (HTTP ${xhr.status})`));
+          }
+        } catch (err) {
+          reject(err);
+        }
+      };
+      xhr.onerror = () => {
+        const err = new Error("เชื่อมต่อเซิร์ฟเวอร์อัปโหลดไม่สำเร็จ — ตรวจสอบการเชื่อมต่ออินเทอร์เน็ตแล้วลองใหม่");
+        err.retryable = true; // ปัญหาเครือข่าย — ลองใหม่ได้
+        reject(err);
+      };
+      xhr.ontimeout = () => {
+        const err = new Error("อัปโหลดใช้เวลานานเกินไป");
+        err.retryable = true; // timeout — ลองใหม่ได้
+        reject(err);
+      };
+      xhr.onabort = () => reject(makeAbortError()); // ผู้ใช้กดยกเลิกเอง — ห้าม retry เด็ดขาด
+      xhr.timeout = 10 * 60 * 1000;
+      xhr.send(formData);
+    });
   },
 };
 
 const PROVIDERS = { cloudinary: CloudinaryProvider, r2: R2Provider };
 
-// เปลี่ยนค่านี้เป็น "r2" ตอนพร้อมย้ายจริงในอนาคต (หลัง implement R2Provider ครบแล้ว)
-const ACTIVE_PROVIDER = "cloudinary";
+// ย้ายมาใช้ R2 แล้ว (2026-09-10) — เก็บ "cloudinary" ไว้ใน PROVIDERS ด้านบนเผื่อต้องสลับกลับฉุกเฉิน
+// แค่เปลี่ยนค่านี้กลับเป็น "cloudinary" ก็พอ ไม่ต้องแก้ไฟล์อื่น
+const ACTIVE_PROVIDER = "r2";
 
 export function getStorageProvider() {
   return PROVIDERS[ACTIVE_PROVIDER];
