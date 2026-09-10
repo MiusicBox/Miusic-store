@@ -376,7 +376,9 @@ function renderPlaylists() {
             <div class="playlist-folder-name">${escapeHtml(pl.playlist_name)}</div>
             <div class="playlist-folder-count">${songs.length} เพลง</div>
           </div>
-          <div style="display: flex; flex-direction: column; align-items: flex-end; justify-content: flex-end; margin-left: auto; padding-right: 8px;">
+          <!-- แก้ไข (2026-09-10): ย้ายราคาไปมุมขวาล่างของแถว (absolute) แทนการแทรกอยู่กลาง flex row เดิม
+               เพื่อไม่ให้ไปแย่งพื้นที่ชื่อเพลย์ลิสต์จนชื่อถูกตัดสั้นเกินไป (ดู .playlist-folder-btn { position:relative } ใน style.css) -->
+          <div style="position: absolute; right: 40px; bottom: 8px; display: flex; flex-direction: column; align-items: flex-end; justify-content: flex-end; z-index: 1;">
             ${pl.price ? `<button type="button" class="cart-add-btn playlist-folder-price" data-add-cart-playlist="${pl.id}" aria-label="เพิ่มเพลย์ลิสต์ ${escapeHtml(pl.playlist_name)} ลงตะกร้า">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
               ${renderDiscountedPriceForPlaylist(pl)}
