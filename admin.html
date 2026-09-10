@@ -414,6 +414,8 @@
       <div class="modal-header"><h3 id="discountFormTitle">เพิ่มลดราคา</h3><button class="modal-close" id="discountFormClose">✕</button></div>
       <div class="field">
         <label>เป้าหมาย (เลือกเพลงหรือเพลย์ลิสต์) *</label>
+        <!-- เพิ่มใหม่ (แก้บั๊ก 2026-09-10): ช่องค้นหาชื่อเพลง/เพลย์ลิสต์ กรอง option ใน select ด้านล่าง ไม่กระทบ select เดิม -->
+        <input type="text" id="fDiscTargetSearch" placeholder="🔍 พิมพ์ค้นหาชื่อเพลง/เพลย์ลิสต์..." style="margin-bottom:8px;" autocomplete="off">
         <select id="fDiscTarget"></select>
       </div>
       <div class="field">
@@ -884,6 +886,21 @@
     <button type="button" id="detailRowMenuEdit" style="display:flex;align-items:center;gap:9px;width:100%;padding:10px 12px;background:transparent;border:0;color:#fff;font-size:14px;text-align:left;border-radius:8px;cursor:pointer;">✎ แก้ไขเพลง</button>
     <button type="button" id="detailRowMenuRemove" style="display:flex;align-items:center;gap:9px;width:100%;padding:10px 12px;background:transparent;border:0;color:var(--danger,#ff6b6b);font-size:14px;text-align:left;border-radius:8px;cursor:pointer;">➖ นำออกจากรายการนี้</button>
     <button type="button" id="detailRowMenuDelete" style="display:flex;align-items:center;gap:9px;width:100%;padding:10px 12px;background:transparent;border:0;color:var(--danger,#ff6b6b);font-size:14px;text-align:left;border-radius:8px;cursor:pointer;">🗑 ลบเพลงนี้ออกจากระบบจริง</button>
+  </div>
+
+  <!-- ===== เพิ่มใหม่ (แก้บั๊ก 2026-09-10): เมนูดรอปดาวน์แบบใช้ร่วมกันสำหรับปุ่ม ⋮ ในแถวลดราคา
+       (แทนปุ่ม ✎🔒🗑 ที่เรียงกันจนล้นขอบจอบนมือถือ) — โครงเดียวกับ songRowMenu ด้านบนทุกประการ ===== -->
+  <div id="discountRowMenu" style="display:none;position:fixed;z-index:200;background:#1c1c22;border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:6px;min-width:200px;box-shadow:0 10px 30px rgba(0,0,0,.45);">
+    <button type="button" id="discountRowMenuEdit" style="display:flex;align-items:center;gap:9px;width:100%;padding:10px 12px;background:transparent;border:0;color:#fff;font-size:14px;text-align:left;border-radius:8px;cursor:pointer;">✎ แก้ไข</button>
+    <button type="button" id="discountRowMenuToggle" style="display:flex;align-items:center;gap:9px;width:100%;padding:10px 12px;background:transparent;border:0;color:#fff;font-size:14px;text-align:left;border-radius:8px;cursor:pointer;">🔒 ปิดใช้งาน</button>
+    <button type="button" id="discountRowMenuDelete" style="display:flex;align-items:center;gap:9px;width:100%;padding:10px 12px;background:transparent;border:0;color:var(--danger,#ff6b6b);font-size:14px;text-align:left;border-radius:8px;cursor:pointer;">🗑 ลบ</button>
+  </div>
+
+  <!-- ===== เพิ่มใหม่ (แก้บั๊ก 2026-09-10): เมนูดรอปดาวน์แบบใช้ร่วมกันสำหรับปุ่ม ⋮ ในแถวโปรโมชั่น — โครงเดียวกับ discountRowMenu ===== -->
+  <div id="promotionRowMenu" style="display:none;position:fixed;z-index:200;background:#1c1c22;border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:6px;min-width:200px;box-shadow:0 10px 30px rgba(0,0,0,.45);">
+    <button type="button" id="promotionRowMenuEdit" style="display:flex;align-items:center;gap:9px;width:100%;padding:10px 12px;background:transparent;border:0;color:#fff;font-size:14px;text-align:left;border-radius:8px;cursor:pointer;">✎ แก้ไข</button>
+    <button type="button" id="promotionRowMenuToggle" style="display:flex;align-items:center;gap:9px;width:100%;padding:10px 12px;background:transparent;border:0;color:#fff;font-size:14px;text-align:left;border-radius:8px;cursor:pointer;">🔒 ปิดใช้งาน</button>
+    <button type="button" id="promotionRowMenuDelete" style="display:flex;align-items:center;gap:9px;width:100%;padding:10px 12px;background:transparent;border:0;color:var(--danger,#ff6b6b);font-size:14px;text-align:left;border-radius:8px;cursor:pointer;">🗑 ลบ</button>
   </div>
 
   <div class="toast" id="toast"></div>
