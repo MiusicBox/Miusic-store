@@ -173,7 +173,16 @@ export function initCart({ state, showToast, escapeHtml, formatPrice, buildWhats
       return;
     }
 
-    itemsEl.innerHTML = state.cart.map(item => {
+    // ===== เพิ่มใหม่ (แก้บั๊ก 2026-09-10): คำนวณราคาส่วนลด/โปรโมชั่นแบบ approximate มาแสดงในตะกร้า =====
+    // เดิม renderCart() แสดงเฉพาะ item.price ดิบและ cartTotal() ดิบ ไม่เคยเรียก computeCartPricing เลย
+    // ทำให้ popup ตะกร้าไม่แสดงส่วนลด/โปรโมชั่น ทั้งที่ตอนกดยืนยันสั่งซื้อจริงคำนวณถูกต้องอยู่แล้ว
+    // ใช้ computeApproxPricingForDisplay() ตัวเดียวกับที่ renderCheckoutSummary() ใช้อยู่แล้ว (ด้านล่าง)
+    // เป็นค่า "โดยประมาณ" สำหรับแสดงผลเท่านั้น ไม่กระทบ resolveCartFromDatabase/checkoutCart ที่คำนวณราคา
+    // จริงจากฐานข้อมูลแยกต่างหากตอนกดยืนยันสั่งซื้ออยู่ดี
+    const approxPricing = computeApproxPricingForDisplay();
+    const pricingItems = approxPricing?.items || null;
+
+    itemsEl.innerHTML = state.cart.map((item, index) => {
       const isPlaylist = item.kind === "playlist";
       const songCount = isPlaylist ? (item.songs || []).length || (item.song_ids || []).length : 0;
       const metaText = isPlaylist
@@ -185,6 +194,12 @@ export function initCart({ state, showToast, escapeHtml, formatPrice, buildWhats
              ${item.songs.map(s => `<div class="cart-item-songs-row">🎵 ${escapeHtml(s.song_name)}</div>`).join("")}
            </div>`
         : "";
+      // เพิ่มใหม่: ถ้ารายการนี้มี "ราคาลด" (item-level discount) อยู่ ให้โชว์ราคาปกติขีดฆ่า + ราคาหลังลด
+      const pricingItem = pricingItems ? pricingItems[index] : null;
+      const itemHasDiscount = !!(pricingItem && pricingItem._hadDiscount);
+      const itemTotalHtml = itemHasDiscount
+        ? `<span style="text-decoration:line-through;color:var(--text-dim);font-size:11px;display:block;">${formatPrice(item.price * item.quantity)}</span>${formatPrice(pricingItem.discount_price * item.quantity)}`
+        : formatPrice(item.price * item.quantity);
       return `
       <div class="cart-item" data-cart-item="${escapeHtml(item.id)}">
         <img class="cart-item-cover" src="${escapeHtml(item.cover_url)}" alt="">
@@ -192,7 +207,7 @@ export function initCart({ state, showToast, escapeHtml, formatPrice, buildWhats
           <div class="cart-item-name">${escapeHtml(item.song_name)}</div>
           <div class="cart-item-meta">${metaText}</div>
         </div>
-        <div class="cart-item-total">${formatPrice(item.price * item.quantity)}</div>
+        <div class="cart-item-total">${itemTotalHtml}</div>
         <button class="cart-remove" type="button" data-cart-remove="${escapeHtml(item.id)}">ลบ</button>
         ${viewSongsBtn}
       </div>
@@ -202,8 +217,46 @@ export function initCart({ state, showToast, escapeHtml, formatPrice, buildWhats
     if (summaryEl) summaryEl.hidden = false;
     const quantityEl = document.getElementById("cartTotalQuantity");
     const priceEl = document.getElementById("cartTotalPrice");
+    const discountRowsEl = document.getElementById("cartDiscountRows");
     if (quantityEl) quantityEl.textContent = `${quantity} เพลง`;
-    if (priceEl) priceEl.textContent = formatPrice(cartTotal());
+
+    // เพิ่มใหม่: ยอดรวมตอนนี้ใช้ finalTotal (หลังหักส่วนลด/โปรโมชั่น) แทน cartTotal() ดิบ
+    const baseTotal = cartTotal();
+    const finalTotal = approxPricing?.finalTotal ?? baseTotal;
+    const itemDiscount = approxPricing?.itemDiscountAmount || 0;
+    const promoDiscount = approxPricing?.promoDiscountAmount || 0;
+    const promoApplied = approxPricing?.promotionApplied;
+    const totalDiscount = itemDiscount + promoDiscount;
+
+    if (priceEl) priceEl.textContent = formatPrice(finalTotal);
+
+    // เพิ่มใหม่: แสดงแถวสรุปส่วนลด/โปรโมชั่น (โครงเดียวกับ renderCheckoutSummary ด้านล่าง)
+    if (discountRowsEl) {
+      if (totalDiscount > 0 && finalTotal < baseTotal) {
+        let rows = `
+          <div class="cart-summary-row">
+            <span style="color:var(--text-dim);">ยอดรวมก่อนลด</span>
+            <strong style="color:var(--text-dim);text-decoration:line-through;">${formatPrice(baseTotal)}</strong>
+          </div>`;
+        if (itemDiscount > 0) {
+          rows += `
+            <div class="cart-summary-row">
+              <span style="color:var(--accent-2,#ec4899);">🏷️ ส่วนลดจากราคาปกติ</span>
+              <strong style="color:var(--accent-2,#ec4899);">-${formatPrice(itemDiscount)}</strong>
+            </div>`;
+        }
+        if (promoApplied && promoDiscount > 0) {
+          rows += `
+            <div class="cart-summary-row">
+              <span style="color:var(--success);">🎁 ${escapeHtml(promoApplied.name || 'โปรโมชั่น')}</span>
+              <strong style="color:var(--success);">-${formatPrice(promoDiscount)}</strong>
+            </div>`;
+        }
+        discountRowsEl.innerHTML = rows;
+      } else {
+        discountRowsEl.innerHTML = "";
+      }
+    }
   }
 
   function openCart() {
