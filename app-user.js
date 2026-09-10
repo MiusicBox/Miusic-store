@@ -5,7 +5,7 @@ import { collection, getDocs, doc, getDoc, query, where, onSnapshot, deleteDoc }
 import { initCart } from "./app-cart.js?v=20261101-promo1";
 // ===== ลดราคา + โปรโมชั่น + ออเดอร์ของฉัน (ระบบใหม่ — รวมในไฟล์เดียว app-promotion.js) =====
 import {
-  fetchActiveDiscounts, applyDiscountToPrice, findActiveDiscountFor,
+  fetchActiveDiscounts, fetchActivePromotions, applyDiscountToPrice, findActiveDiscountFor,
   initMyOrdersView, cleanupMyOrdersView
 } from "./app-promotion.js?v=20261101-promo1";
 
@@ -130,6 +130,19 @@ async function init() {
   } catch (e) {
     console.warn("โหลด discounts ไม่สำเร็จ — แสดงราคาปกติ", e);
     STATE.discounts = [];
+  }
+
+  // ===== เพิ่มใหม่ (แก้บั๊ก 2026-09-10): โหลด active promotions ครั้งเดียวตอน init เช่นเดียวกับ discounts =====
+  // เดิมที่นี่มีแต่ fetchActiveDiscounts() — ไม่เคยเรียก fetchActivePromotions() เลยตอนโหลดหน้าเว็บ
+  // ทำให้ cache โปรโมชั่นฝั่งแสดงผล (_promotionsCache ใน app-promotion.js) ว่างเปล่าตลอด จนกว่าจะถึง
+  // ขั้นตอน checkout จริง (resolveCartFromDatabase ใน app-cart.js เรียก fetchActivePromotions(true) บังคับ
+  // ดึงใหม่อยู่แล้วตอนนั้น — ยอดที่คิดเงินจริงจึงถูกต้องเสมอ) แต่ราคา "โดยประมาณ" ที่โชว์ในตะกร้า/หน้าสรุป
+  // ก่อนกดยืนยันสั่งซื้อ ไม่เคยรวมส่วนลดจากโปรโมชั่นเลย เพิ่มบรรทัดนี้เพื่อให้ราคาที่แสดงตรงกับราคาจริง
+  // ตั้งแต่แรก ไม่กระทบการคำนวณราคาจริงตอน checkout แต่อย่างใด
+  try {
+    await fetchActivePromotions();
+  } catch (e) {
+    console.warn("โหลด promotions ไม่สำเร็จ — ตะกร้าจะยังไม่แสดงส่วนลดโปรโมชั่น (ราคาจริงตอนสั่งซื้อยังถูกต้อง)", e);
   }
 
   const siteNameEl = document.getElementById("siteName");
