@@ -367,39 +367,97 @@ function renderDiscountList() {
           <div class="n2">${targetTypeIcon} ${targetLabel} · ${valueLabel}</div>
           <div class="n2" style="font-size:11px;color:var(--text-dim);">เริ่ม: ${formatDateTime(d.start_at)} · สิ้นสุด: ${formatDateTime(d.end_at)}</div>
         </div>
+        <!-- เพิ่มใหม่ (แก้บั๊ก 2026-09-10): ปุ่ม ⋮ ตัวเดียว แทนปุ่ม ✎🔒🗑 3 ปุ่มเรียงกัน (ล้นขอบจอ/บังบนมือถือ) -->
         <div class="row-actions">
-          <button class="icon-btn" data-edit-disc="${disc_escapeHtml(d.id)}" title="แก้ไข">✎</button>
-          <button class="icon-btn" data-toggle-disc="${disc_escapeHtml(d.id)}" title="${d.active === false ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}">${d.active === false ? '🔒' : '🔓'}</button>
-          <button class="icon-btn danger" data-del-disc="${disc_escapeHtml(d.id)}" title="ลบ">🗑</button>
+          <button class="icon-btn" data-disc-menu="${disc_escapeHtml(d.id)}" title="เมนู">⋮</button>
         </div>
       </div>`;
   }).join("");
 
-  wrap.querySelectorAll("[data-edit-disc]").forEach(b => b.addEventListener("click", () => openEditDiscount(b.getAttribute("data-edit-disc"))));
-  wrap.querySelectorAll("[data-del-disc]").forEach(b => b.addEventListener("click", () => confirmDeleteDiscount(b.getAttribute("data-del-disc"))));
-  wrap.querySelectorAll("[data-toggle-disc]").forEach(b => b.addEventListener("click", () => toggleDiscountActive(b.getAttribute("data-toggle-disc"))));
+  // เพิ่มใหม่: ผูกปุ่ม ⋮ เข้ากับเมนูดรอปดาวน์ตัวเดียวที่ใช้ร่วมกันทุกแถว (โครงเดียวกับ toggleSongRowMenu ใน app-admin.js)
+  wrap.querySelectorAll("[data-disc-menu]").forEach(b => b.addEventListener("click", (e) => {
+    e.stopPropagation();
+    toggleDiscountRowMenu(b, b.getAttribute("data-disc-menu"));
+  }));
 }
 
-function populateTargetSelects() {
+// ===== เพิ่มใหม่ (แก้บั๊ก 2026-09-10): เมนูดรอปดาวน์ ⋮ แบบใช้ element ตัวเดียวร่วมกันทุกแถวลดราคา =====
+// โครงเดียวกับ toggleSongRowMenu/hideSongRowMenu ใน app-admin.js — เรียกฟังก์ชันเดิม
+// (openEditDiscount/toggleDiscountActive/confirmDeleteDiscount) ทุกอย่างเหมือนเดิม ไม่เปลี่ยนพฤติกรรม
+let openDiscountMenuId = null;
+function toggleDiscountRowMenu(btn, discId) {
+  const menu = document.getElementById("discountRowMenu");
+  if (!menu) return;
+  if (openDiscountMenuId === discId && menu.style.display !== "none") {
+    hideDiscountRowMenu();
+    return;
+  }
+  openDiscountMenuId = discId;
+  const d = DISCOUNTS_CACHE.find(x => x.id === discId);
+  const toggleBtn = document.getElementById("discountRowMenuToggle");
+  if (toggleBtn && d) toggleBtn.textContent = d.active === false ? "🔓 เปิดใช้งาน" : "🔒 ปิดใช้งาน";
+  const rect = btn.getBoundingClientRect();
+  menu.style.display = "block";
+  const menuWidth = menu.offsetWidth || 200;
+  let left = rect.right - menuWidth;
+  if (left < 8) left = 8;
+  menu.style.left = left + "px";
+  const menuHeight = menu.offsetHeight || 150;
+  let top = rect.bottom + 6;
+  if (top + menuHeight > window.innerHeight - 8) top = rect.top - menuHeight - 6;
+  menu.style.top = top + "px";
+}
+function hideDiscountRowMenu() {
+  const menu = document.getElementById("discountRowMenu");
+  if (menu) menu.style.display = "none";
+  openDiscountMenuId = null;
+}
+document.addEventListener("click", (e) => {
+  const menu = document.getElementById("discountRowMenu");
+  if (menu && menu.style.display !== "none" && !menu.contains(e.target)) hideDiscountRowMenu();
+});
+window.addEventListener("scroll", hideDiscountRowMenu, true);
+document.getElementById("discountRowMenuEdit")?.addEventListener("click", () => {
+  const id = openDiscountMenuId; hideDiscountRowMenu();
+  if (id) openEditDiscount(id);
+});
+document.getElementById("discountRowMenuToggle")?.addEventListener("click", () => {
+  const id = openDiscountMenuId; hideDiscountRowMenu();
+  if (id) toggleDiscountActive(id);
+});
+document.getElementById("discountRowMenuDelete")?.addEventListener("click", () => {
+  const id = openDiscountMenuId; hideDiscountRowMenu();
+  if (id) confirmDeleteDiscount(id);
+});
+
+// ===== เพิ่มใหม่ (แก้บั๊ก 2026-09-10): รับ searchTerm เพื่อกรองรายชื่อเพลง/เพลย์ลิสต์ในช่อง select =====
+// ไม่มี searchTerm (undefined) = แสดงทั้งหมดเหมือนเดิมทุกประการ — ไม่กระทบพฤติกรรมเดิม
+function populateTargetSelects(searchTerm) {
   const targetSelect = document.getElementById("fDiscTarget");
   if (!targetSelect) return;
   if (editingDiscountId) return;
+  const term = String(searchTerm || "").trim().toLowerCase();
+  const filteredSongs = term ? SONGS_CACHE.filter(s => String(s.song_name || "").toLowerCase().includes(term)) : SONGS_CACHE;
+  const filteredPlaylists = term ? PLAYLISTS_CACHE.filter(p => String(p.playlist_name || "").toLowerCase().includes(term)) : PLAYLISTS_CACHE;
   let opts = ['<option value="">— เลือกเพลง/เพลย์ลิสต์ —</option>'];
-  if (SONGS_CACHE.length > 0) {
+  if (filteredSongs.length > 0) {
     opts.push('<optgroup label="เพลง">');
-    SONGS_CACHE.forEach(s => {
+    filteredSongs.forEach(s => {
       const price = Number(s.price) || 0;
       opts.push(`<option value="song:${disc_escapeHtml(s.id)}" data-name="${disc_escapeHtml(s.song_name || '')}" data-price="${price}">🎼 ${disc_escapeHtml(s.song_name || '(ไม่มีชื่อ)')} — ${price.toLocaleString()} LAK</option>`);
     });
     opts.push('</optgroup>');
   }
-  if (PLAYLISTS_CACHE.length > 0) {
+  if (filteredPlaylists.length > 0) {
     opts.push('<optgroup label="เพลย์ลิสต์">');
-    PLAYLISTS_CACHE.forEach(p => {
+    filteredPlaylists.forEach(p => {
       const price = Number(p.price) || 0;
       opts.push(`<option value="playlist:${disc_escapeHtml(p.id)}" data-name="${disc_escapeHtml(p.playlist_name || '')}" data-price="${price}">🎵 ${disc_escapeHtml(p.playlist_name || '(ไม่มีชื่อ)')} — ${price.toLocaleString()} LAK</option>`);
     });
     opts.push('</optgroup>');
+  }
+  if (term && filteredSongs.length === 0 && filteredPlaylists.length === 0) {
+    opts.push('<option value="" disabled>— ไม่พบรายการที่ตรงกับคำค้นหา —</option>');
   }
   targetSelect.innerHTML = opts.join("");
 }
@@ -422,6 +480,9 @@ function resetDiscountForm() {
   document.getElementById("discountFormTitle").textContent = "เพิ่มลดราคา";
   document.getElementById("fDiscTarget").disabled = false;
   document.getElementById("fDiscTarget").value = "";
+  // เพิ่มใหม่: เปิดช่องค้นหาอีกครั้งเวลาเปิดฟอร์ม "เพิ่มลดราคา" ใหม่ (กรณีปิดไว้ตอนแก้ไขรายการก่อนหน้า)
+  const searchInputReset = document.getElementById("fDiscTargetSearch");
+  if (searchInputReset) searchInputReset.disabled = false;
   document.getElementById("fDiscType").value = "percent";
   document.getElementById("fDiscValue").value = "";
   const now = new Date();
@@ -431,6 +492,9 @@ function resetDiscountForm() {
   document.getElementById("fDiscActive").checked = true;
   document.getElementById("discountFormNote").textContent = "";
   document.getElementById("discountPriceHint").textContent = "";
+  // เพิ่มใหม่: ล้างช่องค้นหาทุกครั้งที่เปิดฟอร์มใหม่ ไม่ให้ค่าค้นหาเก่าค้าง
+  const searchInput = document.getElementById("fDiscTargetSearch");
+  if (searchInput) searchInput.value = "";
   populateTargetSelects();
 }
 
@@ -464,6 +528,9 @@ function openEditDiscount(id) {
   }
   document.getElementById("fDiscTarget").value = targetValue;
   document.getElementById("fDiscTarget").disabled = true;
+  // เพิ่มใหม่: ปิดช่องค้นหาตอนแก้ไข (เป้าหมายแก้ไม่ได้อยู่แล้วตามโค้ดเดิม)
+  const searchInputEdit = document.getElementById("fDiscTargetSearch");
+  if (searchInputEdit) searchInputEdit.disabled = true;
   document.getElementById("discountFormNote").textContent = "หากต้องการเปลี่ยนเป้าหมาย กรุณาลบรายการนี้และสร้างใหม่";
   updatePriceHint();
   document.getElementById("discountFormBackdrop").classList.add("show");
@@ -610,6 +677,8 @@ export function initDiscountsView() {
     document.getElementById("fDiscTarget").addEventListener("change", updatePriceHint);
     document.getElementById("fDiscType").addEventListener("change", updatePriceHint);
     document.getElementById("fDiscValue").addEventListener("input", updatePriceHint);
+    // เพิ่มใหม่ (แก้บั๊ก 2026-09-10): พิมพ์ค้นหาแล้วกรอง option ใน select เป้าหมายทันที
+    document.getElementById("fDiscTargetSearch")?.addEventListener("input", (e) => populateTargetSelects(e.target.value));
     disc_listenersBound = true;
   }
   disc_loadData();
@@ -682,18 +751,68 @@ function renderPromotionList() {
           <div class="n2">${typeLabel} · ${valueLabel} · ${minQtyLabel} · ${appliesToLabel}</div>
           <div class="n2" style="font-size:11px;color:var(--text-dim);">เริ่ม: ${formatDateTime(p.start_at)} · สิ้นสุด: ${formatDateTime(p.end_at)}${p.description ? ' · ' + promo_escapeHtml(p.description) : ''}</div>
         </div>
+        <!-- เพิ่มใหม่ (แก้บั๊ก 2026-09-10): ปุ่ม ⋮ ตัวเดียว แทนปุ่ม ✎🔒🗑 3 ปุ่มเรียงกัน (ล้นขอบจอ/บังบนมือถือ) -->
         <div class="row-actions">
-          <button class="icon-btn" data-edit-promo="${promo_escapeHtml(p.id)}" title="แก้ไข">✎</button>
-          <button class="icon-btn" data-toggle-promo="${promo_escapeHtml(p.id)}" title="${p.active === false ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}">${p.active === false ? '🔒' : '🔓'}</button>
-          <button class="icon-btn danger" data-del-promo="${promo_escapeHtml(p.id)}" title="ลบ">🗑</button>
+          <button class="icon-btn" data-promo-menu="${promo_escapeHtml(p.id)}" title="เมนู">⋮</button>
         </div>
       </div>`;
   }).join("");
 
-  wrap.querySelectorAll("[data-edit-promo]").forEach(b => b.addEventListener("click", () => openEditPromotion(b.getAttribute("data-edit-promo"))));
-  wrap.querySelectorAll("[data-del-promo]").forEach(b => b.addEventListener("click", () => confirmDeletePromotion(b.getAttribute("data-del-promo"))));
-  wrap.querySelectorAll("[data-toggle-promo]").forEach(b => b.addEventListener("click", () => togglePromotionActive(b.getAttribute("data-toggle-promo"))));
+  // เพิ่มใหม่: ผูกปุ่ม ⋮ เข้ากับเมนูดรอปดาวน์ตัวเดียวที่ใช้ร่วมกันทุกแถว (โครงเดียวกับ discountRowMenu ด้านบน)
+  wrap.querySelectorAll("[data-promo-menu]").forEach(b => b.addEventListener("click", (e) => {
+    e.stopPropagation();
+    togglePromotionRowMenu(b, b.getAttribute("data-promo-menu"));
+  }));
 }
+
+// ===== เพิ่มใหม่ (แก้บั๊ก 2026-09-10): เมนูดรอปดาวน์ ⋮ แบบใช้ element ตัวเดียวร่วมกันทุกแถวโปรโมชั่น =====
+// โครงเดียวกับ toggleDiscountRowMenu ด้านบน — เรียกฟังก์ชันเดิม (openEditPromotion/togglePromotionActive/
+// confirmDeletePromotion) ทุกอย่างเหมือนเดิม ไม่เปลี่ยนพฤติกรรม
+let openPromotionMenuId = null;
+function togglePromotionRowMenu(btn, promoId) {
+  const menu = document.getElementById("promotionRowMenu");
+  if (!menu) return;
+  if (openPromotionMenuId === promoId && menu.style.display !== "none") {
+    hidePromotionRowMenu();
+    return;
+  }
+  openPromotionMenuId = promoId;
+  const p = PROMOTIONS_CACHE.find(x => x.id === promoId);
+  const toggleBtn = document.getElementById("promotionRowMenuToggle");
+  if (toggleBtn && p) toggleBtn.textContent = p.active === false ? "🔓 เปิดใช้งาน" : "🔒 ปิดใช้งาน";
+  const rect = btn.getBoundingClientRect();
+  menu.style.display = "block";
+  const menuWidth = menu.offsetWidth || 200;
+  let left = rect.right - menuWidth;
+  if (left < 8) left = 8;
+  menu.style.left = left + "px";
+  const menuHeight = menu.offsetHeight || 150;
+  let top = rect.bottom + 6;
+  if (top + menuHeight > window.innerHeight - 8) top = rect.top - menuHeight - 6;
+  menu.style.top = top + "px";
+}
+function hidePromotionRowMenu() {
+  const menu = document.getElementById("promotionRowMenu");
+  if (menu) menu.style.display = "none";
+  openPromotionMenuId = null;
+}
+document.addEventListener("click", (e) => {
+  const menu = document.getElementById("promotionRowMenu");
+  if (menu && menu.style.display !== "none" && !menu.contains(e.target)) hidePromotionRowMenu();
+});
+window.addEventListener("scroll", hidePromotionRowMenu, true);
+document.getElementById("promotionRowMenuEdit")?.addEventListener("click", () => {
+  const id = openPromotionMenuId; hidePromotionRowMenu();
+  if (id) openEditPromotion(id);
+});
+document.getElementById("promotionRowMenuToggle")?.addEventListener("click", () => {
+  const id = openPromotionMenuId; hidePromotionRowMenu();
+  if (id) togglePromotionActive(id);
+});
+document.getElementById("promotionRowMenuDelete")?.addEventListener("click", () => {
+  const id = openPromotionMenuId; hidePromotionRowMenu();
+  if (id) confirmDeletePromotion(id);
+});
 
 function populateCategorySelect() {
   const sel = document.getElementById("fPromoCategory");
