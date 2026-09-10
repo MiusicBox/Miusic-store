@@ -9,13 +9,10 @@
   "r2_buckets": [
     {
       "binding": "BUCKET",
-      // TODO: ใส่ชื่อ bucket จริงที่สร้างด้วย `wrangler r2 bucket create <ชื่อ>`
       "bucket_name": "musicbox-store-media"
     }
   ],
   "vars": {
-    // TODO: ใส่ URL public ของ bucket (r2.dev subdomain หรือ custom domain ที่ผูกกับ bucket นี้)
-    // เช่น "https://pub-xxxxxxxx.r2.dev" หรือ "https://media.yourdomain.com"
-    "R2_PUBLIC_BASE_URL": "https://REPLACE-WITH-YOUR-R2-PUBLIC-URL"
+    "R2_PUBLIC_BASE_URL": "https://pub-1c69acdb5ecc47469099f274456c724f.r2.dev"
   }
 }
