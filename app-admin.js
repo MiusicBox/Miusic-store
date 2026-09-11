@@ -1583,6 +1583,12 @@ document.getElementById("bulkUploadBtn").addEventListener("click", async functio
 
     let matchedCount = 0;
     const unmatchedNames = []; // เก็บชื่อเพลงที่มีไฟล์เต็มให้เลือก แต่จับคู่ไม่ได้ — จะได้รู้ทันทีว่าต้องไปแก้ไขเพลงไหนเพิ่ม
+    const previewFailedNames = []; // 🔒 Auto Preview: เก็บชื่อเพลงที่วิเคราะห์ไม่สำเร็จ — จะได้รู้ว่าต้องมาแก้ทีหลัง
+    // 🔒 อ่านค่า checkbox "วิเคราะห์ Auto Preview อัตโนมัติ" — default เลือกไว้ (checked)
+    // ถ้า element ไม่มี (เช่น admin.html รุ่นเก่า) fallback เป็น true (วิเคราะห์) เพื่อความปลอดภัย
+    const bulkAutoPreviewEl = document.getElementById("bulkAutoPreviewChk");
+    const shouldAnalyzePreview = bulkAutoPreviewEl ? bulkAutoPreviewEl.checked : true;
+
     for (let i = 0; i < bulkFiles.length; i++) {
       const file = bulkFiles[i];
       document.getElementById("bulkStatusText").textContent = `กำลังอัปโหลด ${i + 1}/${bulkFiles.length}: ${file.name}`;
@@ -1608,6 +1614,37 @@ document.getElementById("bulkUploadBtn").addEventListener("click", async functio
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
+
+      // 🔒 Auto Preview (2026-09-12): วิเคราะห์เสียงหาช่วง Dance ของไฟล์ตัวอย่าง
+      // ทำหลังอัปโหลดไฟล์ตัวอย่างเสร็จ ก่อนอัปโหลดไฟล์เต็ม (เผื่อใช้ร่วมกันในกรณี shared file)
+      // ถ้าล้มเหลว → ข้ามไป ไม่ block การอัปโหลด — บันทึกชื่อเพลงไว้แจ้งเตือนท้าย
+      if (shouldAnalyzePreview) {
+        document.getElementById("bulkStatusText").textContent = `กำลังวิเคราะห์เสียง ${i + 1}/${bulkFiles.length}: ${file.name}`;
+        try {
+          const previewResult = await analyzeSongFile(file);
+          if (previewResult && previewResult.status === "ok") {
+            songPayload.preview_status = previewResult.status;
+            songPayload.dance_start_bar = previewResult.dance_start_bar ?? null;
+            songPayload.preview_start_bar = previewResult.preview_start_bar ?? null;
+            songPayload.preview_end_bar = previewResult.preview_end_bar ?? null;
+            songPayload.preview_start_sec = previewResult.preview_start_sec ?? null;
+            songPayload.preview_end_sec = previewResult.preview_end_sec ?? null;
+            songPayload.preview_confidence = previewResult.confidence ?? null;
+            songPayload.preview_duration_sec = previewResult.duration_sec ?? null;
+          } else if (previewResult && previewResult.status === "needs_review") {
+            // วิเคราะห์ไม่พบช่วง Dance ที่มั่นใจ — บันทึกสถานะไว้ ให้แอดมินมาแก้ทีหลัง
+            songPayload.preview_status = previewResult.status;
+            songPayload.dance_start_bar = previewResult.dance_start_bar ?? null;
+            previewFailedNames.push(songPayload.song_name);
+          } else {
+            previewFailedNames.push(songPayload.song_name);
+          }
+        } catch (previewErr) {
+          // วิเคราะห์ล้มเหลว (ไฟล์เสียงเสีย/format ไม่รองรับ) — ข้ามไป ไม่ block การอัปโหลด
+          console.warn(`Bulk upload: วิเคราะห์ Auto Preview ล้มเหลวสำหรับ "${file.name}":`, previewErr?.message || previewErr);
+          previewFailedNames.push(songPayload.song_name);
+        }
+      }
 
       // ถ้าจับคู่ด้วยชื่อไฟล์ไม่ได้ แต่เลือกไฟล์ตัวอย่าง 1 ไฟล์ + ไฟล์เต็ม 1 ไฟล์พอดี — ไม่มีทางกำกวมว่าเป็นคู่ไหน จับคู่กันตรงๆ ได้เลย ไม่ต้องพึ่งชื่อไฟล์
       const matchedFull = matchFullFile(file.name, bulkFullFiles)
@@ -1637,15 +1674,21 @@ document.getElementById("bulkUploadBtn").addEventListener("click", async functio
     hideCancelButton("bulkProgressWrap");
     document.getElementById("bulkProgress").style.width = "100%";
     const hasUnmatched = unmatchedNames.length > 0;
+    const hasPreviewFailed = previewFailedNames.length > 0;
+    // สรุปผล: รวมรายชื่อเพลงที่ต้องแก้ไขทีหลัง (ทั้งไฟล์เต็มไม่ตรง + Auto Preview ล้มเหลว)
     const unmatchedNote = hasUnmatched
       ? ` (มีไฟล์เต็ม ${matchedCount}/${bulkFiles.length} เพลง — ยังไม่มีไฟล์เต็ม: ${unmatchedNames.join(", ")} ไปเพิ่มทีหลังได้ที่หน้าแก้ไขเพลง)`
       : "";
+    const previewFailedNote = hasPreviewFailed
+      ? ` | Auto Preview ล้มเหลว ${previewFailedNames.length}/${bulkFiles.length} เพลง: ${previewFailedNames.join(", ")} — ไปตั้ง Auto Preview เองได้ที่หน้าแก้ไขเพลง`
+      : "";
     const destinationNote = playlistName ? ` เข้าเพลย์ลิสต์ "${playlistName}"` : "";
-    document.getElementById("bulkStatusText").textContent = `เสร็จแล้ว! เพิ่มเพลงสำเร็จ ${bulkFiles.length} เพลง${unmatchedNote}`;
-    showToast(`เพิ่มเพลง ${bulkFiles.length} เพลง${destinationNote} สำเร็จ${hasUnmatched ? ` — ${unmatchedNames.length} เพลงยังไม่มีไฟล์เต็ม (ดูรายชื่อด้านล่าง)` : ""}`, hasUnmatched ? "error" : "success");
+    document.getElementById("bulkStatusText").textContent = `เสร็จแล้ว! เพิ่มเพลงสำเร็จ ${bulkFiles.length} เพลง${unmatchedNote}${previewFailedNote}`;
+    const hasIssue = hasUnmatched || hasPreviewFailed;
+    showToast(`เพิ่มเพลง ${bulkFiles.length} เพลง${destinationNote} สำเร็จ${hasIssue ? ` — มีบางเพลงต้องแก้ไขเพิ่ม (ดูรายละเอียดด้านล่าง)` : ""}`, hasIssue ? "error" : "success");
     loadDashboard();
-    // ถ้ามีเพลงจับคู่ไฟล์เต็มไม่ได้ ให้ค้างหน้าต่างไว้จนกว่าจะปิดเอง จะได้เห็นรายชื่อที่ต้องไปแก้ไขเพิ่ม
-    if (!hasUnmatched) {
+    // ถ้ามีเพลงจับคู่ไฟล์เต็มไม่ได้ หรือ Auto Preview ล้มเหลว ให้ค้างหน้าต่างไว้จนกว่าจะปิดเอง จะได้เห็นรายชื่อที่ต้องไปแก้ไขเพิ่ม
+    if (!hasIssue) {
       setTimeout(() => { document.getElementById("bulkUploadBackdrop").classList.remove("show"); }, 1200);
     }
   } catch (err) {
