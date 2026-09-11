@@ -204,3 +204,30 @@ export async function uploadOrderZip(file, onProgress, signal) {
     signal
   );
 }
+
+// ---------------- ลบไฟล์ออกจาก Storage (ใหม่ 2026-09-11 — ระบบจัดการไฟล์ cloud) ----------------
+// ใช้ตอนลบเพลง (ไฟล์เต็ม/ไฟล์ตัวอย่าง/รูปปกที่ไม่มีใครใช้แล้ว) และลบ ZIP ออเดอร์เพื่อประหยัดพื้นที่
+// ทำงานเฉพาะ provider "r2" เท่านั้น (มี endpoint /api/upload DELETE รองรับ) — ถ้า ACTIVE_PROVIDER
+// เป็น cloudinary (เผื่อสลับกลับฉุกเฉิน) จะข้ามแบบไม่ error เพราะ Cloudinary ไม่มี endpoint ลบให้ฝั่งนี้เรียก
+// ส่ง { key } (public_id ตรงๆ) หรือ { url } (ให้ backend derive key เอง) อย่างใดอย่างหนึ่ง
+// ไม่ throw เมื่อลบไม่สำเร็จ — คืนค่า { ok:false, error } แทน เพื่อไม่ให้ผู้เรียก (ลบเพลง/ลบ ZIP) พังทั้งกระบวนการ
+// แค่เพราะไฟล์ cloud ลบไม่สำเร็จ (เช่น ไฟล์ถูกลบไปแล้วก่อนหน้า, เครือข่ายมีปัญหาชั่วคราว)
+export async function deleteFromStorage({ key, url } = {}) {
+  if (!key && !url) return { ok: false, skipped: true };
+  if (getStorageProvider().name !== "r2") return { ok: false, skipped: true };
+  try {
+    const res = await fetch("/api/upload", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key, url }),
+    });
+    let data = null;
+    try { data = await res.json(); } catch { /* ไม่มี body หรือไม่ใช่ JSON */ }
+    if (!res.ok) {
+      return { ok: false, error: (data && data.error) || `ลบไฟล์ไม่สำเร็จ (HTTP ${res.status})` };
+    }
+    return data || { ok: true };
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) };
+  }
+}
