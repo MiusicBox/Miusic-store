@@ -11,13 +11,13 @@
 import { db, auth } from "./firebase-init.js";
 import {
   collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc
-} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+} from "./db-client.js";
 import {
   getAuth, createUserWithEmailAndPassword, signOut
-} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+} from "./auth-client.js";
 import {
   initializeApp, deleteApp
-} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+} from "./auth-client.js";
 
 function escapeHtml(str) {
   return String(str == null ? "" : str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
