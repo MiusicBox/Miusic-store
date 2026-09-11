@@ -6,7 +6,7 @@ import { db } from "./firebase-init.js?v=20260905-fix1";
 import {
   collection, getDocs, getDoc, setDoc, query, orderBy, where, doc, updateDoc, deleteDoc
 } from "./db-client.js";
-import { uploadOrderZip } from "./storage-adapter.js?v=20260904-rawzip";
+import { uploadOrderZip, deleteFromStorage } from "./storage-adapter.js?v=20260904-rawzip";
 // ===== ลดราคา + โปรโมชั่น (ระบบใหม่) — import มาจาก app-promotion.js กลาง (รวมไฟล์เดียว) =====
 import {
   fetchActiveDiscounts, fetchActivePromotions, computeCartPricing
@@ -875,6 +875,7 @@ function renderHistory() {
           <button class="icon-btn" data-receipt-order="${o.id}" title="ดูใบเสร็จ">🧾</button>
           ${(o.status === "processing" || o.status === "completed") ? `<button class="icon-btn" data-fullfiles-order="${o.id}" title="ไฟล์เต็มสำหรับส่งลูกค้า">📥</button>` : ""}
           ${o.zip_status === "failed" ? `<button class="icon-btn" data-retry-zip-order="${o.id}" title="สร้าง ZIP ใหม่">🔁</button>` : ""}
+          ${o.zip_download_url ? `<button class="icon-btn" data-delete-zip-order="${o.id}" title="ลบไฟล์ ZIP ออกจาก Cloud (ไม่ลบออเดอร์ — ประหยัดพื้นที่จัดเก็บ)">🧹</button>` : ""}
           <button class="icon-btn" data-edit-order="${o.id}" title="แก้ไขออเดอร์">✏️</button>
           ${isMainAdmin() ? `<button class="icon-btn danger" data-delete-order="${o.id}" title="ลบออเดอร์">🗑</button>` : ""}
         </div>
@@ -893,6 +894,9 @@ function renderHistory() {
   });
   wrap.querySelectorAll("[data-retry-zip-order]").forEach((btn) => {
     btn.addEventListener("click", () => retryOrderZip(btn.getAttribute("data-retry-zip-order")));
+  });
+  wrap.querySelectorAll("[data-delete-zip-order]").forEach((btn) => {
+    btn.addEventListener("click", () => handleDeleteOrderZip(btn.getAttribute("data-delete-zip-order")));
   });
   wrap.querySelectorAll("[data-edit-order]").forEach((btn) => {
     btn.addEventListener("click", () => openEditOrderModal(btn.getAttribute("data-edit-order")));
@@ -1349,6 +1353,40 @@ function askConfirm(message) {
     okBtn.addEventListener("click", onOk);
     cancelBtn.addEventListener("click", onCancel);
   });
+}
+
+/* ---------------- ลบไฟล์ ZIP ออกจาก Cloud (ใหม่ 2026-09-11) ----------------
+   ต่างจาก handleDeleteOrder: ไม่ลบออเดอร์ ลบแค่ไฟล์ ZIP ออกจาก R2 + เคลียร์ field ที่เกี่ยวกับ ZIP
+   ในออเดอร์ เพื่อประหยัดพื้นที่จัดเก็บ (ออเดอร์ยังอยู่ครบ กดปุ่ม 🔁 สร้าง ZIP ใหม่ได้ภายหลังถ้าต้องการ) */
+async function handleDeleteOrderZip(orderId) {
+  const order = state.allOrders.find((o) => o.id === orderId);
+  const label = order ? `ZIP ของออเดอร์ ${order.customer_name}` : "ไฟล์ ZIP นี้";
+  const ok = await askConfirm(`ต้องการลบ${label}ออกจาก Cloud หรือไม่? (ออเดอร์จะยังอยู่ในระบบเหมือนเดิม ไม่ได้ลบ — แค่ต้องกดสร้าง ZIP ใหม่ถ้าจะดาวน์โหลดอีกครั้ง)`);
+  if (!ok) return;
+
+  try {
+    const orderSnap = await getDoc(doc(db, "orders", orderId));
+    const orderData = orderSnap.exists() ? orderSnap.data() : null;
+    if (orderData?.zip_public_id) {
+      await deleteFromStorage({ key: orderData.zip_public_id });
+    } else if (orderData?.zip_download_url) {
+      await deleteFromStorage({ url: orderData.zip_download_url });
+    }
+    await updateDoc(doc(db, "orders", orderId), {
+      zip_status: "",
+      zip_download_url: "",
+      zip_file_name: "",
+      zip_public_id: "",
+      zip_song_count: 0,
+      zip_created_at: "",
+      zip_error: "",
+      updated_at: new Date().toISOString(),
+    });
+    await refreshDashboardAndHistory();
+    orderToast("ลบไฟล์ ZIP ออกจาก Cloud แล้ว", "success");
+  } catch (err) {
+    orderToast("ลบไฟล์ ZIP ไม่สำเร็จ: " + (err.message || err), "error");
+  }
 }
 
 /* ---------------- ลบออเดอร์ ---------------- */
