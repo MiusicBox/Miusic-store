@@ -1,0 +1,133 @@
+// worker/db-helpers.js
+// ===================================================
+// Generic "document store" ที่ทำตัวเหมือน Firestore collection/document บน D1
+// ทุก collection เดิม (songs, categories, djs, playlists, orders, discounts, promotions, settings)
+// ใช้ตาราง "documents" ตัวเดียวกันหมด (collection TEXT, id TEXT, data JSON)
+//
+// ข้อยกเว้น: collection "admins" ผูกกับระบบยืนยันตัวตน (มี password_hash) จึงแยกไปตาราง
+// admin_users ต่างหาก — ฟังก์ชันด้านล่างเช็ค collection === "admins" แล้วสลับไปใช้ตารางนั้นแทน
+// เพื่อให้ db-client.js ฝั่ง browser เรียกผ่าน interface เดียวกันได้โดยไม่ต้องรู้ความต่างนี้เลย
+// ===================================================
+
+const ADMIN_SAFE_COLUMNS = "id, email, display_name, role, created_at, created_by";
+
+function rowToAdminDoc(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    data: {
+      email: row.email,
+      display_name: row.display_name,
+      role: row.role,
+      created_at: row.created_at,
+      created_by: row.created_by,
+    },
+  };
+}
+
+export async function getDocument(env, collection, id) {
+  if (collection === "admins") {
+    const row = await env.DB.prepare(`SELECT ${ADMIN_SAFE_COLUMNS} FROM admin_users WHERE id = ?`)
+      .bind(id).first();
+    return rowToAdminDoc(row);
+  }
+  const row = await env.DB.prepare("SELECT data FROM documents WHERE collection = ? AND id = ?")
+    .bind(collection, id).first();
+  if (!row) return null;
+  return { id, data: JSON.parse(row.data) };
+}
+
+export async function listDocuments(env, collection) {
+  if (collection === "admins") {
+    const { results } = await env.DB.prepare(`SELECT ${ADMIN_SAFE_COLUMNS} FROM admin_users`).all();
+    return results.map((row) => rowToAdminDoc(row));
+  }
+  const { results } = await env.DB.prepare("SELECT id, data FROM documents WHERE collection = ?")
+    .bind(collection).all();
+  return results.map((row) => ({ id: row.id, data: JSON.parse(row.data) }));
+}
+
+// รองรับเฉพาะรูปแบบที่แอปนี้ใช้จริง: where("field","==",value) และ orderBy("field","asc"|"desc")
+// (ตรวจสอบแล้วจากทุกไฟล์ในโปรเจกต์ ไม่มีจุดไหนใช้ operator อื่นของ Firestore เลย)
+export async function queryDocuments(env, collection, { wheres = [], orderBy = null } = {}) {
+  if (collection === "admins") {
+    // ไม่มีจุดไหนในโปรเจกต์ query collection "admins" แบบมีเงื่อนไข — กันไว้เผื่ออนาคตเรียกผิด
+    throw new Error("collection admins ไม่รองรับการ query แบบมีเงื่อนไข");
+  }
+  let sql = "SELECT id, data FROM documents WHERE collection = ?";
+  const binds = [collection];
+  for (const w of wheres) {
+    if (w.op !== "==") throw new Error(`ไม่รองรับ where operator: ${w.op}`);
+    sql += ` AND json_extract(data, '$.${w.field}') = ?`;
+    binds.push(w.value);
+  }
+  if (orderBy && orderBy.field) {
+    const dir = orderBy.dir === "desc" ? "DESC" : "ASC";
+    sql += ` ORDER BY json_extract(data, '$.${orderBy.field}') ${dir}`;
+  }
+  const { results } = await env.DB.prepare(sql).bind(...binds).all();
+  return results.map((row) => ({ id: row.id, data: JSON.parse(row.data) }));
+}
+
+// setDoc: สร้างใหม่หรือเขียนทับทั้งเอกสาร (merge=false) หรือ shallow-merge ฟิลด์ที่ส่งมาเข้ากับของเดิม (merge=true)
+// — พฤติกรรมเหมือน Firestore setDoc(ref, data, {merge:true}) ทุกประการ (shallow merge ระดับ field บนสุด)
+export async function setDocument(env, collection, id, data, merge, actorEmail) {
+  if (collection === "admins") {
+    return setAdminDocument(env, id, data);
+  }
+  const now = new Date().toISOString();
+  let finalData = data;
+  if (merge) {
+    const existing = await env.DB.prepare("SELECT data FROM documents WHERE collection = ? AND id = ?")
+      .bind(collection, id).first();
+    if (existing) finalData = { ...JSON.parse(existing.data), ...data };
+  }
+  await env.DB.prepare(
+    `INSERT INTO documents (collection, id, data, created_at, updated_at) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(collection, id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`
+  ).bind(collection, id, JSON.stringify(finalData), now, now).run();
+  return { id };
+}
+
+// updateDoc: merge เหมือน setDoc(merge:true) แต่ต้องมีเอกสารอยู่ก่อนแล้วเท่านั้น (เหมือน Firestore updateDoc)
+export async function updateDocument(env, collection, id, data) {
+  if (collection === "admins") {
+    const existing = await env.DB.prepare("SELECT id FROM admin_users WHERE id = ?").bind(id).first();
+    if (!existing) return { notFound: true };
+    return setAdminDocument(env, id, data);
+  }
+  const existing = await env.DB.prepare("SELECT data FROM documents WHERE collection = ? AND id = ?")
+    .bind(collection, id).first();
+  if (!existing) return { notFound: true };
+  const merged = { ...JSON.parse(existing.data), ...data };
+  const now = new Date().toISOString();
+  await env.DB.prepare("UPDATE documents SET data = ?, updated_at = ? WHERE collection = ? AND id = ?")
+    .bind(JSON.stringify(merged), now, collection, id).run();
+  return { id };
+}
+
+export async function deleteDocument(env, collection, id) {
+  if (collection === "admins") {
+    await env.DB.prepare("DELETE FROM admin_users WHERE id = ?").bind(id).run();
+    return;
+  }
+  await env.DB.prepare("DELETE FROM documents WHERE collection = ? AND id = ?").bind(collection, id).run();
+}
+
+// ใช้เฉพาะตอน setDoc/updateDoc ของ collection "admins" — เขียนเฉพาะคอลัมน์ที่อนุญาต (ห้ามแตะ password_hash ทางนี้เด็ดขาด
+// ต้องเปลี่ยนรหัสผ่านผ่าน /api/auth/change-password เท่านั้น)
+async function setAdminDocument(env, id, data) {
+  const existing = await env.DB.prepare("SELECT * FROM admin_users WHERE id = ?").bind(id).first();
+  if (!existing) return { notFound: true };
+  const merged = {
+    email: data.email !== undefined ? data.email : existing.email,
+    display_name: data.display_name !== undefined ? data.display_name : existing.display_name,
+    role: data.role !== undefined ? data.role : existing.role,
+    created_at: data.created_at !== undefined ? data.created_at : existing.created_at,
+    created_by: data.created_by !== undefined ? data.created_by : existing.created_by,
+  };
+  await env.DB.prepare(
+    "UPDATE admin_users SET email = ?, display_name = ?, role = ?, created_at = ?, created_by = ? WHERE id = ?"
+  ).bind(merged.email, merged.display_name, merged.role, merged.created_at, merged.created_by, id).run();
+  return { id };
+}
