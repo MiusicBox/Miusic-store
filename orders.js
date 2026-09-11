@@ -35,6 +35,25 @@ function toCloudinaryDownloadUrl(url) {
   if (url.includes("/fl_attachment")) return url; // ใส่ไปแล้ว ไม่ใส่ซ้ำ
   return url.slice(0, idx + marker.length) + "fl_attachment/" + url.slice(idx + marker.length);
 }
+
+// 🔒 R2 CORS Bypass (2026-09-12): แปลง R2 public URL ให้เป็น Worker proxy URL
+// ใช้ตอนฝั่งแอดมิน fetch ไฟล์เพลงเพื่อสร้าง ZIP — แทน fetch() ตรงจาก R2 public URL
+// ที่อาจโดน CORS block (เพราะ R2 pub-*.r2.dev ไม่ได้ตั้ง CORS headers ไว้)
+// Worker proxy อ่านไฟล์จาก R2 binding ตรงๆ (เร็ว) แล้วส่งกลับเป็น blob พร้อม CORS headers
+// ถ้าไม่ใช่ R2 URL (เช่น Cloudinary เก่า) จะปล่อยผ่านไม่แตะต้อง
+function r2UrlToProxyUrl(url) {
+  if (!url || typeof url !== "string") return url;
+  // ตรวจจาก pattern "pub-xxx.r2.dev" ที่เป็น R2 public URL มาตรฐาน
+  // หรือตรวจจากโดเมนเดียวกับเว็บเรา (ถ้าใช้ custom domain R2)
+  const r2Pattern = /^https?:\/\/pub-[a-z0-9]+\.r2\.dev\//i;
+  if (!r2Pattern.test(url)) return url; // ไม่ใช่ R2 public URL — ปล่อยผ่าน
+  // ตัด prefix ออก เหลือแค่ key (รวม subfolder ถ้ามี)
+  // ตัวอย่าง: https://pub-xxx.r2.dev/full-songs/123-abc.wav → /api/file/full-songs/123-abc.wav
+  const key = url.replace(r2Pattern, "");
+  // อย่าลืม decode URI components ที่อาจจะ encode อยู่ใน URL แล้วเข้ารหัสใหม่สำหรับ path
+  // แต่เนื่องจาก Worker จะ decodeURIComponent อีกที ให้ส่งเป็น encoded path ไปเลย
+  return "/api/file/" + key;
+}
 function formatLAK(v) { return Number(v || 0).toLocaleString("en-US") + " LAK"; }
 // เปิดแชท WhatsApp ไปหาเบอร์ที่ระบุ (รูปแบบเดียวกับ buildWhatsAppLink ใน app-user.js/app-cart.js)
 function buildWhatsAppLink(number, text) {
@@ -196,17 +215,48 @@ async function createOrderZip(orderId) {
         throw new Error(`ไม่พบข้อมูลเพลง "${item.title}"`);
       }
       const song = songSnap.data();
-      // ห้าม fallback ไปใช้ preview_url เพราะ ZIP ต้องเป็น WAV จริงเท่านั้น
-      if (!song.full_file_url) {
-        throw new Error(`เพลง "${song.song_name || item.title}" ยังไม่มีไฟล์เต็ม WAV บน Cloud`);
+      // 🔒 Shared-file (Lazy-shared): ถ้าไม่มี full_file_url ให้ fallback ใช้ file_url แทน
+      // เพราะเพลงใหม่บางเพลงใช้ไฟล์เดียวกันทั้งตอน preview และตอนส่งลูกค้า เพื่อประหยัดพื้นที่ R2
+      // ถ้าไม่มีทั้งคู่ถึงจะ throw error เหมือนเดิม
+      const songFileUrl = song.full_file_url || song.file_url;
+      if (!songFileUrl) {
+        throw new Error(`เพลง "${song.song_name || item.title}" ยังไม่มีไฟล์เต็ม WAV บน Cloud (ไม่มีทั้ง full_file_url และ file_url)`);
       }
 
+      // 🔒 R2 CORS Bypass (2026-09-12): แปลง R2 public URL ให้เป็น Worker proxy URL
+      // กันโดน CORS block ตอน fetch ไฟล์เพลงมาสร้าง ZIP (R2 pub-*.r2.dev ไม่ได้ตั้ง CORS headers)
+      // ถ้าเป็น Cloudinary URL เก่า จะปล่อยผ่านไม่แตะต้อง
+      const fetchUrl = r2UrlToProxyUrl(songFileUrl);
+      const isUsingProxy = fetchUrl !== songFileUrl;
+
       orderToast(`กำลังดึง WAV ${index + 1}/${orderSongs.length}...`);
-      const response = await fetch(song.full_file_url, { mode: "cors", cache: "no-store" });
+      let response;
+      try {
+        response = await fetch(fetchUrl, {
+          credentials: "same-origin", // ส่งคุกกี้ session ไปด้วย (Worker proxy ต้องการ admin session)
+          cache: "no-store",
+        });
+      } catch (fetchErr) {
+        // ถ้า fetch ล้มเหลวด้วย network/CORS error — ให้ข้อความชัดเจน
+        const reason = fetchErr?.name === "TypeError" ? "CORS/Network" : (fetchErr?.name || "Unknown");
+        throw new Error(
+          `ดึงไฟล์ WAV ของเพลง "${song.song_name || item.title}" ไม่สำเร็จ (${reason}) — ` +
+          `ลอง refresh หน้าเว็บแล้วลองใหม่ หรือติดต่อผู้ดูแลระบบ`
+        );
+      }
       if (!response.ok) {
-        throw new Error(`ดึงไฟล์ WAV ของเพลง "${song.song_name || item.title}" ไม่สำเร็จ (${response.status})`);
+        let errDetail = `HTTP ${response.status}`;
+        try {
+          const errBody = await response.text();
+          if (errBody) errDetail += `: ${errBody.slice(0, 200)}`;
+        } catch (_) {}
+        throw new Error(
+          `ดึงไฟล์ WAV ของเพลง "${song.song_name || item.title}" ไม่สำเร็จ (${errDetail}) — ` +
+          `${response.status === 401 ? "กรุณาล็อกอินแอดมินใหม่" : response.status === 404 ? "ไม่พบไฟล์ใน R2" : "ลองอีกครั้ง"}`
+        );
       }
       const wavBlob = await response.blob();
+      // ใช้ชื่อไฟล์เต็มถ้ามี ไม่งั้น derive จาก file_url + ชื่อเพลง
       const entryName = uniqueZipFileName(
         song.full_file_name || `${song.song_name || item.title}.wav`,
         usedNames
@@ -1203,13 +1253,19 @@ async function openFullFilesModal(orderId) {
     try {
       const snap = await getDoc(doc(db, "songs", songId));
       const song = snap.exists() ? snap.data() : null;
-      if (!song || !song.full_file_url) {
+      // 🔒 Shared-file (Lazy-shared): ถ้าไม่มี full_file_url ให้ fallback ใช้ file_url แทน
+      // เพราะเพลงใหม่บางเพลงใช้ไฟล์เดียวกันทั้งตอน preview และตอนส่งลูกค้า เพื่อประหยัดพื้นที่ R2
+      const songFileUrl = song?.full_file_url || song?.file_url;
+      if (!song || !songFileUrl) {
         return `<div class="receipt-line"><div><strong>${escapeHtml(fallbackTitle || song?.song_name || "เพลง")}</strong><small>ยังไม่ได้อัปโหลดไฟล์เต็ม WAV</small></div></div>`;
       }
+      // ถ้าใช้ file_url แทน ให้โชว์ label ต่างเล็กน้อย เพื่อให้แอดมินรู้ว่าเพลงนี้ใช้ไฟล์ร่วมกัน
+      const isShared = !song.full_file_url && !!song.file_url;
+      const fileNameLabel = song.full_file_name || (isShared ? "shared file" : "full.wav");
       return `
         <div class="receipt-line">
-          <div><strong>${escapeHtml(fallbackTitle || song.song_name || "เพลง")}</strong><small>${escapeHtml(song.full_file_name || "full.wav")}</small></div>
-          <a class="btn secondary" style="padding:8px 14px;font-size:13px;" href="${toCloudinaryDownloadUrl(song.full_file_url)}" target="_blank" rel="noopener">ดาวน์โหลด</a>
+          <div><strong>${escapeHtml(fallbackTitle || song.song_name || "เพลง")}</strong><small>${escapeHtml(fileNameLabel)}</small></div>
+          <a class="btn secondary" style="padding:8px 14px;font-size:13px;" href="${toCloudinaryDownloadUrl(songFileUrl)}" target="_blank" rel="noopener">ดาวน์โหลด</a>
         </div>`;
     } catch (err) {
       return `<div class="receipt-line"><div><strong>${escapeHtml(fallbackTitle || "เพลง")}</strong><small>โหลดข้อมูลไม่สำเร็จ</small></div></div>`;
