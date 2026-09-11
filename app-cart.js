@@ -3,7 +3,7 @@
 import { db } from "./firebase-init.js?v=20260905-fix1";
 import {
   collection, doc, query, where, getDoc, getDocs, setDoc
-} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+} from "./db-client.js";
 // ===== ลดราคา + โปรโมชั่น (ระบบใหม่) — import มาจาก app-promotion.js กลาง (รวมไฟล์เดียว) =====
 import {
   fetchActiveDiscounts, fetchActivePromotions, computeCartPricing, clearPricingCache
