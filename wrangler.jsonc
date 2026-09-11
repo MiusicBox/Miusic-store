@@ -12,6 +12,15 @@
       "bucket_name": "musicbox-store-media"
     }
   ],
+  // เพิ่มใหม่ (2026-09-11): D1 database แทนที่ Firestore — ต้องรัน `wrangler d1 create miusic-store-db`
+  // ก่อน แล้วเอา database_id ที่ได้มาใส่แทน "REPLACE_WITH_YOUR_D1_DATABASE_ID" ด้านล่างนี้
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "miusic-store-db",
+      "database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+    }
+  ],
   "vars": {
     "R2_PUBLIC_BASE_URL": "https://pub-1c69acdb5ecc47469099f274456c724f.r2.dev"
   }
