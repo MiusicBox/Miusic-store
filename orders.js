@@ -1402,7 +1402,18 @@ async function handleDeleteOrder(orderId) {
   if (!ok) return;
 
   try {
+    // ดึงข้อมูลออเดอร์สดก่อนลบ เพื่อเช็คว่ามีไฟล์ ZIP บน Cloud ค้างอยู่หรือไม่ (ไม่พึ่ง state.allOrders
+    // เพราะอาจไม่ตรงกับข้อมูลจริง ณ ขณะนี้)
+    const orderSnap = await getDoc(doc(db, "orders", orderId));
+    const orderData = orderSnap.exists() ? orderSnap.data() : null;
     await deleteDoc(doc(db, "orders", orderId));
+    // ลบไฟล์ ZIP ออกจาก Cloud ตามไปด้วยถ้าออเดอร์นี้เคยสร้าง ZIP ไว้ — ทำแบบ background ไม่รอ/ไม่ block UI
+    // และไม่ทำให้การลบออเดอร์ล้มเหลวถ้าลบไฟล์ cloud ไม่สำเร็จ (ตัว order ลบไปแล้ว ย้อนกลับไม่ได้อยู่แล้ว)
+    if (orderData?.zip_public_id) {
+      deleteFromStorage({ key: orderData.zip_public_id });
+    } else if (orderData?.zip_download_url) {
+      deleteFromStorage({ url: orderData.zip_download_url });
+    }
     await refreshDashboardAndHistory();
   } catch (err) {
     alert("ลบออเดอร์ไม่สำเร็จ: " + err.message);
