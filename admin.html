@@ -10,8 +10,10 @@
 
   <div class="login-screen" id="loginScreen">
     <div class="login-card">
-      <h2>เข้าสู่ระบบ Admin</h2>
-      <p>สำหรับผู้ดูแลระบบเท่านั้น</p>
+      <h2 id="loginTitle">เข้าสู่ระบบ Admin</h2>
+      <p id="loginSubtitle">สำหรับผู้ดูแลระบบเท่านั้น</p>
+      <!-- เพิ่มใหม่ (2026-09-11): แสดงเฉพาะตอนยังไม่มีแอดมินในระบบเลย (แทนขั้นตอนสร้างบัญชีผ่าน Firebase Console เดิม) -->
+      <div class="field" id="loginDisplayNameField" style="display:none;"><label>ชื่อที่แสดง</label><input id="loginDisplayName" type="text" autocomplete="name"></div>
       <div class="field"><label>อีเมล</label><input id="loginEmail" type="email" autocomplete="username"></div>
       <div class="field"><label>รหัสผ่าน</label><input id="loginPassword" type="password" autocomplete="current-password"></div>
       <button class="btn" id="loginBtn">เข้าสู่ระบบ</button>
