@@ -54,6 +54,13 @@ function buildObjectKey(folder, originalName) {
 }
 
 async function handleUpload(request, env) {
+  // 🔒 Security (2026-09-11): ตรวจ admin session ก่อนอัปโหลด — กันคนทั่วไปอัปโหลดไฟล์เข้า R2
+  // ก่อนหน้านี้ endpoint นี้เปิดให้ใครก็อัปโหลดได้ ทำให้คนนอกสามารถอัปโหลดไฟล์ใดก็ได้เข้า bucket
+  // การตรวจนี้ใช้รูปแบบเดียวกับ handleDeleteUpload ที่มีอยู่แล้ว (บรรทัด 112) — ไม่กระทบฝั่งแอป
+  // เพราะทุกจุดที่เรียก /api/upload (ผ่าน storage-adapter.js) รันในบริบท admin.html ที่ล็อกอินแล้ว
+  const uploadAdmin = await getSessionAdmin(request, env);
+  if (!uploadAdmin) return jsonResponse({ error: "ยังไม่ได้เข้าสู่ระบบ" }, 401);
+
   if (!env.BUCKET) {
     return jsonResponse({ error: "ยังไม่ได้ผูก R2 bucket (binding: BUCKET) ใน wrangler.jsonc" }, 500);
   }
@@ -260,9 +267,37 @@ async function handleAuth(request, env, url) {
 // discounts/promotions/settings" ตอนลูกค้าเปิดหน้าเว็บอ่านอย่างเดียว — ของเดิมที่ Firestore Rules ก็เปิด
 // public read เหมือนกัน จึงคง public read ไว้เหมือนเดิม แต่บังคับ login เฉพาะฝั่งเขียน (write) เท่านั้น
 // เพื่อไม่ให้ระบบเดิมฝั่ง user (index.html) พังหรือถูกบล็อกจากการอ่านข้อมูล)
+//
+// 🔒 Security (2026-09-11):
+//   - "orders" ถูกเอาออกจาก PUBLIC_READ_COLLECTIONS แล้ว — กันคนนอกอ่านออเดอร์ทั้งหมด (ชื่อ/เบอร์/ยอด/URL)
+//     ลูกค้าค้นหาออเดอร์ของตัวเองผ่าน endpoint ใหม่ _customer-query / _customer-list ที่ Server กรองเจ้าของให้
+//   - "songs" ยังเป็น public read แต่จะถูก sanitize ฟิลด์ sensitive (full_file_url, full_file_public_id,
+//     full_file_name) ออกก่อนส่งให้ non-admin — กัน URL เพลงเต็มหลุดไปคนที่ไม่ได้ซื้อ
 const PUBLIC_READ_COLLECTIONS = new Set([
-  "songs", "categories", "djs", "playlists", "discounts", "promotions", "settings", "orders",
+  "songs", "categories", "djs", "playlists", "discounts", "promotions", "settings",
 ]);
+
+// ฟิลด์เพลงที่ sensitive — ห้ามส่งให้ non-admin (เฉพาะแอดมินล็อกอินเท่านั้นที่เห็นข้อมูลนี้)
+// ใช้ใน openFullFilesModal() และ createOrderZip() ฝั่ง orders.js ซึ่งรันในบริบท admin.html เท่านั้น
+const SONG_SENSITIVE_FIELDS = ["full_file_url", "full_file_public_id", "full_file_name"];
+
+// normalize ค่าฝั่ง Server — เหมือน normalizePhone/normalizeName ฝั่ง client ทุกประการ
+// (ใช้ใน endpoint ค้นหา/ลบออเดอร์ของลูกค้า เพื่อให้เทียบค่าได้เหมือนฝั่ง client เดิม)
+function normalizePhoneServer(v) { return String(v || "").replace(/[^0-9]/g, ""); }
+function normalizeNameServer(v) { return String(v || "").trim().toLowerCase(); }
+
+// ตัดฟิลด์ sensitive ออกจาก song document ก่อนส่งให้ non-admin
+// (ส่ง array เข้ามา — return array ใหม่ ไม่แก้ array ของเดิม)
+function sanitizeSongsForPublic(docs) {
+  return docs.map((d) => {
+    if (!d || !d.data) return d;
+    const cleanData = { ...d.data };
+    for (const f of SONG_SENSITIVE_FIELDS) {
+      if (f in cleanData) delete cleanData[f];
+    }
+    return { id: d.id, data: cleanData };
+  });
+}
 
 async function handleDb(request, env, url) {
   const parts = url.pathname.slice("/api/db/".length).split("/").filter(Boolean);
@@ -279,25 +314,105 @@ async function handleDb(request, env, url) {
   const isOrdersPublicWriteCandidate =
     collection === "orders" && parts.length === 2 && (request.method === "PUT" || request.method === "DELETE");
 
+  // 🔒 Security (2026-09-11): endpoint ใหม่สำหรับลูกค้าค้นหาออเดอร์ของตัวเอง — Server กรองเจ้าขอบให้
+  // ป้องกันไม่ให้คนนอกอ่านออเดอร์ของคนอื่น และไม่ต้องโหลดออเดอร์ทั้งหมดมาที่ browser
+  // ทั้ง 2 endpoint นี้เป็น "public" (ไม่ต้อง login) — แต่ต้องส่ง customer_name + whatsapp มาใน body
+  // Server จะตรวจให้ว่าเป็นเจ้าของออเดอร์จริงก่อนส่งข้อมูลกลับ
+  const isOrdersCustomerEndpoint =
+    collection === "orders" && parts.length === 2 && request.method === "POST" &&
+    (parts[1] === "_customer-query" || parts[1] === "_customer-list");
+
+  // 🔒 Security (2026-09-11): ดึง admin status เสมอเมื่อเป็น collection "songs" เพื่อตัดสินใจว่าจะ sanitize
+  // ฟิลด์ sensitive ออกหรือไม่ — ไม่ใช่แค่ตอน isWrite หรือ non-public collection
+  const needsAdminCheck = isWrite || !PUBLIC_READ_COLLECTIONS.has(collection) || collection === "songs";
+
   let admin = null;
-  if (isWrite || !PUBLIC_READ_COLLECTIONS.has(collection)) {
+  if (needsAdminCheck || isOrdersCustomerEndpoint) {
     admin = await getSessionAdmin(request, env);
-    if (!admin && !isOrdersPublicWriteCandidate) {
+  }
+
+  // ปฏิเสธการเข้าถึงถ้าไม่ใช่ admin และไม่ใช่ endpoint ที่อนุญาตให้ public เข้าถึงได้
+  // ข้อยกเว้น:
+  //   - isOrdersPublicWriteCandidate: ลูกค้า checkout/ยกเลิกออเดอร์ตัวเอง (เช็คเพิ่มเติมในแต่ละ branch)
+  //   - isOrdersCustomerEndpoint: ลูกค้าค้นหาออเดอร์ตัวเองผ่าน endpoint ใหม่
+  //   - songs GET request: อนุญาตให้ non-admin อ่าน แต่จะ sanitize ฟิลด์ sensitive ออก
+  const isSongsPublicGet = collection === "songs" && !isWrite && request.method === "GET";
+  if (!admin && !isOrdersPublicWriteCandidate && !isOrdersCustomerEndpoint && !isSongsPublicGet) {
+    if (isWrite || !PUBLIC_READ_COLLECTIONS.has(collection)) {
       return jsonResponse({ error: "ยังไม่ได้เข้าสู่ระบบ" }, 401);
     }
   }
 
   try {
+    // 🔒 /api/db/orders/_customer-query — ลูกค้าค้นหาออเดอร์เดียวด้วย receipt_number + ชื่อ + เบอร์
+    // Server ตรวจทั้ง 3 ฟิลด์ คืนออเดอร์เดียวถ้าตรงทั้งหมด ไม่คืนข้อมูลคนอื่นให้ browser
+    if (isOrdersCustomerEndpoint && parts[1] === "_customer-query") {
+      let body;
+      try { body = await request.json(); } catch { return jsonResponse({ error: "รูปแบบข้อมูลไม่ถูกต้อง" }, 400); }
+      const receiptNumber = String(body.receipt_number || "").trim();
+      const customerName = String(body.customer_name || "").trim();
+      const whatsapp = String(body.whatsapp || "").trim();
+      if (!receiptNumber || !customerName || !whatsapp) {
+        return jsonResponse({ exists: false });
+      }
+      const docs = await queryDocuments(env, "orders", {
+        wheres: [{ __type: "where", field: "receipt_number", op: "==", value: receiptNumber }],
+      });
+      const queryName = normalizeNameServer(customerName);
+      const queryPhone = normalizePhoneServer(whatsapp);
+      for (const d of docs) {
+        const oName = normalizeNameServer(d.data?.customer_name || "");
+        const oPhone = normalizePhoneServer(d.data?.whatsapp || "");
+        if (oName === queryName && oPhone === queryPhone) {
+          return jsonResponse({ exists: true, id: d.id, data: d.data });
+        }
+      }
+      return jsonResponse({ exists: false });
+    }
+
+    // 🔒 /api/db/orders/_customer-list — ลูกค้าดูออเดอร์ทั้งหมดของตัวเองด้วย ชื่อ + เบอร์
+    // Server กรองเฉพาะออเดอร์ที่เป็นของลูกค้าคนนี้ (เบอร์ต้องตรง 100%, ชื่อเปิดให้ fuzzy match แบบ contains
+    // เหมือนโค้ดเดิมใน app-promotion.js ที่ใช้ oName.includes(nameNorm) || nameNorm.includes(oName))
+    if (isOrdersCustomerEndpoint && parts[1] === "_customer-list") {
+      let body;
+      try { body = await request.json(); } catch { return jsonResponse({ error: "รูปแบบข้อมูลไม่ถูกต้อง" }, 400); }
+      const customerName = String(body.customer_name || "").trim();
+      const whatsapp = String(body.whatsapp || "").trim();
+      if (!customerName || !whatsapp) {
+        return jsonResponse({ docs: [] });
+      }
+      const allDocs = await listDocuments(env, "orders");
+      const queryName = normalizeNameServer(customerName);
+      const queryPhone = normalizePhoneServer(whatsapp);
+      const matched = allDocs.filter((d) => {
+        const oPhone = normalizePhoneServer(d.data?.whatsapp || "");
+        if (oPhone !== queryPhone) return false;
+        const oName = normalizeNameServer(d.data?.customer_name || "");
+        if (!oName || !queryName) return false;
+        // fuzzy match เหมือน app-promotion.js เดิม — กันลูกค้าพิมพ์ชื่อต่างจากตอนสั่งซื้อนิดหน่อยแล้วหาไม่เจอ
+        return oName === queryName || oName.includes(queryName) || queryName.includes(oName);
+      });
+      return jsonResponse({ docs: matched });
+    }
+
     // /api/db/:collection  (list ทั้ง collection)
     if (parts.length === 1 && request.method === "GET") {
-      const docs = await listDocuments(env, collection);
+      let docs = await listDocuments(env, collection);
+      // 🔒 sanitize ฟิลด์ sensitive ของ songs ถ้าเป็น non-admin
+      if (collection === "songs" && !admin) {
+        docs = sanitizeSongsForPublic(docs);
+      }
       return jsonResponse({ docs });
     }
 
     // /api/db/:collection/_query  (where/orderBy)
     if (parts.length === 2 && parts[1] === "_query" && request.method === "POST") {
       const body = await request.json();
-      const docs = await queryDocuments(env, collection, body);
+      let docs = await queryDocuments(env, collection, body);
+      // 🔒 sanitize ฟิลด์ sensitive ของ songs ถ้าเป็น non-admin
+      if (collection === "songs" && !admin) {
+        docs = sanitizeSongsForPublic(docs);
+      }
       return jsonResponse({ docs });
     }
 
@@ -306,7 +421,16 @@ async function handleDb(request, env, url) {
       const id = parts[1];
       if (request.method === "GET") {
         const doc = await getDocument(env, collection, id);
-        return jsonResponse(doc ? { exists: true, id: doc.id, data: doc.data } : { exists: false });
+        if (!doc) return jsonResponse({ exists: false });
+        // 🔒 sanitize ฟิลด์ sensitive ของ songs ถ้าเป็น non-admin (single doc)
+        let responseData = doc.data;
+        if (collection === "songs" && !admin) {
+          responseData = { ...(responseData || {}) };
+          for (const f of SONG_SENSITIVE_FIELDS) {
+            if (f in responseData) delete responseData[f];
+          }
+        }
+        return jsonResponse({ exists: true, id: doc.id, data: responseData });
       }
       if (request.method === "PUT") {
         const body = await request.json();
@@ -332,6 +456,18 @@ async function handleDb(request, env, url) {
           const existing = await getDocument(env, collection, id);
           if (!existing || existing.data?.status !== "pending_verify") {
             return jsonResponse({ error: "ยังไม่ได้เข้าสู่ระบบ" }, 401);
+          }
+          // 🔒 Security (2026-09-11): ตรวจเจ้าของออเดอร์ก่อนลบ — กันลูกค้าคนหนึ่งลบออเดอร์ของอีกคน
+          // โดยรู้แค่ order ID (เช่น จาก receipt_number ที่เห็นใน WhatsApp)
+          // ลูกค้าต้องส่ง customer_name + whatsapp มาใน body แล้ว Server ตรวจให้ตรงกับออเดอร์เดิม
+          let body;
+          try { body = await request.json(); } catch { body = {}; }
+          const ownerName = normalizeNameServer(body.customer_name || "");
+          const ownerPhone = normalizePhoneServer(body.whatsapp || "");
+          const orderName = normalizeNameServer(existing.data?.customer_name || "");
+          const orderPhone = normalizePhoneServer(existing.data?.whatsapp || "");
+          if (!ownerName || !ownerPhone || ownerName !== orderName || ownerPhone !== orderPhone) {
+            return jsonResponse({ error: "ไม่สามารถลบออเดอร์นี้ได้ — ข้อมูลไม่ตรงกับเจ้าของออเดอร์" }, 403);
           }
         }
         await deleteDocument(env, collection, id);
