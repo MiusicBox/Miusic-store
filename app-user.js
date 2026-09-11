@@ -1,7 +1,7 @@
 // app-user.js — หน้า User: ดึงข้อมูลจาก Firestore, เล่นเพลงจาก Cloudinary โดยตรง
 // ===================================================
 import { db } from "./firebase-init.js?v=20260905-fix1";
-import { collection, getDocs, doc, getDoc, query, where, onSnapshot, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { collection, getDocs, doc, getDoc, query, where, onSnapshot, deleteDoc } from "./db-client.js";
 import { initCart } from "./app-cart.js?v=20261101-promo1";
 // ===== ลดราคา + โปรโมชั่น + ออเดอร์ของฉัน (ระบบใหม่ — รวมในไฟล์เดียว app-promotion.js) =====
 import {
