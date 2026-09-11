@@ -397,7 +397,8 @@ function renderSongList(list) {
       <img src="${s.cover_url || ""}">
       <div class="info"><div class="n1">${escapeHtml(s.song_name)}</div>
       <div class="n2">${escapeHtml(s.dj_name || "-")} · ${escapeHtml(s.category_name || "-")} · ${formatPrice(s.price)}</div>
-      ${!s.full_file_url ? `<div class="n2" style="color:var(--danger);">⚠️ ยังไม่มีไฟล์เต็ม (WAV) บน Cloud</div>` : ""}</div>
+      ${!s.full_file_url && !s.file_url ? `<div class="n2" style="color:var(--danger);">⚠️ ยังไม่มีไฟล์เต็ม (WAV) บน Cloud</div>` : ""}
+      ${!s.full_file_url && s.file_url ? `<div class="n2" style="color:var(--text-dim);">🔗 ใช้ไฟล์ร่วม (file_url = full_file_url)</div>` : ""}</div>
       <div class="row-actions">
         <button class="icon-btn" data-menu="${s.id}" title="เมนู">⋮</button>
       </div>
@@ -812,6 +813,34 @@ document.getElementById("reanalyzePreviewBtn").addEventListener("click", async (
 document.getElementById("songSaveBtn").addEventListener("click", async function () {
   const name = document.getElementById("fSongName").value.trim();
   if (!name) { showToast("กรุณากรอกชื่อเพลง", "error"); return; }
+
+  // 🔒 Shared-file (Lazy-shared): ถ้าเพลงนี้ไม่มี full_file_url (ไม่ได้อัปโหลดไฟล์เต็มแยก)
+  // ระบบจะใช้ file_url (เพลงตัวอย่าง) แทนเป็นเพลงเต็มด้วย — ประหยัดพื้นที่ R2
+  // แต่ต้อง "บังคับ" ตั้ง Auto Preview ไว้ ไม่งั้นลูกค้าจะเห็น/ดาวน์โหลดเพลงเต็มผ่าน file_url ตรงๆ
+  // ถ้าไม่มี Auto Preview จะแจ้งเตือน + ถามยืนยันก่อนบันทึก (admin ยังบันทึกได้ แต่ต้องกดยืนยัน)
+  const willShareFile = !pendingFullSongFile && !existingFullFileUrl;
+  const hasValidPreview = pendingPreviewData
+    && pendingPreviewData.status === "ok"
+    && pendingPreviewData.preview_start_sec != null
+    && pendingPreviewData.preview_end_sec != null;
+  // กรณีแก้ไขเพลงเก่าที่เคยวิเคราะห์ preview ไว้แล้ว — ถ้า admin ไม่ได้ re-analyze ใหม่ pendingPreviewData อาจเป็น null
+  // แต่ข้อมูลเดิมยังอยู่ใน CACHE.songs → ถ้า preview_status === "ok" ถือว่าพร้อม
+  const existingSong = editingSongId ? CACHE.songs.find(x => x.id === editingSongId) : null;
+  const existingHasValidPreview = existingSong
+    && existingSong.preview_status === "ok"
+    && existingSong.preview_start_sec != null
+    && existingSong.preview_end_sec != null;
+  if (willShareFile && !hasValidPreview && !existingHasValidPreview) {
+    const proceed = window.confirm(
+      "⚠️ คุณไม่ได้อัปโหลดไฟล์เต็มแยกต่างหาก และยังไม่ได้ตั้ง Auto Preview\n\n" +
+      "ระบบจะใช้ไฟล์เพลงตัวอย่าง (file_url) เป็นเพลงเต็มด้วยเพื่อประหยัดพื้นที่ R2\n" +
+      "แต่ถ้าไม่มี Auto Preview ลูกค้าจะเห็นเพลงเต็มผ่าน file_url ตั้งแต่ก่อนชำระเงิน\n\n" +
+      "แนะนำให้กด \"ยกเลิก\" แล้วกด \"วิเคราะห์เสียงใหม่ทั้งหมด (AI)\" เพื่อตั้ง Auto Preview ก่อน\n\n" +
+      "ต้องการบันทึกเพลงนี้ต่อโดยไม่มี Auto Preview ใช่หรือไม่?"
+    );
+    if (!proceed) return;
+  }
+
   const btn = this; btn.disabled = true; btn.textContent = "กำลังบันทึก...";
   const mySession = songUploadSession; // จำ session ปัจจุบัน กันไม่ให้ callback ไปเขียนทับฟอร์มที่ถูกรีเซ็ต/เปิดใหม่ระหว่างอัปโหลด
   const controller = new AbortController(); // ใช้กดยกเลิกอัปโหลดจริง (xhr.abort())
@@ -936,12 +965,23 @@ async function songHasOrders(songId) {
 async function deleteSongFilesFromStorage(song) {
   if (!song) return;
   const jobs = [];
+  // 🔒 Shared-file (Lazy-shared): ถ้า full_file_url กับ file_url เป็น URL เดียวกัน (เพลงที่ใช้ไฟล์ร่วมกัน)
+  // ให้ลบแค่ครั้งเดียว — กันลบซ้ำซึ่งไม่มีปัญหาใหญ่ แต่เปลือง API call และอาจทำให้ log สับสน
+  const isSharedFile = song.full_file_url && song.file_url && song.full_file_url === song.file_url;
   if (song.full_file_public_id) {
     jobs.push(deleteFromStorage({ key: song.full_file_public_id }));
+    // ถ้าเป็น shared file และ full_file_public_id ตรงกับ file_url — ลบ file_url ด้วย key นี้ได้เลย ไม่ต้องเรียกซ้ำ
+    if (isSharedFile) {
+      // ลบไฟล์ไปแล้ว (ผ่าน public_id ด้านบน) ไม่ต้อง push job ซ้ำ
+    } else if (song.full_file_url) {
+      // ไม่ใช่ shared file — มี full_file_url แยก ลบเพิ่มอีกครั้ง (กรณีเก่าที่มี 2 ไฟล์)
+    }
   } else if (song.full_file_url) {
+    // ไม่มี public_id แต่มี url — derive key จาก url ฝั่ง backend
     jobs.push(deleteFromStorage({ url: song.full_file_url }));
   }
-  if (song.file_url) {
+  if (song.file_url && !isSharedFile) {
+    // ลบ file_url เฉพาะถ้าไม่ใช่ shared file (เพราะ shared file ถูกลบไปแล้วด้านบน)
     jobs.push(deleteFromStorage({ url: song.file_url }));
   }
   if (song.cover_url) {
