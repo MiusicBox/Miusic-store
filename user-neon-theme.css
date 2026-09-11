@@ -1,0 +1,323 @@
+/* =====================================================================
+   user-neon-theme.css
+   ---------------------------------------------------------------------
+   ธีม "Neon RGB / Cyberpunk Premium Music Store" สำหรับหน้าฝั่ง USER เท่านั้น
+   (ไฟล์นี้ลิงก์อยู่ใน index.html เพียงไฟล์เดียว — ไม่ลิงก์ใน admin.html
+   จึงไม่กระทบหน้าตาฝั่งแอดมินเลยแม้จะ override ตัวแปรร่วมกับ style.css)
+
+   วิธีทำงาน: ไฟล์นี้ถูกโหลด "ต่อจาก" style.css เสมอ (ดู index.html) จึง
+   override ค่าตัวแปรและสไตล์ของ component เดิมได้โดยไม่ต้องแก้ style.css,
+   ไม่แตะ HTML structure/ID/Class ที่ app-user.js และ app-cart.js อ้างอิงอยู่
+   (เปลี่ยนเฉพาะสี ฟอนต์ เงา ระยะห่าง ไม่เปลี่ยนโครงสร้าง DOM)
+   ===================================================================== */
+
+/* ---------- 1) COLOR SYSTEM: override ตัวแปรเดิมของ style.css ---------- */
+:root {
+  --bg: #070711;
+  --surface: #101020;
+  --surface-2: #171730;
+  --surface-hover: #201f42;
+  --border: rgba(139, 92, 255, 0.28);
+  --border-focus: rgba(0, 229, 255, 0.55);
+
+  --text: #f3f1ff;
+  --text-dim: #a9a3d6;
+
+  --accent: #8b5cff;         /* Neon Purple */
+  --accent-glow: rgba(139, 92, 255, 0.45);
+  --accent-2: #ff2bd6;       /* Neon Pink */
+  --accent-2-glow: rgba(255, 43, 214, 0.45);
+
+  --success: #22e6a8;        /* Green สำหรับราคา/สถานะ */
+  --danger: #ff4d6d;
+
+  --shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.55);
+  --shadow-accent: 0 0 22px var(--accent-2-glow);
+
+  /* ตัวแปรเสริมเฉพาะธีมนี้ (ไม่ชนกับของเดิม) */
+  --nx-cyan: #00e5ff;
+  --nx-blue: #246bff;
+  --nx-gold: #ffd21f;
+}
+
+html, body {
+  background: var(--bg);
+  background-image:
+    radial-gradient(60% 40% at 12% -5%, rgba(139, 92, 255, 0.20) 0%, transparent 60%),
+    radial-gradient(55% 38% at 105% 0%, rgba(0, 229, 255, 0.14) 0%, transparent 55%),
+    radial-gradient(60% 45% at 50% 100%, rgba(255, 43, 214, 0.10) 0%, transparent 60%);
+  background-attachment: fixed;
+}
+
+/* ---------- 2) HEADER / SEARCH ---------- */
+.topbar {
+  background: rgba(9, 8, 20, 0.86);
+  border-bottom: 1px solid rgba(139, 92, 255, 0.35);
+  box-shadow: 0 1px 26px rgba(139, 92, 255, 0.12);
+}
+
+.logo span {
+  background: linear-gradient(90deg, #efe9ff, var(--nx-cyan) 65%, var(--accent-2));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 10px rgba(139, 92, 255, 0.25));
+}
+
+.cart-toggle-btn, #trackOrderBtn.icon-btn {
+  background: rgba(20, 18, 40, 0.65);
+  border: 1px solid rgba(139, 92, 255, 0.4);
+  border-radius: 12px;
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cart-badge {
+  background: linear-gradient(135deg, var(--accent-2), #ff00a8);
+  box-shadow: 0 0 10px rgba(255, 43, 214, 0.7);
+}
+
+.search-box {
+  background: rgba(16, 16, 32, 0.8);
+  border: 1px solid rgba(0, 229, 255, 0.35);
+  border-radius: 22px;
+  min-height: 52px;
+  box-shadow: inset 0 0 0 1px rgba(139, 92, 255, 0.12), 0 0 18px rgba(0, 229, 255, 0.08);
+}
+
+.search-box:focus-within {
+  border-color: var(--nx-cyan);
+  box-shadow: 0 0 0 3px rgba(0, 229, 255, 0.18), 0 0 20px rgba(0, 229, 255, 0.25);
+  background: rgba(20, 18, 40, 0.85);
+}
+
+.search-box svg { color: var(--nx-cyan); }
+
+/* ---------- 3) CATEGORY CHIPS ---------- */
+.chip {
+  background: rgba(16, 16, 32, 0.75);
+  border: 1px solid rgba(139, 92, 255, 0.3);
+  color: var(--text-dim);
+}
+
+.chip.active {
+  background: linear-gradient(120deg, var(--accent), var(--accent-2));
+  box-shadow: 0 0 16px var(--accent-2-glow);
+  color: #fff;
+}
+
+/* ---------- 4) DJ ROW ---------- */
+.dj-avatar {
+  border: 2px solid rgba(139, 92, 255, 0.35);
+  box-shadow: 0 0 0 rgba(0,0,0,0);
+}
+
+.dj-item:hover .dj-avatar,
+.dj-item:focus-within .dj-avatar {
+  border-color: var(--accent-2);
+  box-shadow: 0 0 16px var(--accent-2-glow);
+}
+
+.section-title {
+  text-shadow: 0 0 18px rgba(139, 92, 255, 0.18);
+}
+
+/* ---------- 5) PLAYLIST DROPDOWN ---------- */
+.playlist-folder-btn {
+  border-color: rgba(139, 92, 255, 0.25) !important;
+}
+.playlist-folder-btn:hover {
+  border-color: var(--nx-cyan) !important;
+}
+.playlist-play-btn {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2)) !important;
+  box-shadow: 0 0 12px var(--accent-2-glow);
+}
+
+/* ---------- 6) SONG CARD / GRID (รายการเพลง) ---------- */
+.song-grid { gap: 10px !important; }
+
+.song-card {
+  background: linear-gradient(160deg, rgba(16, 16, 32, 0.92), rgba(10, 9, 20, 0.96)) !important;
+  border: 1px solid rgba(139, 92, 255, 0.28) !important;
+  border-radius: 16px !important;
+  margin-bottom: 0;
+  box-shadow: 0 0 0 rgba(0,0,0,0);
+}
+
+.song-card:hover {
+  border-color: rgba(255, 43, 214, 0.45) !important;
+  box-shadow: 0 0 18px rgba(139, 92, 255, 0.18);
+}
+
+.song-cover {
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 0 10px rgba(139, 92, 255, 0.12);
+}
+
+.song-name { color: var(--text); }
+
+.song-dj { color: var(--nx-cyan); }
+
+.song-footer {
+  background: rgba(16, 16, 32, 0.9) !important;
+  border: 1px solid rgba(139, 92, 255, 0.3);
+  border-radius: 10px 0 0 0;
+}
+
+.song-price, .price-discounted {
+  color: var(--success) !important;
+  text-shadow: 0 0 10px rgba(34, 230, 168, 0.25);
+}
+
+.price-original { color: var(--text-dim); opacity: 0.8; }
+
+.discount-badge {
+  background: rgba(255, 43, 214, 0.14);
+  color: var(--accent-2, #ff2bd6);
+  border: 1px solid rgba(255, 43, 214, 0.4);
+}
+
+.buy-btn {
+  background: rgba(139, 92, 255, 0.1);
+  border: 1px solid rgba(139, 92, 255, 0.4);
+  color: var(--text);
+}
+
+.buy-btn:hover {
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  border-color: transparent;
+  box-shadow: 0 0 14px var(--accent-2-glow);
+}
+
+.cart-add-btn { color: var(--success); }
+
+/* ---------- 7) BOTTOM NAVIGATION ---------- */
+.bottom-nav {
+  background: rgba(10, 9, 20, 0.88);
+  border-top: 1px solid rgba(139, 92, 255, 0.4);
+  box-shadow: 0 -6px 24px rgba(139, 92, 255, 0.14), 0 -1px 0 rgba(0, 229, 255, 0.2);
+}
+
+.bottom-nav button.active {
+  color: var(--accent-2);
+}
+.bottom-nav button.active svg {
+  filter: drop-shadow(0 0 6px rgba(255, 43, 214, 0.8));
+}
+
+/* ---------- 8) PLAYER BAR ---------- */
+.player-bar {
+  background: rgba(16, 16, 32, 0.95);
+  border: 1px solid rgba(139, 92, 255, 0.35);
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.6), 0 0 16px var(--accent-2-glow);
+}
+
+.player-bar .ctrl {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  box-shadow: 0 0 14px var(--accent-2-glow);
+}
+
+/* ---------- 9) BUTTONS / MODALS ---------- */
+.btn {
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  box-shadow: 0 0 16px var(--accent-2-glow);
+}
+
+.btn.secondary {
+  background: rgba(20, 18, 40, 0.75);
+  border: 1px solid rgba(139, 92, 255, 0.35);
+}
+
+.modal {
+  background: linear-gradient(180deg, rgba(16, 16, 32, 0.98), rgba(10, 9, 20, 0.99));
+  border: 1px solid rgba(139, 92, 255, 0.35);
+  box-shadow: 0 0 40px rgba(139, 92, 255, 0.15), var(--shadow-lg);
+}
+
+.modal-close {
+  background: rgba(139, 92, 255, 0.12);
+  border: 1px solid rgba(139, 92, 255, 0.35);
+}
+
+/* ---------- 10) เพิ่มใหม่: HERO PROMOTION + FLASH SALE (UI-only, ไม่มี backend ใหม่) ---------- */
+/* คลาสทั้งหมดในส่วนนี้ตั้งชื่อขึ้นใหม่ (คำนำหน้า mvx-) เพื่อไม่ชนกับคลาสเดิมของระบบ
+   ข้อมูลเปอร์เซ็นต์ส่วนลด/เวลานับถอยหลัง เป็นค่าคงที่ฝั่ง UI เท่านั้น
+   เมื่อระบบหลังบ้านมี Promotion/Countdown จริง ให้แทนที่ค่าคงที่ใน mvx-init.js ด้วยข้อมูลจาก API เดิม */
+.mvx-hero-wrap { max-width: 1080px; margin: 0 auto; padding: 4px 16px 0; }
+.mvx-hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: 20px;
+  aspect-ratio: 16 / 9.5;
+  background:
+    radial-gradient(65% 85% at 105% -10%, rgba(0, 229, 255, 0.30), transparent 55%),
+    radial-gradient(70% 90% at -10% 105%, rgba(255, 43, 214, 0.40), transparent 60%),
+    linear-gradient(120deg, #1a0f3d 0%, #2b0f45 45%, #14243f 100%);
+  border: 1px solid rgba(255, 43, 214, 0.4);
+  box-shadow: 0 0 30px rgba(139, 92, 255, 0.22);
+  padding: 16px;
+}
+.mvx-hero-figure {
+  position: absolute; left: -6%; bottom: -6%; width: 50%; height: 112%;
+  background: linear-gradient(200deg, rgba(255,255,255,0.08), rgba(20,16,40,0) 70%);
+  border-radius: 0 60% 40% 0 / 0 50% 50% 0;
+}
+.mvx-hero-crown {
+  position: absolute; top: 10px; right: 12px; font-size: 26px;
+  filter: drop-shadow(0 0 8px rgba(255, 210, 31, 0.7));
+}
+.mvx-hero-content { position: relative; z-index: 2; margin-left: 42%; display: flex; flex-direction: column; justify-content: center; height: 100%; }
+.mvx-hero-eyebrow {
+  display: inline-flex; align-self: flex-start; font-size: 11px; font-weight: 800;
+  color: var(--nx-gold); background: rgba(255, 210, 31, 0.12);
+  border: 1px solid rgba(255, 210, 31, 0.5); padding: 4px 10px; border-radius: 999px;
+  margin-bottom: 8px;
+}
+.mvx-hero-title { font-size: 14px; font-weight: 700; color: var(--text); margin: 0; }
+.mvx-hero-pct {
+  font-size: 40px; font-weight: 800; line-height: 0.95; margin: 2px 0 4px;
+  background: linear-gradient(90deg, var(--nx-gold), #ffb84d, var(--accent-2));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+}
+.mvx-hero-sub { font-size: 13px; font-weight: 700; color: var(--nx-cyan); margin-bottom: 10px; }
+.mvx-hero-cta {
+  align-self: flex-start; display: inline-flex; align-items: center; gap: 7px;
+  padding: 10px 18px; border-radius: 14px; font-weight: 800; font-size: 13px; color: #1a0a2e;
+  background: linear-gradient(90deg, var(--nx-gold), var(--accent-2)); border: none;
+  box-shadow: 0 0 18px var(--accent-2-glow);
+}
+
+.mvx-flash {
+  max-width: 1080px; margin: 12px auto 0; padding: 0 16px;
+}
+.mvx-flash-inner {
+  border-radius: 16px; padding: 12px 14px;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: linear-gradient(90deg, rgba(139, 92, 255, 0.20), rgba(255, 43, 214, 0.16));
+  border: 1px solid rgba(255, 43, 214, 0.4);
+}
+.mvx-flash-title { font-size: 13.5px; font-weight: 800; color: var(--text); }
+.mvx-flash-note { font-size: 10.5px; color: var(--text-dim); font-weight: 600; margin-top: 1px; }
+.mvx-flash-timer { display: flex; align-items: center; gap: 4px; margin-top: 4px; }
+.mvx-flash-timer .u {
+  background: rgba(0,0,0,0.35); border: 1px solid rgba(0, 229, 255, 0.4);
+  border-radius: 7px; padding: 3px 6px; font-weight: 800; font-size: 12px; min-width: 24px;
+  text-align: center; color: var(--nx-cyan);
+}
+.mvx-flash-timer .c { color: var(--text-dim); font-weight: 800; }
+.mvx-flash-pct {
+  font-size: 22px; font-weight: 800; color: var(--nx-gold);
+  text-shadow: 0 0 14px rgba(255, 210, 31, 0.45);
+}
+
+/* ---------- 11) RESPONSIVE: 375 / 390 / 414 / 430px ---------- */
+@media (max-width: 380px) {
+  .mvx-hero-content { margin-left: 46%; }
+  .mvx-hero-pct { font-size: 32px; }
+  .mvx-hero-title, .mvx-hero-sub { font-size: 12px; }
+}
