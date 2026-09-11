@@ -129,8 +129,16 @@ export async function updateDoc(ref, data) {
   });
 }
 
-export async function deleteDoc(ref) {
-  await apiFetch(`/${encodeURIComponent(ref.path)}/${encodeURIComponent(ref.id)}`, { method: "DELETE" });
+export async function deleteDoc(ref, options = {}) {
+  // 🔒 Security (2026-09-11): เพิ่มพารามิเตอร์ options (ไม่บังคับ) — ส่ง body ไปกับ DELETE ได้
+  // ใช้ตอนลูกค้าลบออเดอร์ของตัวเอง: ส่ง { customer_name, whatsapp } ไปด้วยเพื่อให้ Server ตรวจเจ้าของ
+  // โค้ดเดิมที่เรียก deleteDoc(ref) แบบ 1 พารามิเตอร์ยังทำงานเหมือนเดิม (options เป็น {} ค่าว่าง)
+  const fetchOpts = { method: "DELETE" };
+  if (options.body !== undefined && options.body !== null) {
+    fetchOpts.headers = { "Content-Type": "application/json" };
+    fetchOpts.body = typeof options.body === "string" ? options.body : JSON.stringify(options.body);
+  }
+  await apiFetch(`/${encodeURIComponent(ref.path)}/${encodeURIComponent(ref.id)}`, fetchOpts);
 }
 
 // ---------------- onSnapshot (จำลอง realtime ด้วย polling — D1/Worker ไม่มี push แบบ Firestore) ----------------
@@ -156,6 +164,68 @@ export function onSnapshot(refOrQuery, onNext, onError) {
   }
 
   let timer = setTimeout(poll, 0); // ยิงครั้งแรกทันที เหมือน Firestore ที่ callback แรกมาไวมาก
+  return function unsubscribe() {
+    stopped = true;
+    clearTimeout(timer);
+  };
+}
+
+// ===================================================
+// 🔒 Security (2026-09-11): Customer order lookup helpers
+// ใช้ endpoint ใหม่ /api/db/orders/_customer-query และ _customer-list ที่ Server กรองเจ้าของให้
+// แทนการโหลด collection "orders" ทั้งหมดมากรองฝั่ง browser แบบเดิม
+// (เดิมใช้ getDocs/onSnapshot กับ query(collection(db,"orders")) ทำให้ browser เห็นข้อมูลคนอื่นทั้งหมด)
+// ใช้เฉพาะฝั่งลูกค้า (app-user.js, app-promotion.js) เท่านั้น — ฝั่งแอดมินยังใช้ getDocs/onSnapshot เดิม
+// ===================================================
+
+// ค้นหาออเดอร์เดียวด้วย receipt_number + customer_name + whatsapp
+// Server ตรวจทั้ง 3 ฟิลด์ คืน { exists:true, id, data } ถ้าตรงทั้งหมด ไม่งั้น { exists:false }
+// ไม่เคยส่งข้อมูลของคนอื่นมาให้ browser
+export async function queryCustomerOrder({ receiptNumber, customerName, whatsapp }) {
+  const res = await apiFetch(`/orders/_customer-query`, {
+    method: "POST",
+    body: JSON.stringify({
+      receipt_number: receiptNumber,
+      customer_name: customerName,
+      whatsapp: whatsapp,
+    }),
+  });
+  if (!res || !res.exists) return { exists: false };
+  return { exists: true, id: res.id, data: res.data };
+}
+
+// ฟังออเดอร์ทั้งหมดของลูกค้าคนหนึ่ง แบบ polling ทุก 4 วิ (เหมือน onSnapshot เดิม)
+// Server กรองเฉพาะออเดอร์ที่เป็นของลูกค้าคนนี้ส่งกลับมา ไม่ส่งข้อมูลคนอื่นมาให้ browser
+// คืนฟังก์ชัน unsubscribe — โครงสร้างเหมือน onSnapshot ทุกประการ เพื่อให้สลับเข้าแทนได้ง่าย
+export function listenCustomerOrders({ customerName, whatsapp }, onNext, onError) {
+  let stopped = false;
+  let lastSerialized = null;
+  let timer;
+
+  async function poll() {
+    if (stopped) return;
+    try {
+      const res = await apiFetch(`/orders/_customer-list`, {
+        method: "POST",
+        body: JSON.stringify({
+          customer_name: customerName,
+          whatsapp: whatsapp,
+        }),
+      });
+      const docs = (res && res.docs) || [];
+      const serialized = JSON.stringify(docs);
+      if (serialized !== lastSerialized) {
+        lastSerialized = serialized;
+        onNext(makeQuerySnap(docs));
+      }
+    } catch (err) {
+      if (onError) onError(err);
+    } finally {
+      if (!stopped) timer = setTimeout(poll, SNAPSHOT_POLL_MS);
+    }
+  }
+
+  timer = setTimeout(poll, 0); // ยิงครั้งแรกทันที เหมือน onSnapshot เดิม
   return function unsubscribe() {
     stopped = true;
     clearTimeout(timer);
