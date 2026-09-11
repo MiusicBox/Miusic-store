@@ -270,9 +270,21 @@ async function handleDb(request, env, url) {
   if (!collection) return jsonResponse({ error: "ไม่พบ collection" }, 400);
 
   const isWrite = ["POST", "PUT", "PATCH", "DELETE"].includes(request.method);
+
+  // ข้อยกเว้นสำหรับ "orders" (แก้บั๊ก 2026-09-11): ลูกค้า "ไม่ต้อง login" ต้องสั่งซื้อได้เอง และยกเลิก
+  // ออเดอร์ของตัวเองได้เอง — ตรงกับคอมเมนต์เดิมด้านบน/เจตนาดั้งเดิมตอนยังใช้ Firestore Rules
+  // (allow create: if true, allow delete: เฉพาะออเดอร์ที่ยัง pending_verify) แต่ตัวเช็ค isWrite เดิม
+  // บังคับ login กับทุกการเขียนไม่มีข้อยกเว้น จนลูกค้ากดยืนยันสั่งซื้อ/ยกเลิกออเดอร์ตัวเองไม่ได้เลย
+  // เงื่อนไขละเอียด (กันแก้ไข/ลบออเดอร์คนอื่นที่แอดมินเริ่มดำเนินการแล้วแบบไม่ login) เช็คในแต่ละ branch ด้านล่าง
+  const isOrdersPublicWriteCandidate =
+    collection === "orders" && parts.length === 2 && (request.method === "PUT" || request.method === "DELETE");
+
+  let admin = null;
   if (isWrite || !PUBLIC_READ_COLLECTIONS.has(collection)) {
-    const admin = await getSessionAdmin(request, env);
-    if (!admin) return jsonResponse({ error: "ยังไม่ได้เข้าสู่ระบบ" }, 401);
+    admin = await getSessionAdmin(request, env);
+    if (!admin && !isOrdersPublicWriteCandidate) {
+      return jsonResponse({ error: "ยังไม่ได้เข้าสู่ระบบ" }, 401);
+    }
   }
 
   try {
@@ -298,7 +310,12 @@ async function handleDb(request, env, url) {
       }
       if (request.method === "PUT") {
         const body = await request.json();
-        const admin = await getSessionAdmin(request, env);
+        if (!admin && collection === "orders") {
+          // ลูกค้าไม่ได้ login — อนุญาตเฉพาะ "สร้างออเดอร์ใหม่" (id ยังไม่มีอยู่ในระบบ) เท่านั้น
+          // กันไม่ให้เขียนทับออเดอร์ที่มีอยู่แล้วของคนอื่นโดยไม่ login
+          const existing = await getDocument(env, collection, id);
+          if (existing) return jsonResponse({ error: "ยังไม่ได้เข้าสู่ระบบ" }, 401);
+        }
         const result = await setDocument(env, collection, id, body.data || {}, !!body.merge, admin?.email);
         return jsonResponse(result);
       }
@@ -309,6 +326,14 @@ async function handleDb(request, env, url) {
         return jsonResponse(result);
       }
       if (request.method === "DELETE") {
+        if (!admin && collection === "orders") {
+          // ลูกค้าไม่ได้ login — ลบได้เฉพาะออเดอร์ของตัวเองที่ยัง "รอตรวจสอบการโอน" (pending_verify) เท่านั้น
+          // กันไม่ให้ลบออเดอร์คนอื่นที่แอดมินเริ่มดำเนินการแล้ว (processing/completed/cancelled)
+          const existing = await getDocument(env, collection, id);
+          if (!existing || existing.data?.status !== "pending_verify") {
+            return jsonResponse({ error: "ยังไม่ได้เข้าสู่ระบบ" }, 401);
+          }
+        }
         await deleteDocument(env, collection, id);
         return jsonResponse({ ok: true });
       }
