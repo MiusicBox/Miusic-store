@@ -4,11 +4,12 @@ import { db, auth, uploadToCloudinary } from "./firebase-init.js?v=20260905-fix1
 import { uploadFullSong } from "./storage-adapter.js?v=20260904-rawzip";
 import {
   collection, addDoc, updateDoc, deleteDoc, doc, getDocs, getDoc, setDoc
-} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+} from "./db-client.js";
 import {
   signInWithEmailAndPassword, onAuthStateChanged, signOut,
-  reauthenticateWithCredential, EmailAuthProvider, updatePassword
-} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  reauthenticateWithCredential, EmailAuthProvider, updatePassword,
+  checkHasAdmin, bootstrapFirstAdmin
+} from "./auth-client.js";
 import { initOrdersView } from "./orders.js?v=20260905-fix1";
 import { resolveCurrentAdminRole, initAdminsView } from "./admin-roles.js";
 import {
@@ -194,26 +195,51 @@ onAuthStateChanged(auth, async (user) => {
   }
 });
 
+// ================= เพิ่มใหม่ (2026-09-11): โหมด "ตั้งค่าแอดมินคนแรก" =================
+// แทนที่ขั้นตอนสร้างบัญชีผ่าน Firebase Console เดิม — เช็คตอนโหลดหน้าว่ามีแอดมินในระบบหรือยัง
+// ถ้ายังไม่มีเลย จะสลับหน้าจอ Login เป็นฟอร์มตั้งค่าแอดมินหลักคนแรกแทน (ไม่กระทบหน้าตา/พฤติกรรม
+// การ login ปกติของระบบเดิมเลยเมื่อมีแอดมินอยู่แล้ว)
+let LOGIN_BOOTSTRAP_MODE = false;
+(async () => {
+  try {
+    const hasAdmin = await checkHasAdmin();
+    if (!hasAdmin) {
+      LOGIN_BOOTSTRAP_MODE = true;
+      document.getElementById("loginTitle").textContent = "ตั้งค่าแอดมินคนแรก";
+      document.getElementById("loginSubtitle").textContent = "ยังไม่มีแอดมินในระบบ — สร้างบัญชีแอดมินหลักคนแรกที่นี่";
+      document.getElementById("loginDisplayNameField").style.display = "block";
+      document.getElementById("loginBtn").textContent = "สร้างแอดมินคนแรก";
+    }
+  } catch (err) {
+    console.error("checkHasAdmin error:", err); // เช็คไม่สำเร็จ -> ปล่อยเป็นโหมด login ปกติ (ปลอดภัยกว่า)
+  }
+})();
+
 document.getElementById("loginBtn").addEventListener("click", async () => {
   const email = document.getElementById("loginEmail").value.trim();
   const password = document.getElementById("loginPassword").value;
   const btn = document.getElementById("loginBtn");
   document.getElementById("loginError").textContent = "";
-  btn.disabled = true; btn.textContent = "กำลังเข้าสู่ระบบ...";
+  btn.disabled = true; btn.textContent = LOGIN_BOOTSTRAP_MODE ? "กำลังสร้างแอดมิน..." : "กำลังเข้าสู่ระบบ...";
   try {
-    await withTimeout(
-      signInWithEmailAndPassword(auth, email, password),
-      15000,
-      "เชื่อมต่อ Firebase นานเกินไป"
-    );
+    if (LOGIN_BOOTSTRAP_MODE) {
+      const displayName = document.getElementById("loginDisplayName").value.trim();
+      await bootstrapFirstAdmin(email, password, displayName);
+    } else {
+      await withTimeout(
+        signInWithEmailAndPassword(auth, email, password),
+        15000,
+        "เชื่อมต่อระบบยืนยันตัวตนนานเกินไป"
+      );
+    }
     // onAuthStateChanged จะเรียก showAdmin() ต่อเอง (รวมถึงเช็คสิทธิ์แอดมิน) — รอสักครู่แล้วคืนปุ่มกลับ
   } catch (err) {
     document.getElementById("loginError").textContent =
       err?.code === "auth/invalid-credential"
         ? "อีเมลหรือรหัสผ่านไม่ถูกต้อง"
-        : "เข้าสู่ระบบไม่สำเร็จ: " + (err.message || err);
+        : (LOGIN_BOOTSTRAP_MODE ? "สร้างแอดมินไม่สำเร็จ: " : "เข้าสู่ระบบไม่สำเร็จ: ") + (err.message || err);
   }
-  btn.disabled = false; btn.textContent = "เข้าสู่ระบบ";
+  btn.disabled = false; btn.textContent = LOGIN_BOOTSTRAP_MODE ? "สร้างแอดมินคนแรก" : "เข้าสู่ระบบ";
 });
 document.getElementById("logoutBtn").addEventListener("click", () => signOut(auth));
 
