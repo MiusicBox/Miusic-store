@@ -1,0 +1,15 @@
+worker
+migrations
+node_modules
+.git
+wrangler.jsonc
+wrangler.json
+wrangler.toml
+package.json
+package-lock.json
+README.md
+.assetsignore
+.gitignore
+.DS_Store
+.env
+.env.*
