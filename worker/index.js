@@ -116,6 +116,39 @@ async function handleUpload(request, env) {
 // โดยตัด R2_PUBLIC_BASE_URL ออก) ต้อง login (แอดมิน) เท่านั้น เพราะเป็นการลบไฟล์ถาวร
 // ถ้า url ที่ส่งมาไม่ใช่ของ R2 bucket นี้ (เช่น ไฟล์เก่าจาก Cloudinary ก่อนย้ายระบบ) จะข้ามแบบไม่ error
 // เพื่อไม่ให้การลบเพลง/ออเดอร์ฝั่ง caller ล้มเหลวไปด้วย
+
+// ---------------- GET /api/file/* — Proxy อ่านไฟล์จาก R2 (ใหม่ 2026-09-12) ----------------
+// ใช้ตอนฝั่งแอดมินสร้าง ZIP ออเดอร์: แทน fetch() ตรงจาก R2 public URL ที่อาจโดน CORS block
+// ทำงาน: Worker รับ request → อ่านไฟล์จาก R2 binding (เร็ว ไม่ผ่าน Internet) → ส่งกลับเป็น blob
+// ต้อง login (แอดมิน) เท่านั้น — กันคนนอกดึงไฟล์เพลงเต็มผ่าน endpoint นี้
+// path รูปแบบ: /api/file/<key> (key = R2 object key, สามารถมี / ได้ เช่น full-songs/xxx.wav)
+async function handleFileProxy(request, env, url) {
+  // 🔒 Security: ต้อง login แอดมินเท่านั้น — กันคนนอกดึงไฟล์เพลงผ่าน endpoint นี้
+  const admin = await getSessionAdmin(request, env);
+  if (!admin) return jsonResponse({ error: "ยังไม่ได้เข้าสู่ระบบ" }, 401);
+
+  if (!env.BUCKET) {
+    return jsonResponse({ error: "ยังไม่ได้ผูก R2 bucket (binding: BUCKET) ใน wrangler.jsonc" }, 500);
+  }
+
+  // ดึง key จาก path: ตัด prefix "/api/file/" ออก ที่เหลือคือ key ทั้งหมด (รวม subfolder ถ้ามี)
+  const key = decodeURIComponent(url.pathname.slice("/api/file/".length));
+  if (!key) return jsonResponse({ error: "ไม่พบ key ของไฟล์" }, 400);
+
+  // อ่านไฟล์จาก R2 binding (ไม่ผ่าน public URL จึงไม่โดน CORS)
+  const object = await env.BUCKET.get(key);
+  if (!object) return jsonResponse({ error: "ไม่พบไฟล์ใน R2" }, 404);
+
+  // ส่งกลับเป็น blob พร้อม Content-Type ที่ถูกต้อง + CORS headers
+  // (same-origin อยู่แล้ว แต่ใส่ CORS ไว้เผื่อกรณีทดสอบจาก dev origin อื่น)
+  const headers = new Headers();
+  object.writeHttpMetadata(headers);
+  headers.set("Access-Control-Allow-Origin", "*");
+  headers.set("Cache-Control", "no-store");
+  // ไม่ใส่ Content-Disposition: attachment เพราะฝั่ง caller ต้องการ stream เป็น blob ไม่ใช่ดาวน์โหลดตรง
+  return new Response(object.body, { status: 200, headers });
+}
+
 async function handleDeleteUpload(request, env) {
   const admin = await getSessionAdmin(request, env);
   if (!admin) return jsonResponse({ error: "ยังไม่ได้เข้าสู่ระบบ" }, 401);
@@ -496,6 +529,13 @@ export default {
     if (url.pathname === "/api/upload" && request.method === "DELETE") {
       if (!env.DB) return jsonResponse({ error: "ยังไม่ได้ผูก D1 database (binding: DB) ใน wrangler.jsonc" }, 500);
       return handleDeleteUpload(request, env);
+    }
+
+    // 🔒 /api/file/* — Proxy อ่านไฟล์จาก R2 (ใหม่ 2026-09-12)
+    // ใช้ตอนฝั่งแอดมินสร้าง ZIP ออเดอร์ — แทน fetch() ตรงจาก R2 public URL ที่อาจโดน CORS block
+    // ต้อง login แอดมินเท่านั้น (เช็คใน handleFileProxy)
+    if (url.pathname.startsWith("/api/file/") && request.method === "GET") {
+      return handleFileProxy(request, env, url);
     }
 
     if (url.pathname.startsWith("/api/auth/")) {
