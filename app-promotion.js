@@ -19,7 +19,7 @@
 // ===================================================
 import { db, auth } from "./firebase-init.js?v=20260905-fix1";
 import {
-  collection, doc, getDocs, setDoc, updateDoc, deleteDoc, query, onSnapshot
+  collection, doc, getDocs, setDoc, updateDoc, deleteDoc, query, onSnapshot, listenCustomerOrders
 } from "./db-client.js";
 
 // ============================================================================
@@ -1157,23 +1157,25 @@ async function handleSearchMyOrders() {
   if (listEl) listEl.innerHTML = '<div class="empty-state">⏳ กำลังค้นหาออเดอร์ของคุณ...</div>';
 
   try {
-    const q = query(collection(db, "orders"));
-    MY_ORDERS_STATE.unsubscribe = onSnapshot(q, (snap) => {
-      const allOrders = [];
-      snap.forEach(d => allOrders.push({ _docId: d.id, ...d.data() }));
-      const myOrders = allOrders.filter(o => {
-        const oName = myOrders_normalizeName(o.customer_name || "");
-        const oPhone = myOrders_normalizePhone(o.whatsapp || "");
-        if (oPhone !== phone) return false;
-        return oName === nameNorm || oName.includes(nameNorm) || nameNorm.includes(oName);
-      });
-      myOrders.sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
-      MY_ORDERS_STATE.myOrders = myOrders;
-      renderMyOrdersList(myOrders);
-    }, (err) => {
-      console.error("myOrders onSnapshot error:", err);
-      if (listEl) listEl.innerHTML = `<div class="empty-state">⚠️ โหลดออเดอร์ไม่สำเร็จ: ${myOrders_escapeHtml(err.message || "")}</div>`;
-    });
+    // 🔒 Security (2026-09-11): ใช้ listenCustomerOrders แทน onSnapshot บน collection "orders" ทั้งหมด
+    // Server กรองเฉพาะออเดอร์ของลูกค้าคนนี้ส่งกลับมา (เบอร์ต้องตรง 100%, ชื่อเปิดให้ fuzzy match
+    // แบบ contains เหมือนโค้ดเดิม — กันลูกค้าพิมพ์ชื่อต่างจากตอนสั่งซื้อนิดหน่อยแล้วหาไม่เจอ)
+    // กัน browser เห็นข้อมูลคนอื่นทั้งหมด (เดิมโหลด collection "orders" มากรองเองฝั่ง client)
+    // ส่ง whatsapp (raw) ให้ Server แล้ว Server จะ normalize เอง — เหมือนเดิมทุกประการ
+    MY_ORDERS_STATE.unsubscribe = listenCustomerOrders(
+      { customerName: name, whatsapp: whatsapp },
+      (snap) => {
+        const myOrders = [];
+        snap.forEach(d => myOrders.push({ _docId: d.id, ...d.data() }));
+        myOrders.sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
+        MY_ORDERS_STATE.myOrders = myOrders;
+        renderMyOrdersList(myOrders);
+      },
+      (err) => {
+        console.error("myOrders onSnapshot error:", err);
+        if (listEl) listEl.innerHTML = `<div class="empty-state">⚠️ โหลดออเดอร์ไม่สำเร็จ: ${myOrders_escapeHtml(err.message || "")}</div>`;
+      }
+    );
   } catch (err) {
     console.error("handleSearchMyOrders error:", err);
     if (listEl) listEl.innerHTML = `<div class="empty-state">⚠️ โหลดออเดอร์ไม่สำเร็จ: ${myOrders_escapeHtml(err.message || "")}</div>`;
