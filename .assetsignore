@@ -1,3 +1,4 @@
+.wrangler
 worker
 migrations
 node_modules
