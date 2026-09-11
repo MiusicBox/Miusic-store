@@ -27,9 +27,10 @@ const FORCE_DOWNLOAD_FOLDERS = new Set(["full-songs", "order-zips"]);
 function corsHeaders() {
   // ใช้งานจริงเป็น same-origin (เว็บกับ Worker อยู่โดเมนเดียวกัน) จึงไม่จำเป็นต้องเปิด CORS
   // แต่ใส่ไว้แบบกว้างๆ เผื่อกรณีทดสอบจากเครื่อง dev คนละ origin ไม่ให้ต้องมาแก้ไฟล์นี้เพิ่ม
+  // เพิ่ม DELETE ในรายการ methods (2026-09-11) สำหรับ endpoint ลบไฟล์ R2 — ไม่กระทบ POST /api/upload เดิม
   return {
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Methods": "POST, DELETE, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
   };
 }
@@ -99,6 +100,48 @@ async function handleUpload(request, env) {
   const url = `${base}/${key.split("/").map(encodeURIComponent).join("/")}`;
 
   return jsonResponse({ url, publicId: key, provider: "r2" }, 200);
+}
+
+// ---------------- DELETE /api/upload — ลบไฟล์ออกจาก R2 (ใหม่ 2026-09-11) ----------------
+// ใช้โดยระบบจัดการไฟล์: ลบไฟล์เพลงจริง/ไฟล์ตัวอย่าง/รูปปก/ZIP ออเดอร์ ออกจาก R2 เพื่อประหยัดพื้นที่
+// รับ JSON body { key } (public_id ตรงๆ เช่น full_file_public_id, zip_public_id) หรือ { url }
+// (สำหรับไฟล์เก่าที่ไม่มี public_id เก็บไว้ เช่น file_url/cover_url ของเพลง — derive key จาก url เอาเอง
+// โดยตัด R2_PUBLIC_BASE_URL ออก) ต้อง login (แอดมิน) เท่านั้น เพราะเป็นการลบไฟล์ถาวร
+// ถ้า url ที่ส่งมาไม่ใช่ของ R2 bucket นี้ (เช่น ไฟล์เก่าจาก Cloudinary ก่อนย้ายระบบ) จะข้ามแบบไม่ error
+// เพื่อไม่ให้การลบเพลง/ออเดอร์ฝั่ง caller ล้มเหลวไปด้วย
+async function handleDeleteUpload(request, env) {
+  const admin = await getSessionAdmin(request, env);
+  if (!admin) return jsonResponse({ error: "ยังไม่ได้เข้าสู่ระบบ" }, 401);
+  if (!env.BUCKET) {
+    return jsonResponse({ error: "ยังไม่ได้ผูก R2 bucket (binding: BUCKET) ใน wrangler.jsonc" }, 500);
+  }
+
+  let body;
+  try { body = await request.json(); } catch { return jsonResponse({ error: "รูปแบบข้อมูลไม่ถูกต้อง" }, 400); }
+
+  let key = String(body.key || "").trim();
+  if (!key && body.url) {
+    const base = (env.R2_PUBLIC_BASE_URL || "").replace(/\/+$/, "");
+    const fileUrl = String(body.url);
+    if (base && fileUrl.startsWith(base + "/")) {
+      try {
+        key = fileUrl.slice(base.length + 1).split("/").map(decodeURIComponent).join("/");
+      } catch {
+        return jsonResponse({ ok: true, skipped: true, reason: "อ่าน url ไม่ได้" });
+      }
+    } else {
+      // url ไม่ตรงกับ R2 bucket นี้เลย (เช่น ไฟล์เก่าจาก Cloudinary) — ข้ามแบบไม่ error
+      return jsonResponse({ ok: true, skipped: true, reason: "url ไม่ใช่ของ R2 bucket นี้" });
+    }
+  }
+  if (!key) return jsonResponse({ ok: true, skipped: true, reason: "ไม่มี key/url ให้ลบ" });
+
+  try {
+    await env.BUCKET.delete(key);
+  } catch (err) {
+    return jsonResponse({ error: "ลบไฟล์ออกจาก R2 ไม่สำเร็จ: " + (err?.message || String(err)) }, 502);
+  }
+  return jsonResponse({ ok: true, deleted: true, key });
 }
 
 function adminToClient(admin) {
@@ -287,6 +330,11 @@ export default {
 
     if (url.pathname === "/api/upload" && request.method === "POST") {
       return handleUpload(request, env);
+    }
+
+    if (url.pathname === "/api/upload" && request.method === "DELETE") {
+      if (!env.DB) return jsonResponse({ error: "ยังไม่ได้ผูก D1 database (binding: DB) ใน wrangler.jsonc" }, 500);
+      return handleDeleteUpload(request, env);
     }
 
     if (url.pathname.startsWith("/api/auth/")) {
