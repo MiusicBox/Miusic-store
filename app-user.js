@@ -1,7 +1,7 @@
 // app-user.js — หน้า User: ดึงข้อมูลจาก Firestore, เล่นเพลงจาก Cloudinary โดยตรง
 // ===================================================
 import { db } from "./firebase-init.js?v=20260905-fix1";
-import { collection, getDocs, doc, getDoc, query, where, onSnapshot, deleteDoc } from "./db-client.js";
+import { collection, getDocs, doc, getDoc, query, where, onSnapshot, deleteDoc, queryCustomerOrder, listenCustomerOrders } from "./db-client.js";
 import { initCart } from "./app-cart.js?v=20261101-promo1";
 // ===== ลดราคา + โปรโมชั่น + ออเดอร์ของฉัน (ระบบใหม่ — รวมในไฟล์เดียว app-promotion.js) =====
 import {
@@ -1158,7 +1158,15 @@ async function handleCustomerDeleteOrder(order, onDeleted) {
   const confirmed = window.confirm(`ต้องการลบ Order ${order.receipt_number || ""} ใช่หรือไม่? เมื่อลบแล้วจะไม่สามารถกู้คืนได้`);
   if (!confirmed) return;
   try {
-    await deleteDoc(doc(db, "orders", order._docId));
+    // 🔒 Security (2026-09-11): ส่ง customer_name + whatsapp ไปด้วยใน body ของ DELETE
+    // Server จะตรวจว่าเป็นเจ้าของออเดอร์จริงก่อนลบ (กันลูกค้าคนหนึ่งลบออเดอร์ของอีกคนโดยรู้แค่ ID)
+    // ใช้ข้อมูลจาก order object ที่ได้จาก query ฝั่ง Server กรองให้แล้ว — ลูกค้าไม่ต้องกรอกซ้ำ
+    await deleteDoc(doc(db, "orders", order._docId), {
+      body: {
+        customer_name: order.customer_name || "",
+        whatsapp: order.whatsapp || "",
+      },
+    });
     showToast("ลบออเดอร์เรียบร้อยแล้ว", "success");
     if (typeof onDeleted === "function") onDeleted();
   } catch (err) {
@@ -1243,21 +1251,18 @@ async function handleTrackOrderSubmit() {
   btn.textContent = "กำลังค้นหา...";
 
   try {
-    const snap = await withTimeout(
-      getDocs(query(collection(db, "orders"), where("receipt_number", "==", orderId))),
+    // 🔒 Security (2026-09-11): ใช้ queryCustomerOrder แทน getDocs ธรรมดา
+    // Server ตรวจทั้ง receipt_number + customer_name + whatsapp พร้อมกัน คืนออเดอร์เดียวถ้าตรงทั้ง 3 ฟิลด์
+    // กัน browser เห็นข้อมูลคนอื่น (เดิมโหลด collection "orders" ทั้งหมดมากรองฝั่ง client)
+    const result = await withTimeout(
+      queryCustomerOrder({ receiptNumber: orderId, customerName: name, whatsapp: phone }),
       15000
     );
-    if (snap.empty) {
-      setTrackOrderFeedback("ไม่พบออเดอร์นี้ กรุณาตรวจสอบเลข Order อีกครั้ง");
+    if (!result.exists) {
+      setTrackOrderFeedback("ไม่พบออเดอร์นี้ กรุณาตรวจสอบเลข Order ชื่อ และเบอร์โทรให้ตรงกับตอนสั่งซื้อ");
       return;
     }
-    const order = { ...snap.docs[0].data(), _docId: snap.docs[0].id };
-    const nameMatches = normalizeName(order.customer_name) === normalizeName(name);
-    const phoneMatches = normalizePhone(order.whatsapp) === normalizePhone(phone);
-    if (!nameMatches || !phoneMatches) {
-      setTrackOrderFeedback("ไม่พบออเดอร์นี้ กรุณาตรวจสอบชื่อและเบอร์โทรให้ตรงกับตอนสั่งซื้อ");
-      return;
-    }
+    const order = { ...result.data, _docId: result.id };
     setTrackOrderFeedback("");
     renderTrackOrderResult(order);
   } catch (err) {
@@ -1421,18 +1426,19 @@ function startTrackOrderAllListener(name, phone) {
     }
   }, 15000);
 
-  // หมายเหตุ: order.whatsapp ถูกบันทึกเป็นข้อความดิบตอน checkout (ไม่ normalize) จึง query แบบ exact-match ตรงๆ ไม่น่าเชื่อถือ
-  // (พิมพ์เว้นวรรค/ขีดต่างจากตอนสั่งซื้อ ก็จะหาไม่เจอ) ใช้วิธีเดียวกับโหมดค้นหาออเดอร์เดียว คือฟัง collection แล้วเทียบแบบ normalize ฝั่ง client แทน
-  const q = query(collection(db, "orders"));
-  trackOrderAllUnsub = onSnapshot(
-    q,
+  // 🔒 Security (2026-09-11): ใช้ listenCustomerOrders แทน onSnapshot บน collection "orders" ทั้งหมด
+  // Server กรองเฉพาะออเดอร์ของลูกค้าคนนี้ส่งกลับมา (เทียบชื่อ+เบอร์แบบ normalize ฝั่ง Server)
+  // กัน browser เห็นข้อมูลคนอื่นทั้งหมด (เดิมโหลด collection "orders" มากรองเองฝั่ง client)
+  // พารามิเตอร์ `phone` ที่ส่งเข้ามาเป็นค่าที่ normalize แล้ว (จาก handleTrackOrderAllSubmit)
+  // Server จะ normalize ซ้ำอีกครั้ง (idempotent — ไม่เปลี่ยนค่า) แล้วเทียบกับ order.whatsapp ที่ normalize แล้วเหมือนเดิม
+  trackOrderAllUnsub = listenCustomerOrders(
+    { customerName: name, whatsapp: phone },
     (snap) => {
       firstSnapshotReceived = true;
       clearTimeout(trackOrderAllSlowTimer);
       trackOrderAllSlowTimer = null;
       const matched = snap.docs
-        .map((d) => ({ ...d.data(), _docId: d.id }))
-        .filter((order) => normalizeName(order.customer_name) === normalizeName(name) && normalizePhone(order.whatsapp) === phone);
+        .map((d) => ({ ...d.data(), _docId: d.id }));
       matched.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
       trackOrderAllOrders = matched;
       setTrackOrderAllFeedback("");
