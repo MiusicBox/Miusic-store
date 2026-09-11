@@ -20,7 +20,7 @@
 import { db, auth } from "./firebase-init.js?v=20260905-fix1";
 import {
   collection, doc, getDocs, setDoc, updateDoc, deleteDoc, query, onSnapshot
-} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+} from "./db-client.js";
 
 // ============================================================================
 // PART 1: PRICING HELPERS (คำนวณส่วนลด + โปรโมชั่น)
