@@ -1,17 +1,23 @@
 // worker/index.js
 // ===================================================
-// Backend เดียวที่เพิ่มเข้ามาเพื่อรองรับการย้าย Storage จาก Cloudinary ไป Cloudflare R2
-//
-// ทำไมต้องมีไฟล์นี้:
-//   Cloudinary รองรับ "unsigned upload" ยิงตรงจาก browser ได้เลย แต่ R2 ไม่มีโหมดแบบนี้
-//   การเขียนไฟล์เข้า R2 ต้องทำผ่าน Worker ที่มี binding ไปยัง bucket เท่านั้น (หรือเซ็น presigned URL
-//   ด้วย Access Key/Secret ซึ่งห้ามฝังในโค้ดฝั่ง browser) — จึงเลือกวิธีให้ browser อัปโหลดไฟล์มาที่
-//   Worker นี้ก่อน แล้ว Worker ค่อยเขียนต่อเข้า R2 ผ่าน binding (ไม่ต้องยุ่งกับการเซ็น request เลย)
-//
-// ขอบเขต: ไฟล์นี้รับผิดชอบเฉพาะ path "/api/*" เท่านั้น (ตั้งค่าไว้ใน wrangler.jsonc ผ่าน
+// Backend เดียวของเว็บ รับผิดชอบเฉพาะ path "/api/*" (ตั้งค่าไว้ใน wrangler.jsonc ผ่าน
 // run_worker_first) — ทุก path อื่นๆ ของเว็บ (index.html, admin.html, .js, .css เดิมทั้งหมด)
 // ยังถูกเสิร์ฟเป็น static asset ตามปกติ ไม่ผ่าน Worker นี้เลย จึงไม่กระทบระบบเดิมส่วนอื่น
+//
+// ประกอบด้วย 3 ส่วน:
+//   1) /api/upload/*  — อัปโหลดไฟล์เข้า Cloudflare R2 (ของเดิม ไม่แก้ไข)
+//   2) /api/auth/*    — ระบบยืนยันตัวตนแอดมิน ใหม่ทั้งหมด แทนที่ Firebase Auth (2026-09-11)
+//   3) /api/db/*      — Generic document store บน Cloudflare D1 ใหม่ทั้งหมด แทนที่ Firestore (2026-09-11)
+//
+// ทำไมต้องมี /api/db/*:
+//   D1 คุยจาก browser ตรงๆ ไม่ได้เลย (ต้องผ่าน Worker ที่มี binding เท่านั้น เหมือน R2)
+//   ฝั่ง browser จึงเรียกผ่าน db-client.js (หน้าตาเหมือน Firestore SDK เดิมทุกฟังก์ชันที่แอปนี้ใช้
+//   คือ collection/doc/getDoc/getDocs/addDoc/setDoc/updateDoc/deleteDoc/query/where/orderBy/onSnapshot)
+//   แล้ว db-client.js ค่อยยิง fetch มาที่ endpoint กลุ่มนี้อีกที — ทำให้ app-admin.js/orders.js/ฯลฯ
+//   ไม่ต้องแก้ logic เดิมเลย แก้แค่บรรทัด import ให้ชี้มาที่ไฟล์ในเว็บเราแทน CDN ของ Firebase
 // ===================================================
+import { hashPassword, verifyPassword, getSessionAdmin, createSession, deleteSession, buildSessionCookie, buildClearCookie, getCookie } from "./auth-helpers.js";
+import { getDocument, listDocuments, queryDocuments, setDocument, updateDocument, deleteDocument } from "./db-helpers.js";
 
 // โฟลเดอร์เหล่านี้เดิมใช้ toCloudinaryDownloadUrl() เติม fl_attachment ให้บังคับดาวน์โหลด
 // (ไฟล์เพลงเต็ม/ไฟล์ ZIP ออเดอร์ — ไม่ใช่ไฟล์ที่เปิดเล่น/แสดงผลตรงๆ บนเว็บ)
@@ -28,10 +34,11 @@ function corsHeaders() {
   };
 }
 
-function jsonResponse(obj, status = 200) {
+// extraHeaders (ไม่บังคับ): ใช้ตอนต้องแปะ Set-Cookie ไปกับ response (login/logout/bootstrap)
+function jsonResponse(obj, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(obj), {
     status,
-    headers: { "Content-Type": "application/json", ...corsHeaders() },
+    headers: { "Content-Type": "application/json", ...corsHeaders(), ...extraHeaders },
   });
 }
 
@@ -94,6 +101,182 @@ async function handleUpload(request, env) {
   return jsonResponse({ url, publicId: key, provider: "r2" }, 200);
 }
 
+function adminToClient(admin) {
+  return { uid: admin.id, email: admin.email, displayName: admin.display_name, role: admin.role };
+}
+
+// ---------------- /api/auth/* ----------------
+async function handleAuth(request, env, url) {
+  const path = url.pathname.slice("/api/auth/".length);
+
+  if (path === "has-admin" && request.method === "GET") {
+    const row = await env.DB.prepare("SELECT COUNT(*) AS c FROM admin_users").first();
+    return jsonResponse({ hasAdmin: (row?.c || 0) > 0 });
+  }
+
+  if (path === "bootstrap" && request.method === "POST") {
+    const row = await env.DB.prepare("SELECT COUNT(*) AS c FROM admin_users").first();
+    if ((row?.c || 0) > 0) {
+      return jsonResponse({ error: "ระบบมีแอดมินอยู่แล้ว ไม่สามารถตั้งค่าแอดมินคนแรกซ้ำได้" }, 409);
+    }
+    let body;
+    try { body = await request.json(); } catch { return jsonResponse({ error: "รูปแบบข้อมูลไม่ถูกต้อง" }, 400); }
+    const email = String(body.email || "").trim();
+    const password = String(body.password || "");
+    const displayName = String(body.displayName || "").trim() || email.split("@")[0];
+    if (!email) return jsonResponse({ error: "กรุณากรอกอีเมล" }, 400);
+    if (password.length < 6) return jsonResponse({ error: "รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร" }, 400);
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const passwordHash = await hashPassword(password);
+    await env.DB.prepare(
+      "INSERT INTO admin_users (id, email, password_hash, display_name, role, created_at, created_by) VALUES (?, ?, ?, ?, 'main', ?, 'bootstrap')"
+    ).bind(id, email, passwordHash, displayName, now).run();
+    const token = await createSession(env, id);
+    const admin = await env.DB.prepare("SELECT id, email, display_name, role, created_at, created_by FROM admin_users WHERE id = ?").bind(id).first();
+    return jsonResponse(adminToClient(admin), 200, { "Set-Cookie": buildSessionCookie(token) });
+  }
+
+  if (path === "login" && request.method === "POST") {
+    let body;
+    try { body = await request.json(); } catch { return jsonResponse({ error: "รูปแบบข้อมูลไม่ถูกต้อง" }, 400); }
+    const email = String(body.email || "").trim();
+    const password = String(body.password || "");
+    const admin = await env.DB.prepare("SELECT * FROM admin_users WHERE email = ?").bind(email).first();
+    if (!admin || !(await verifyPassword(password, admin.password_hash))) {
+      return jsonResponse({ error: "อีเมลหรือรหัสผ่านไม่ถูกต้อง", code: "auth/invalid-credential" }, 401);
+    }
+    const token = await createSession(env, admin.id);
+    return jsonResponse(adminToClient(admin), 200, { "Set-Cookie": buildSessionCookie(token) });
+  }
+
+  if (path === "logout" && request.method === "POST") {
+    const token = getCookie(request, "session_token");
+    await deleteSession(env, token);
+    return jsonResponse({ ok: true }, 200, { "Set-Cookie": buildClearCookie() });
+  }
+
+  if (path === "me" && request.method === "GET") {
+    const admin = await getSessionAdmin(request, env);
+    if (!admin) return jsonResponse({ error: "ยังไม่ได้เข้าสู่ระบบ" }, 401);
+    return jsonResponse(adminToClient(admin));
+  }
+
+  if (path === "verify-password" && request.method === "POST") {
+    const admin = await getSessionAdmin(request, env);
+    if (!admin) return jsonResponse({ error: "ยังไม่ได้เข้าสู่ระบบ" }, 401);
+    let body;
+    try { body = await request.json(); } catch { return jsonResponse({ error: "รูปแบบข้อมูลไม่ถูกต้อง" }, 400); }
+    const full = await env.DB.prepare("SELECT password_hash FROM admin_users WHERE id = ?").bind(admin.id).first();
+    const ok = await verifyPassword(String(body.password || ""), full?.password_hash);
+    if (!ok) return jsonResponse({ error: "รหัสผ่านปัจจุบันไม่ถูกต้อง", code: "auth/wrong-password" }, 401);
+    return jsonResponse({ ok: true });
+  }
+
+  if (path === "change-password" && request.method === "POST") {
+    const admin = await getSessionAdmin(request, env);
+    if (!admin) return jsonResponse({ error: "ยังไม่ได้เข้าสู่ระบบ" }, 401);
+    let body;
+    try { body = await request.json(); } catch { return jsonResponse({ error: "รูปแบบข้อมูลไม่ถูกต้อง" }, 400); }
+    const newPassword = String(body.newPassword || "");
+    if (newPassword.length < 6) return jsonResponse({ error: "รหัสผ่านใหม่ต้องมีอย่างน้อย 6 ตัวอักษร" }, 400);
+    const passwordHash = await hashPassword(newPassword);
+    await env.DB.prepare("UPDATE admin_users SET password_hash = ? WHERE id = ?").bind(passwordHash, admin.id).run();
+    return jsonResponse({ ok: true });
+  }
+
+  if (path === "create-admin" && request.method === "POST") {
+    const admin = await getSessionAdmin(request, env);
+    if (!admin) return jsonResponse({ error: "ยังไม่ได้เข้าสู่ระบบ" }, 401);
+    if (admin.role !== "main") return jsonResponse({ error: "เฉพาะแอดมินหลักเท่านั้นที่เพิ่มแอดมินได้" }, 403);
+    let body;
+    try { body = await request.json(); } catch { return jsonResponse({ error: "รูปแบบข้อมูลไม่ถูกต้อง" }, 400); }
+    const email = String(body.email || "").trim();
+    const password = String(body.password || "");
+    if (!email) return jsonResponse({ error: "กรุณากรอกอีเมล" }, 400);
+    if (password.length < 6) return jsonResponse({ error: "รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร" }, 400);
+    const existing = await env.DB.prepare("SELECT id FROM admin_users WHERE email = ?").bind(email).first();
+    if (existing) return jsonResponse({ error: "อีเมลนี้มีบัญชีอยู่แล้วในระบบ", code: "auth/email-already-in-use" }, 409);
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const passwordHash = await hashPassword(password);
+    await env.DB.prepare(
+      "INSERT INTO admin_users (id, email, password_hash, display_name, role, created_at, created_by) VALUES (?, ?, ?, ?, 'sub', ?, ?)"
+    ).bind(id, email, passwordHash, email.split("@")[0], now, admin.email || "").run();
+    return jsonResponse({ uid: id, email });
+  }
+
+  return jsonResponse({ error: "ไม่พบ endpoint นี้" }, 404);
+}
+
+// ---------------- /api/db/* ----------------
+// รูปแบบ path: /api/db/:collection (GET list, PUT/POST ไม่ใช้ตรงนี้), /api/db/:collection/_query (POST),
+// /api/db/:collection/:id (GET/PUT/PATCH/DELETE)
+// ทุก endpoint ในกลุ่มนี้ต้อง login ก่อนทั้งหมด (แอปนี้ไม่มีหน้าไหนที่ user ทั่วไปต้องเขียน Firestore ตรงๆ
+// โดยไม่ผ่านแอดมิน ยกเว้น "orders" ตอนลูกค้า checkout/ค้นหาออเดอร์ตัวเอง และ "songs/categories/djs/playlists/
+// discounts/promotions/settings" ตอนลูกค้าเปิดหน้าเว็บอ่านอย่างเดียว — ของเดิมที่ Firestore Rules ก็เปิด
+// public read เหมือนกัน จึงคง public read ไว้เหมือนเดิม แต่บังคับ login เฉพาะฝั่งเขียน (write) เท่านั้น
+// เพื่อไม่ให้ระบบเดิมฝั่ง user (index.html) พังหรือถูกบล็อกจากการอ่านข้อมูล)
+const PUBLIC_READ_COLLECTIONS = new Set([
+  "songs", "categories", "djs", "playlists", "discounts", "promotions", "settings", "orders",
+]);
+
+async function handleDb(request, env, url) {
+  const parts = url.pathname.slice("/api/db/".length).split("/").filter(Boolean);
+  const collection = parts[0];
+  if (!collection) return jsonResponse({ error: "ไม่พบ collection" }, 400);
+
+  const isWrite = ["POST", "PUT", "PATCH", "DELETE"].includes(request.method);
+  if (isWrite || !PUBLIC_READ_COLLECTIONS.has(collection)) {
+    const admin = await getSessionAdmin(request, env);
+    if (!admin) return jsonResponse({ error: "ยังไม่ได้เข้าสู่ระบบ" }, 401);
+  }
+
+  try {
+    // /api/db/:collection  (list ทั้ง collection)
+    if (parts.length === 1 && request.method === "GET") {
+      const docs = await listDocuments(env, collection);
+      return jsonResponse({ docs });
+    }
+
+    // /api/db/:collection/_query  (where/orderBy)
+    if (parts.length === 2 && parts[1] === "_query" && request.method === "POST") {
+      const body = await request.json();
+      const docs = await queryDocuments(env, collection, body);
+      return jsonResponse({ docs });
+    }
+
+    // /api/db/:collection/:id
+    if (parts.length === 2) {
+      const id = parts[1];
+      if (request.method === "GET") {
+        const doc = await getDocument(env, collection, id);
+        return jsonResponse(doc ? { exists: true, id: doc.id, data: doc.data } : { exists: false });
+      }
+      if (request.method === "PUT") {
+        const body = await request.json();
+        const admin = await getSessionAdmin(request, env);
+        const result = await setDocument(env, collection, id, body.data || {}, !!body.merge, admin?.email);
+        return jsonResponse(result);
+      }
+      if (request.method === "PATCH") {
+        const body = await request.json();
+        const result = await updateDocument(env, collection, id, body.data || {});
+        if (result.notFound) return jsonResponse({ error: "ไม่พบเอกสารที่จะอัปเดต" }, 404);
+        return jsonResponse(result);
+      }
+      if (request.method === "DELETE") {
+        await deleteDocument(env, collection, id);
+        return jsonResponse({ ok: true });
+      }
+    }
+  } catch (err) {
+    return jsonResponse({ error: "db error: " + (err?.message || String(err)) }, 500);
+  }
+
+  return jsonResponse({ error: "ไม่พบ endpoint นี้" }, 404);
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -106,7 +289,16 @@ export default {
       return handleUpload(request, env);
     }
 
-    // path อื่นใต้ /api/* ที่ยังไม่มี — เผื่อ Phase ถัดไป (D1) จะมาเพิ่มทีหลัง ไม่เกี่ยวกับ Phase นี้
+    if (url.pathname.startsWith("/api/auth/")) {
+      if (!env.DB) return jsonResponse({ error: "ยังไม่ได้ผูก D1 database (binding: DB) ใน wrangler.jsonc" }, 500);
+      return handleAuth(request, env, url);
+    }
+
+    if (url.pathname.startsWith("/api/db/")) {
+      if (!env.DB) return jsonResponse({ error: "ยังไม่ได้ผูก D1 database (binding: DB) ใน wrangler.jsonc" }, 500);
+      return handleDb(request, env, url);
+    }
+
     return jsonResponse({ error: "ไม่พบ endpoint นี้" }, 404);
   },
 };
