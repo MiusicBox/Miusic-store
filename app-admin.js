@@ -1,7 +1,7 @@
 // app-admin.js — หน้า Admin: Login (Firebase Auth) + CRUD (Firestore) + อัปโหลดไฟล์ (Cloudinary)
 // ===================================================
 import { db, auth, uploadToCloudinary } from "./firebase-init.js?v=20260905-fix1";
-import { uploadFullSong } from "./storage-adapter.js?v=20260904-rawzip";
+import { uploadFullSong, deleteFromStorage } from "./storage-adapter.js?v=20260904-rawzip";
 import {
   collection, addDoc, updateDoc, deleteDoc, doc, getDocs, getDoc, setDoc
 } from "./db-client.js";
@@ -552,7 +552,11 @@ document.getElementById("songBulkDeleteBtn").addEventListener("click", () => {
         await updateDoc(doc(db, "songs", id), { status: "hidden", updated_at: new Date().toISOString() });
         hiddenCount++;
       } else {
+        const songSnap = await getDoc(doc(db, "songs", id));
+        const songData = songSnap.exists() ? songSnap.data() : null;
         await deleteDoc(doc(db, "songs", id));
+        // ลบไฟล์ cloud แบบ background เช่นเดียวกับ confirmDeleteSong (logic เดียวกันทุกประการ)
+        deleteSongFilesFromStorage(songData);
         deletedCount++;
       }
     }
@@ -924,6 +928,44 @@ async function songHasOrders(songId) {
   ));
 }
 
+// ลบไฟล์ของเพลงนี้ออกจาก Cloud (R2) — เรียกหลังลบ doc เพลงสำเร็จแล้วเท่านั้น
+// - ไฟล์เพลงเต็ม (full_file_*) และไฟล์ตัวอย่าง (file_url): ลบเสมอ เพราะผูกกับเพลงนี้เพลงเดียว
+// - รูปปก (cover_url): ลบเฉพาะกรณีไม่มีเพลง/เพลย์ลิสต์อื่นใช้รูปเดียวกันอยู่ (เช็คสดทุกครั้ง ไม่พึ่ง CACHE
+//   เพราะ CACHE อาจไม่ตรงกับข้อมูลจริง ณ ขณะนี้)
+// ทำงานแบบ "ไม่ throw" — ลบไฟล์ cloud ไม่สำเร็จก็แค่ log ไว้ ไม่กระทบว่า doc เพลงถูกลบไปแล้ว
+async function deleteSongFilesFromStorage(song) {
+  if (!song) return;
+  const jobs = [];
+  if (song.full_file_public_id) {
+    jobs.push(deleteFromStorage({ key: song.full_file_public_id }));
+  } else if (song.full_file_url) {
+    jobs.push(deleteFromStorage({ url: song.full_file_url }));
+  }
+  if (song.file_url) {
+    jobs.push(deleteFromStorage({ url: song.file_url }));
+  }
+  if (song.cover_url) {
+    try {
+      const [songsSnap, playlistsSnap] = await Promise.all([
+        getDocs(collection(db, "songs")),
+        getDocs(collection(db, "playlists")),
+      ]);
+      const stillUsed =
+        songsSnap.docs.some((d) => d.data().cover_url === song.cover_url) ||
+        playlistsSnap.docs.some((d) => d.data().cover_url === song.cover_url);
+      if (!stillUsed) jobs.push(deleteFromStorage({ url: song.cover_url }));
+    } catch (err) {
+      console.error("ตรวจสอบการใช้งานรูปปกร่วมไม่สำเร็จ ข้ามการลบรูปปกเพื่อความปลอดภัย:", err);
+    }
+  }
+  const results = await Promise.allSettled(jobs);
+  results.forEach((r) => {
+    if (r.status === "rejected" || (r.value && r.value.ok === false && !r.value.skipped)) {
+      console.error("ลบไฟล์เพลงออกจาก Cloud บางส่วนไม่สำเร็จ:", r.status === "rejected" ? r.reason : r.value.error);
+    }
+  });
+}
+
 async function confirmDeleteSong(id) {
   const hasOrders = await songHasOrders(id);
   if (hasOrders) {
@@ -939,7 +981,11 @@ async function confirmDeleteSong(id) {
     return;
   }
   openConfirm("คุณต้องการลบเพลงนี้หรือไม่?", async () => {
+    const songSnap = await getDoc(doc(db, "songs", id));
+    const songData = songSnap.exists() ? songSnap.data() : null;
     await deleteDoc(doc(db, "songs", id));
+    // ลบไฟล์ cloud แบบ background — ไม่รอ/ไม่ block UI และไม่ทำให้การลบเพลงล้มเหลวถ้าไฟล์ cloud ลบไม่สำเร็จ
+    deleteSongFilesFromStorage(songData);
     showToast("ลบเพลงแล้ว", "success");
     loadSongs();
     loadDashboard();
@@ -1231,7 +1277,11 @@ async function deleteSongFromDetailView(id) {
     return;
   }
   openConfirm("ต้องการลบเพลงนี้ออกจากระบบจริงหรือไม่? (ลบถาวร — ต่างจากปุ่ม ➖ ที่แค่ถอดออกจากรายการนี้)", async () => {
+    const songSnap = await getDoc(doc(db, "songs", id));
+    const songData = songSnap.exists() ? songSnap.data() : null;
     await deleteDoc(doc(db, "songs", id));
+    // ลบไฟล์ cloud แบบ background เช่นเดียวกับ confirmDeleteSong (logic เดียวกันทุกประการ)
+    deleteSongFilesFromStorage(songData);
     showToast("ลบเพลงออกจากระบบแล้ว", "success");
     CACHE.songs = CACHE.songs.filter(x => x.id !== id);
     renderDetailSongsList();
