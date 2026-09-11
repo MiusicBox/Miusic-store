@@ -1,6 +1,6 @@
 {
   "name": "miusic-store",
-  "compatibility_date": "2026-09-10",
+  "compatibility_date": "2024-09-23",
   "main": "worker/index.js",
   "assets": {
     "directory": ".",
@@ -17,7 +17,7 @@
     {
       "binding": "DB",
       "database_name": "miusic-store-db",
-      "database_id": "c622b79a-a82f-4c07-b352-78d12d2f781a"
+      "database_id": "5638f1b9-48ca-40cb-9221-ed6910bcee8c"
     }
   ],
   "vars": {
