@@ -5,7 +5,7 @@
 import { db } from "./firebase-init.js?v=20260905-fix1";
 import {
   collection, getDocs, getDoc, setDoc, query, orderBy, where, doc, updateDoc, deleteDoc
-} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+} from "./db-client.js";
 import { uploadOrderZip } from "./storage-adapter.js?v=20260904-rawzip";
 // ===== ลดราคา + โปรโมชั่น (ระบบใหม่) — import มาจาก app-promotion.js กลาง (รวมไฟล์เดียว) =====
 import {
