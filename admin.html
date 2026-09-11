@@ -778,6 +778,15 @@
         <input type="file" id="bulkCoverInput" accept="image/*" style="position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;">
       </div>
 
+      <!-- 🔒 Auto Preview อัตโนมัติใน Bulk Upload (2026-09-12) — default เลือกไว้ -->
+      <div class="field" style="display:flex;align-items:flex-start;gap:8px;">
+        <input type="checkbox" id="bulkAutoPreviewChk" checked style="width:18px;height:18px;margin-top:3px;flex-shrink:0;">
+        <label for="bulkAutoPreviewChk" style="cursor:pointer;font-size:13px;line-height:1.5;">
+          <strong>วิเคราะห์ Auto Preview อัตโนมัติ (แนะนำ)</strong><br>
+          <span style="color:var(--text-dim);">วิเคราะห์เสียงหาช่วง Dance ของทุกเพลงอัตโนมัติ — ถ้าไม่เลือกไฟล์เต็ม จะใช้ไฟล์ตัวอย่างเป็นเพลงเต็มด้วยเพื่อประหยัดพื้นที่ R2 และลูกค้าจะเห็นแค่ช่วง Preview ก่อนชำระเงิน</span>
+        </label>
+      </div>
+
       <div class="progress-outer" id="bulkProgressWrap" style="display:none;"><div class="progress-inner" id="bulkProgress"></div></div>
       <div id="bulkStatusText" style="font-size:12px;color:var(--text-dim);margin-top:6px;"></div>
 
