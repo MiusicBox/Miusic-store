@@ -484,11 +484,11 @@ function togglePlaylistsVisibility() {
 function setView(view) {
   STATE.currentView = view;
   const showCategory = view === "home" || view === "category";
-  // แสดง DJ ในหน้า "ทั้งหมด" หรือหน้า DJ เท่านั้น
-  // เมื่อเลือกหมวดหมู่เฉพาะ ให้ซ่อนส่วน DJ ออกจากหน้านั้น
+  // แสดง DJ เฉพาะหน้าแรก (เมื่อเลือก "ทั้งหมด") หรือแท็บ DJ เท่านั้น
+  // แท็บ "หมวดหมู่" ให้ซ่อนส่วน DJ เสมอ เหมือนเมนูอื่น
   const showDj =
     view === "dj" ||
-    ((view === "home" || view === "category") && STATE.currentCategory === "all");
+    (view === "home" && STATE.currentCategory === "all");
   // แท็บ DJ ต้องแสดงเพลงของ DJ ทุกคน หรือเพลงของ DJ ที่เลือก
   const showSongs = view === "home" || view === "category" || view === "dj";
 
