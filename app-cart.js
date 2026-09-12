@@ -4,6 +4,27 @@ import { db } from "./firebase-init.js?v=20260905-fix1";
 import {
   collection, doc, query, where, getDoc, getDocs, setDoc
 } from "./db-client.js";
+//
+// 🔧 แก้บั๊ก (2026-09-12): "ยังไม่ได้ login" ตอนกดสั่งซื้อ
+// -----------------------------------------------------------
+// อาการ: ลูกค้าเปิดหน้าเว็บ (index.html) ไม่มีหน้า login แต่กดสั่งซื้อแล้วขึ้น
+//        error "ยังไม่ได้เข้าสู่ระบบ" (HTTP 401)
+//
+// สาเหตุหลัก: Worker เดิมฝั่ง server บังคับ login สำหรับทุกการเขียน (write)
+//   รวมถึง PUT /api/db/orders/{id} ของลูกค้า — ทำให้ลูกค้าสั่งซื้อไม่ได้
+//   แก้แล้วใน worker/index.js โดยยกเว้น "orders" PUT/DELETE ไม่ต้อง login
+//   (ดู comment "ข้อยกเว้นสำหรับ orders (แก้บั๊ก 2026-09-11)" ใน worker/index.js)
+//
+// สาเหตุรอง: ถึงแม้ worker จะอนุญาตแล้ว แต่ถ้าลูกค้าเคยสั่งซื้อครั้งก่อนแล้ว
+//   order ID ค้างอยู่ใน sessionStorage (CHECKOUT_ORDER_KEY) — ครั้งถัดไปที่ลูกค้า
+//   กรอกชื่อ+เบอร์เดิม ระบบจะ "reuse order ID เดิม" แต่ order นั้นมีอยู่แล้วใน DB
+//   → Worker ส่ง 401 "ยังไม่ได้เข้าสู่ระบบ" กันเขียนทับออเดอร์คนอื่น
+//
+// การแก้ฝั่ง client (ไฟล์นี้):
+//   1) ถ้า setDoc เจอ error "ยังไม่ได้เข้าสู่ระบบ" หรือ "login" → เคลียร์ order ID
+//      เก่าใน sessionStorage/state แล้ว retry ครั้งเดียวด้วย ID ใหม่
+//   2) ลดโอกาสลูกค้าติดสถานะ "order ID ค้าง" จากครั้งก่อน
+// ===================================================
 // ===== ลดราคา + โปรโมชั่น (ระบบใหม่) — import มาจาก app-promotion.js กลาง (รวมไฟล์เดียว) =====
 import {
   fetchActiveDiscounts, fetchActivePromotions, computeCartPricing, clearPricingCache
@@ -934,10 +955,10 @@ export function initCart({ state, showToast, escapeHtml, formatPrice, buildWhats
       ? activeOrderId
       : getStoredOrderId(checkoutKey);
     // ใช้ doc() สร้าง reference/ID ไว้ล่วงหน้า เพื่อใช้เป็น orderRef ตอนเขียนจริงด้านล่าง
-    const orderRef = reusableOrderId
+    let orderRef = reusableOrderId
       ? doc(db, "orders", reusableOrderId)
       : doc(collection(db, "orders"));
-    const receiptNumber = getReceiptNumber(orderRef.id, createdAt);
+    let receiptNumber = getReceiptNumber(orderRef.id, createdAt);
 
     let order = null;
     let resolvedSettings = {};
@@ -960,7 +981,10 @@ export function initCart({ state, showToast, escapeHtml, formatPrice, buildWhats
         setTimeout(() => reject(new Error("เชื่อมต่อช้ากว่าปกติ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่อีกครั้ง")), TIMEOUT_MS);
       });
 
-      const mainTask = (async () => {
+      // 🔧 แก้บั๊ก (2026-09-12): แยก buildOrder + setDoc ออกมาเป็นฟังก์ชัน เพื่อรองรับ retry ครั้งเดียว
+      // เมื่อ setDoc เจอ "ยังไม่ได้เข้าสู่ระบบ" (เกิดจาก order ID ค้างใน sessionStorage หรือ worker เก่า
+      // ที่ยังไม่ได้แก้ exception สำหรับ orders) → เคลียร์ order ID เก่าแล้วลองใหม่ด้วย ID ใหม่
+      const buildAndSaveOrder = async (refToUse) => {
         const resolved = await resolveCartFromDatabase();
         resolvedSettings = resolved.settings || {};
 
@@ -975,7 +999,7 @@ export function initCart({ state, showToast, escapeHtml, formatPrice, buildWhats
           store_name: resolved.settings.website_name || "Music Store",
           status: "pending_verify",
           created_at: createdAt,
-          receipt_number: receiptNumber,
+          receipt_number: getReceiptNumber(refToUse.id, createdAt),
           // ===== ฟิลด์ใหม่: บันทึก snapshot การคำนวณส่วนลด/โปรโมชั่น ณ เวลาที่สั่ง =====
           // เก็บไว้ให้ order เก่าไม่เปลี่ยนราคาแม้ admin แก้ promotion ภายหลัง (เพราะเป็น snapshot)
           subtotal: resolved.subtotal ?? resolved.total,
@@ -989,11 +1013,37 @@ export function initCart({ state, showToast, escapeHtml, formatPrice, buildWhats
           builtOrder.playlist_ids = resolved.playlistIds;
         }
 
-        await setDoc(orderRef, builtOrder);
+        await setDoc(refToUse, builtOrder);
         return builtOrder;
-      })();
+      };
 
-      order = await Promise.race([mainTask, timeoutPromise]);
+      try {
+        // ครั้งที่ 1: ใช้ orderRef ที่อาจเป็น reusableOrderId (ถ้ามี)
+        const mainTask = buildAndSaveOrder(orderRef);
+        order = await Promise.race([mainTask, timeoutPromise]);
+      } catch (firstErr) {
+        // 🔧 ตรวจว่า error จาก server บอกว่า "ยังไม่ได้ login" หรือ "ยังไม่ได้เข้าสู่ระบบ" หรือไม่
+        // ถ้าใช่ → เคลียร์ reusableOrderId ที่ค้างอยู่ใน sessionStorage/state แล้ว retry ด้วย ID ใหม่
+        const msg = (firstErr?.message || "").toLowerCase();
+        const isLoginBlock = msg.includes("ยังไม่ได้เข้าสู่ระบบ") || msg.includes("login") || msg.includes("เข้าสู่ระบบ");
+        if (!isLoginBlock) throw firstErr;
+
+        console.warn("checkoutCart: พบ error 'ยังไม่ได้ login' — เคลียร์ order ID เก่าแล้ว retry ด้วย ID ใหม่", firstErr);
+        activeOrderId = null;
+        activeOrderKey = null;
+        clearStoredOrderId();
+        // สร้าง orderRef ใหม่ด้วย ID ใหม่ (doc(collection(db,"orders")) จะสุ่ม UUID ใหม่ให้)
+        orderRef = doc(collection(db, "orders"));
+        receiptNumber = getReceiptNumber(orderRef.id, createdAt);
+
+        // ครั้งที่ 2: ใช้ ID ใหม่
+        const TIMEOUT_MS_RETRY = 20000;
+        const timeoutPromise2 = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error("เชื่อมต่อช้ากว่าปกติ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่อีกครั้ง")), TIMEOUT_MS_RETRY);
+        });
+        const retryTask = buildAndSaveOrder(orderRef);
+        order = await Promise.race([retryTask, timeoutPromise2]);
+      }
     } catch (err) {
       console.error("checkoutCart error:", err);
       let feedbackMessage;
