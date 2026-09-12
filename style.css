@@ -969,6 +969,40 @@ button:active {
   height: 14px;
 }
 
+/* 🔧 เพิ่มใหม่ (2026-09-12): ปุ่มปิดเครื่องเล่นเพลง (X) — แยกจากปุ่ม play/pause
+   ใช้สีเทาเข้มแทนสีม่วง gradient เพื่อให้แยกจากปุ่ม play ชัดเจน + เล็กลงนิดหน่อย */
+.player-close-btn {
+  background: rgba(255, 255, 255, 0.12) !important;
+  width: 30px !important;
+  height: 30px !important;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #fff;
+  box-shadow: none;
+  transform: scale(1);
+  margin-left: 4px;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.15s ease;
+}
+
+.player-close-btn:hover {
+  background: rgba(255, 107, 107, 0.25) !important;
+  transform: scale(1.08);
+}
+
+.player-close-btn:active {
+  transform: scale(0.95);
+}
+
+.player-close-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
 .player-seek-row {
   display: flex;
   align-items: center;
