@@ -868,23 +868,30 @@ button:active {
 }
 
 /* ---------- Music Player Bar ---------- */
+/* 🔧 ปรับใหม่ (2026-09-12 รอบ 6): ปรับ popup เครื่องเล่นเพลงให้เ็กลง + ขยับขึ้นสูงขึ้น ไม่บังเมนูข้างล่าง
+   - bottom เพิ่มจาก 54px → 70px (ขยับขึ้น 16px) เผื่อพื้นที่ให้ bottom-nav
+   - padding ลดจาก 8px 12px 7px → 6px 10px 5px (ลดความสูงของ popup)
+   - gap ลดจาก 3px → 2px
+   - border-radius ลดจาก 12px → 10px
+   - width ลดจาก calc(100% - 24px) → calc(100% - 16px) (เพิ่มพื้นที่ใช้านในมือถือ)
+   - max-width ลดจาก 465px → 420px */
 .player-bar {
   position: fixed;
   left: 50%;
   transform: translateX(-50%);
-  width: calc(100% - 24px);
-  max-width: 465px;
-  bottom: calc(54px + var(--safe-bottom));
+  width: calc(100% - 16px);
+  max-width: 420px;
+  bottom: calc(70px + var(--safe-bottom));
   z-index: 60;
   background: rgba(19, 23, 34, 0.94);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
   border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 12px;
-  padding: 8px 12px 7px;
+  border-radius: 10px;
+  padding: 6px 10px 5px;
   display: none;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6), 0 0 12px var(--accent-glow);
 }
 
@@ -910,10 +917,12 @@ button:active {
   gap: 8px;
 }
 
+/* 🔧 ปรับใหม่ (2026-09-12 รอบ 6): ลดขนาดรูปปกเพลงจาก 34px → 30px ให้ popup เ็กลง
+   แต่ยังอ่านรูปเห็นชัด */
 .player-bar img {
-  width: 34px;
-  height: 34px;
-  border-radius: 6px;
+  width: 30px;
+  height: 30px;
+  border-radius: 5px;
   object-fit: cover;
   flex-shrink: 0;
   background: var(--surface);
@@ -925,8 +934,10 @@ button:active {
   min-width: 0;
 }
 
+/* 🔧 ปรับใหม่ (2026-09-12 รอบ 6): ลดขนาดชื่อเพลงจาก 12px → 11.5px + ลดบรรทัดรองจาก 10.5px → 10px
+   ให้ popup เ็กลงแต่ยังอ่านได้ */
 .player-meta .t1 {
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 700;
   white-space: nowrap;
   overflow: hidden;
@@ -936,7 +947,7 @@ button:active {
 }
 
 .player-meta .t2 {
-  font-size: 10.5px;
+  font-size: 10px;
   color: var(--text-dim);
   white-space: nowrap;
   overflow: hidden;
@@ -945,6 +956,8 @@ button:active {
   font-weight: 500;
 }
 
+/* 🔧 คงเดิม (2026-09-12 รอบ 6): ปุ่ม play/pause เอาขนาดเดิม 36px ตามที่ขอ ไม่เปลี่ยน
+   เพราะต้องการให้กดง่ายบนมือถือ */
 .player-bar .ctrl {
   background: linear-gradient(135deg, var(--accent), #7c3aed);
   width: 36px;
@@ -969,12 +982,11 @@ button:active {
   height: 14px;
 }
 
-/* 🔧 เพิ่มใหม่ (2026-09-12): ปุ่มปิดเครื่องเล่นเพลง (X) — แยกจากปุ่ม play/pause
-   ใช้สีเทาเข้มแทนสีม่วง gradient เพื่อให้แยกจากปุ่ม play ชัดเจน + เล็กลงนิดหน่อย */
+/* 🔧 ปรับใหม่ (2026-09-12 รอบ 6): ลดขนาดปุ่มปิด (X) จาก 30px → 28px ให้เ็กลงเป็นสัดส่วนกับ popup ที่เล็กลง */
 .player-close-btn {
   background: rgba(255, 255, 255, 0.12) !important;
-  width: 30px !important;
-  height: 30px !important;
+  width: 28px !important;
+  height: 28px !important;
   border-radius: 50%;
   border: 1px solid rgba(255, 255, 255, 0.15);
   display: flex;
@@ -1003,11 +1015,13 @@ button:active {
   height: 14px;
 }
 
+/* 🔧 ปรับใหม่ (2026-09-12 รอบ 6): ลดความสูงของแถว seek bar จาก 22px → 18px + ลด margin
+   ทำให้ popup โดยรวมเ็กลงอีก */
 .player-seek-row {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-top: 2px;
+  margin-top: 1px;
 }
 
 .player-seek-row .time {
@@ -1020,11 +1034,13 @@ button:active {
   font-weight: 600;
 }
 
+/* 🔧 ปรับใหม่ (2026-09-12 รอบ 6): ลดความสูงของ input range จาก 22px → 18px
+   ทำให้ seek bar ไม่หนาเกินไปใน popup ที่เล็กลง */
 .player-seek-row input[type="range"] {
   -webkit-appearance: none;
   appearance: none;
   flex: 1;
-  height: 22px !important;
+  height: 18px !important;
   background: transparent;
   margin: 0;
   cursor: pointer;
