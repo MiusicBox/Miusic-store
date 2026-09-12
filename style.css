@@ -580,7 +580,7 @@ button:active {
   position: absolute;
   right: 0px;
   bottom: 0px;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 800;
   color: var(--success);
   white-space: nowrap;
@@ -774,7 +774,7 @@ button:active {
 /* 🔧 ปรับใหม่ (2026-09-12 รอบ 4): ลดขนาดราคาเพลงเดี่ยวจาก 17px → 14px + น้ำหนักจาก 900 → 800
    ให้พอดีสมดุลกับราคารายการเพลงในเพลย์ลิสต์ */
 .song-price {
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 800;
   color: var(--success);
   white-space: nowrap;
