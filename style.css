@@ -517,33 +517,13 @@ button:active {
   transition: all 0.2s ease;
 }
 
-/* 🔧 แก้ (2026-09-13 ตามคำขอ: รูปปกเพลงดูมัว) — เดิมปุ่มเล่นคลุมทับรูปเต็มแผ่นด้วยสีดำ+เบลอตลอดเวลา
-   ทำให้รูปปกดูมัวกว่าที่ควร เปลี่ยนเป็นวงกลมเล็กๆ ตรงกลางแทน ให้เห็นรูปปกชัดเต็มๆ */
-.playlist-play-btn::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  margin: auto;
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(2px);
-  transition: background 0.2s ease;
-}
-
-.playlist-song-row:hover .playlist-play-btn::before {
-  background: rgba(0, 0, 0, 0.6);
-}
-
+/* 🔧 แก้ (2026-09-13 รอบ 2 ตามคำขอ: เอาพื้นหลังสีดำออกหมด เหลือแต่ไอคอนสามเหลี่ยม/สี่เหลี่ยมสีขาว)
+   ใช้ drop-shadow แทนวงกลมพื้นหลัง เพื่อให้ไอคอนยังมองเห็นชัดบนรูปพื้นหลังทุกสี */
 .playlist-play-btn svg {
   width: 22px;
   height: 22px;
   fill: #fff;
-  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.6));
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.9)) drop-shadow(0 0 4px rgba(0, 0, 0, 0.7));
   transition: transform 0.2s ease;
 }
 
@@ -702,33 +682,17 @@ button:active {
   transition: all 0.2s ease;
 }
 
-/* 🔧 แก้ (2026-09-13 ตามคำขอ: รูปปกเพลงดูมัว) — เดิมปุ่มเล่นคลุมทับรูปเต็มแผ่นด้วยสีดำ+เบลอตลอดเวลา
-   ทำให้รูปปกดูมัวกว่าที่ควร เปลี่ยนเป็นวงกลมเล็กๆ ตรงกลางแทน ให้เห็นรูปปกชัดเต็มๆ */
-.song-cover .play-btn::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  margin: auto;
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(2px);
-  transition: background 0.2s ease;
-}
-
-.song-card:hover .play-btn::before {
-  background: rgba(0, 0, 0, 0.6);
+/* 🔧 แก้ (2026-09-13 รอบ 2 ตามคำขอ: เอาพื้นหลังสีดำออกหมด เหลือแต่ไอคอนสามเหลี่ยม/สี่เหลี่ยมสีขาว)
+   ใช้ drop-shadow แทนวงกลมพื้นหลัง เพื่อให้ไอคอนยังมองเห็นชัดบนรูปพื้นหลังทุกสี */
+.song-cover .play-btn svg {
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.9)) drop-shadow(0 0 4px rgba(0, 0, 0, 0.7));
 }
 
 .song-card:hover .play-btn svg {
   width: 22px;
   height: 22px;
   fill: #fff;
-  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.6));
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.9)) drop-shadow(0 0 4px rgba(0, 0, 0, 0.7));
   transition: transform 0.2s ease;
 }
 
