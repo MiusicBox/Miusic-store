@@ -653,6 +653,22 @@ if (playerToggleBtn) {
   });
 }
 
+// 🔧 เพิ่มใหม่ (2026-09-12): ปุ่มปิดเครื่องเล่นเพลง (X) — ให้ลูกค้ากดปิด popup player ได้
+// ทำงาน: หยุดเล่นเพลง + ซ่อน player bar + รีเซ็ตปุ่ม play ทุกตัวกลับเป็นสถานะ "ไม่ได้เล่น"
+const playerCloseBtn = document.getElementById("playerClose");
+if (playerCloseBtn) {
+  playerCloseBtn.addEventListener("click", () => {
+    try { AUDIO.pause(); } catch (_) {}
+    try { AUDIO.removeAttribute("src"); } catch (_) {}
+    try { AUDIO.load(); } catch (_) {}
+    STATE.currentPlayingId = null;
+    STATE.currentLoadingId = null;
+    const barEl = document.getElementById("playerBar");
+    if (barEl) barEl.classList.remove("show");
+    updatePlayButtonsUI();
+  });
+}
+
 let isSeeking = false;
 const seekEl = document.getElementById("playerSeek");
 
