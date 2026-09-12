@@ -390,7 +390,7 @@ function renderPlaylists() {
             ${songs.map(s => `
               <div class="playlist-song-row" data-id="${s.id}">
                 <div class="playlist-cover">
-                  <img src="${s.cover_url || pl.cover_url || ""}" loading="eager" decoding="sync" referrerpolicy="no-referrer">
+                  <img src="${s.cover_url || pl.cover_url || ""}" loading="eager" decoding="sync" referrerpolicy="no-referrer" crossorigin="anonymous">
                   <button class="playlist-play-btn" data-play="${s.id}">
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="#fff"><path d="M8 5v14l11-7z"/></svg>
                   </button>
