@@ -360,10 +360,16 @@ button:active {
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
 }
 
+/* 🔧 ปรับใหม่ (2026-09-12 รอบ 7): ทำให้รูปปกหัวเพลย์ลิสต์ชัดเจนไม่เบลอ
+   - เพิ่ม image-rendering: -webkit-optimize-contrast
+   - เพิ่ม filter: contrast + saturate ช่วยให้สีสดขึ้น */
 .playlist-folder-cover img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+  filter: contrast(1.05) saturate(1.08);
 }
 
 .playlist-folder-info {
@@ -490,11 +496,17 @@ button:active {
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
 }
 
+/* 🔧 ปรับใหม่ (2026-09-12 รอบ 7): ทำให้รูปปกเพลงในเพลย์ลิสต์ชัดเจนไม่เบลอ
+   - เพิ่ม image-rendering: -webkit-optimize-contrast
+   - เพิ่ม filter: contrast + saturate ช่วยให้สีสดขึ้น */
 .playlist-cover img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   transition: transform 0.3s ease;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+  filter: contrast(1.05) saturate(1.08);
 }
 
 .playlist-song-row:hover .playlist-cover img {
@@ -654,12 +666,21 @@ button:active {
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
 }
 
+/* 🔧 ปรับใหม่ (2026-09-12 รอบ 7): ทำให้รูปปกเพลงชัดเจนไม่เบลอ
+   - เพิ่ม image-rendering: -webkit-optimize-contrast ช่วยเพิ่มความคมชัด
+   - เพิ่ม image-rendering: crisp-edges เป็น fallback
+   - เพิ่ม loading="lazy" ผ่าน attribute ใน HTML ด้วย
+   - object-fit: cover คงไว้เพื่อรักษาสัดส่วน
+   - filter: contrast(1.05) saturate(1.1) ช่วยให้สีสดขึ้นนิดหน่อย */
 .song-cover img {
   position: static;
   width: 100%;
   height: 100%;
   object-fit: cover;
   transition: transform 0.3s ease;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+  filter: contrast(1.05) saturate(1.08);
 }
 
 .song-card:hover .song-cover img {
