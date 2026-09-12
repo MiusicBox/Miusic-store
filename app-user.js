@@ -42,12 +42,15 @@ function formatPrice(v) { return Number(v || 0).toLocaleString("en-US") + " LAK"
 // ราคาปกติ (ขีดฆ่า) + ราคาลด (เน้นสี) ถ้ามี discount active
 // ถ้าไม่มี discount → แสดงราคาปกติเหมือนเดิม (back-compat)
 function renderDiscountedPriceForSong(song) {
-  if (!song) return formatPrice(0);
+  // แก้บั๊ก (2026-09-13): เดิมกรณีไม่มีส่วนลด return ตัวเลขราคาเปล่าๆ ไม่มี class ครอบ
+  // ทำให้ .song-price ใน style.css ไม่เคยถูกใช้จริง ปรับ font-size เท่าไหร่ก็ไม่มีผล
+  // ครอบด้วย <span class="song-price"> เพื่อให้ควบคุมขนาด/สไตล์ผ่าน CSS ได้ตรงจุด
+  if (!song) return `<span class="song-price">${formatPrice(0)}</span>`;
   const original = Number(song.price) || 0;
   const discount = findActiveDiscountFor({ targetType: "song", targetId: song.id, discounts: STATE.discounts });
-  if (!discount) return formatPrice(original);
+  if (!discount) return `<span class="song-price">${formatPrice(original)}</span>`;
   const { finalPrice, hasDiscount } = applyDiscountToPrice(original, discount);
-  if (!hasDiscount) return formatPrice(original);
+  if (!hasDiscount) return `<span class="song-price">${formatPrice(original)}</span>`;
   return `<span class="price-original">${formatPrice(original)}</span> <span class="price-discounted">${formatPrice(finalPrice)}</span>`;
 }
 
