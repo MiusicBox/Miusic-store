@@ -481,8 +481,9 @@ button:active {
   background: var(--surface-2);
 }
 
-/* 🔧 ปรับใหม่ (2026-09-12 รอบ 3): ขยาย cover ของเพลงในเพลย์ลิสต์จาก 50px → 58px
-   ให้สมดุลกับแถวที่ใหญ่ขึ้นและตัวหนังสือที่ขยายขึ้น */
+/* 🔧 ปรับใหม่ (2026-09-13): เพิ่มความคมชัดของรูปปกในรายการเพลงของเพลย์ลิสต์
+   ขนาด cover 58px แต่รูปต้นฉบับอาจมี resolution ต่ำ → เบลอ
+   เพิ่ม image-rendering: high-quality และ backface-visibility เพื่อบังคับ render คมชัด */
 .playlist-cover {
   width: 58px;
   height: 58px;
@@ -492,17 +493,25 @@ button:active {
   overflow: hidden;
   flex-shrink: 0;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  /* บังคับให้ browser render รูปที่คมชัดที่สุด */
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
-/* 🔧 ปรับใหม่ (2026-09-12 รอบ 8): ลด filter ในรูปปกเพลงในเพลย์ลิสต์
-   เอา filter ออก ใช้ image-rendering: auto + bicubic แทน */
+/* 🔧 ปรับใหม่ (2026-09-13): ใช้ image-rendering: high-quality สำหรับรูปปกในเพลย์ลิสต์
+   รองรับหน้าจอ Retina ของ iPhone ให้คมชัดขึ้น */
 .playlist-cover img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   transition: transform 0.3s ease;
-  image-rendering: auto;
+  image-rendering: high-quality;
+  image-rendering: -webkit-optimize-contrast;
   -ms-interpolation-mode: bicubic;
+  /* บังคับ GPU rendering สำหรับความคมชัด */
+  transform: translateZ(0);
+  backface-visibility: hidden;
 }
 
 .playlist-song-row:hover .playlist-cover img {
