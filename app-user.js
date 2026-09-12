@@ -308,7 +308,7 @@ function renderSongGrid() {
   grid.innerHTML = list.map(s => `
     <div class="song-card" data-id="${s.id}">
       <div class="song-cover">
-        <img src="${s.cover_url || ""}">
+        <img src="${s.cover_url || ""}" loading="eager" decoding="sync" referrerpolicy="no-referrer">
         <button class="play-btn" data-play="${s.id}"><svg width="16" height="16" viewBox="0 0 24 24" fill="#fff"><path d="M8 5v14l11-7z"/></svg></button>
       </div>
       <div class="song-info">
@@ -370,7 +370,7 @@ function renderPlaylists() {
       <div class="playlist-block" data-playlist-id="${pl.id}">
         <div class="playlist-folder-btn" data-toggle-playlist="${pl.id}">
           <div class="playlist-folder-cover">
-            <img src="${cover}">
+            <img src="${cover}" loading="eager" decoding="sync" referrerpolicy="no-referrer">
           </div>
           <div class="playlist-folder-info">
             <div class="playlist-folder-name">${escapeHtml(pl.playlist_name)}</div>
@@ -390,7 +390,7 @@ function renderPlaylists() {
             ${songs.map(s => `
               <div class="playlist-song-row" data-id="${s.id}">
                 <div class="playlist-cover">
-                  <img src="${s.cover_url || pl.cover_url || ""}">
+                  <img src="${s.cover_url || pl.cover_url || ""}" loading="eager" decoding="sync" referrerpolicy="no-referrer">
                   <button class="playlist-play-btn" data-play="${s.id}">
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="#fff"><path d="M8 5v14l11-7z"/></svg>
                   </button>
