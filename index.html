@@ -264,6 +264,10 @@
         <svg id="playerIcon" width="16" height="16" viewBox="0 0 24 24" fill="#fff"><path d="M8 5v14l11-7z"/></svg>
         <div class="spinner" id="playerSpinner" style="display:none;"></div>
       </button>
+      <!-- 🔧 เพิ่มใหม่ (2026-09-12): ปุ่มปิดเครื่องเล่นเพลง (X) — ให้ลูกค้ากดปิด popup player ได้ -->
+      <button class="ctrl player-close-btn" id="playerClose" type="button" aria-label="ปิดเครื่องเล่น" title="ปิดเครื่องเล่น">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+      </button>
     </div>
     <div class="player-seek-row">
       <span class="time" id="playerCurrentTime">0:00</span>
@@ -522,7 +526,7 @@
   </script>
 
   <!-- เปลี่ยนเลข v ทุกครั้งที่อัปโหลดไฟล์ใหม่ เพื่อไม่ให้มือถือใช้ไฟล์ JS จาก cache -->
-  <!-- 🔧 v=20260912-login-fix: แก้บั๊ก "ยังไม่ได้ login" ตอนกดสั่งซื้อ (อัปเดต app-cart.js + app-user.js) -->
-  <script type="module" src="app-user.js?v=20260912-login-fix"></script>
+  <!-- 🔧 v=20260912-player-close: เพิ่มปุ่มปิดเครื่องเล่นเพลง (X) ในหน้า user -->
+  <script type="module" src="app-user.js?v=20260912-player-close"></script>
 </body>
 </html>
