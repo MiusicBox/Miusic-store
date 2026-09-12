@@ -10,9 +10,11 @@
    ไม่แตะ HTML structure/ID/Class ที่ app-user.js และ app-cart.js อ้างอิงอยู่
    (เปลี่ยนเฉพาะสี ฟอนต์ เงา ระยะห่าง ไม่เปลี่ยนโครงสร้าง DOM)
 
-   อัปเดตล่าสุด: แก้ป้ายราคาในการ์ดเพลงให้เล็กลง ไม่มีพื้นหลังทึบ ไม่บัง
-   ชื่อเพลง, ตรึงมุมขวาล่างของการ์ด, สีราคาโปรโมชัน = แดงอมชมพู, สีราคาปกติ
-   = เหลืองอมม่วง, ปรับรูปปกให้คมชัดขึ้น, และไล่สีพื้นหลังการ์ดตามลำดับ
+   อัปเดตล่าสุด (2026-09-12): เพิ่มแพตช์ท้ายไฟล์ —
+   - รูปปกคมชัดขึ้น (image-rendering ใส่ตรงตัว <img> จริง)
+   - เผื่อพื้นที่ด้านขวาให้ราคาตัวใหญ่ ไม่บังชื่อเพลง/เพลย์ลิสต์
+   - ฟอนต์ราคาใหญ่ขึ้น + ตัวหนา ให้เพลย์ลิสต์กับเพลงทั้งหมดเหมือนกัน
+   - สลับสี: ราคาปกติ = ชมพูเข้ม, ราคาลด/โปรโมชัน = ทอง
    ===================================================================== */
 
 /* ---------- 1) COLOR SYSTEM: override ตัวแปรเดิมของ style.css ---------- */
@@ -525,4 +527,82 @@ html, body {
       hsl(255, 45%, calc(9% + 15% * var(--mvx-row-t) + 4%)),
       hsl(255, 50%, calc(9% + 15% * var(--mvx-row-t)))
     ) !important;
+}
+
+/* =====================================================================
+   13) PATCH ใหม่ (2026-09-12): รูปคมชัดขึ้น / ราคาไม่บังชื่อ / สลับสีราคา
+   ---------------------------------------------------------------------
+   - รูปปกคมชัดขึ้น: ใส่ image-rendering ตรงที่ตัว <img> จริง (เดิมใส่ที่
+     div ครอบ .song-cover เท่านั้น ตัวรูปเลยไม่ได้ผล)
+   - เผื่อพื้นที่ขวาให้ราคาตัวใหญ่ ไม่ให้ทับชื่อเพลง/เพลย์ลิสต์
+   - ฟอนต์ราคาใหญ่ขึ้น + ตัวหนา ให้ "เพลย์ลิสต์" กับ "เพลงทั้งหมด" เหมือนกัน
+   - สลับสี: ราคาปกติ = ชมพูเข้ม, ราคาลด/โปรโมชัน = ทอง
+   วางไว้ท้ายไฟล์เพื่อให้ลำดับ cascade ทับกฎเดิมด้านบนได้แน่นอน
+   ===================================================================== */
+
+/* 13.1) รูปปกคมชัดขึ้น — ใส่ตรงตัว <img> จริง ไม่ใช่แค่ div ครอบ */
+.song-cover img,
+.playlist-cover img,
+.playlist-folder-cover img {
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transform: translateZ(0);
+}
+
+/* 13.2) เผื่อที่ด้านขวาให้พอกับราคาตัวใหญ่ตัวหนา ไม่ให้ทับชื่อเพลง/เพลย์ลิสต์ */
+.song-name, .song-artist, .song-dj,
+.playlist-item-sub, .playlist-folder-count {
+  padding-right: 120px !important;
+}
+
+/* 13.3) ขนาด/น้ำหนักฟอนต์ราคา — เท่ากันทั้งเพลย์ลิสต์และเพลงทั้งหมด */
+.song-price,
+.playlist-item-price,
+.playlist-folder-price,
+.price-original,
+.price-discounted {
+  font-size: 15px !important;
+  font-weight: 800 !important;
+}
+.price-original { font-size: 12px !important; }
+
+/* 13.4) สีราคา: ปกติ = ชมพูเข้ม / ลดราคา-โปรโมชัน = ทอง */
+.song-card .cart-add-btn .song-price,
+.song-card .song-price,
+.playlist-item-price,
+.playlist-folder-price {
+  background: none !important;
+  color: #c2185b !important;
+  -webkit-text-fill-color: #c2185b !important;
+}
+
+.song-card .cart-add-btn .price-discounted,
+.song-card .price-discounted,
+.price-discounted {
+  background: none !important;
+  color: var(--nx-gold, #ffd21f) !important;
+  -webkit-text-fill-color: var(--nx-gold, #ffd21f) !important;
+  text-shadow: 0 0 8px rgba(255, 210, 31, .35);
+}
+
+.discount-badge,
+.mvx-discount-badge {
+  background: linear-gradient(135deg, var(--nx-gold, #ffd21f), #ffb84d) !important;
+  color: #1a0a2e !important;
+  -webkit-text-fill-color: #1a0a2e !important;
+  box-shadow: 0 0 10px rgba(255, 210, 31, .5) !important;
+}
+
+.song-card .cart-add-btn .price-original,
+.song-card .price-original,
+.price-original {
+  color: rgba(255,255,255,.55) !important;
+  -webkit-text-fill-color: rgba(255,255,255,.55) !important;
+}
+
+/* 13.5) กล่องพื้นหลังราคา ไม่ให้ล้นขอบการ์ดตอนฟอนต์ใหญ่ขึ้น */
+.song-footer, .playlist-item-price {
+  padding: 4px 10px !important;
 }
