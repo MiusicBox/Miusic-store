@@ -774,7 +774,7 @@ button:active {
 /* 🔧 ปรับใหม่ (2026-09-12 รอบ 4): ลดขนาดราคาเพลงเดี่ยวจาก 17px → 14px + น้ำหนักจาก 900 → 800
    ให้พอดีสมดุลกับราคารายการเพลงในเพลย์ลิสต์ */
 .song-price {
-  font-size: 16px;
+  font-size: 17px;
   font-weight: 800;
   color: var(--success);
   white-space: nowrap;
@@ -1477,7 +1477,7 @@ button:active {
 .price-original {
   color: var(--text-dim, #999);
   text-decoration: line-through;
-  font-size: 12px;
+  font-size: 17px;
   font-weight: 500;
   margin-right: 4px;
   opacity: 1;
@@ -1489,7 +1489,7 @@ button:active {
 .price-discounted {
   color: var(--accent-2, #ec4899);
   font-weight: 800;
-  font-size: 14px;
+  font-size: 17px;
   letter-spacing: -0.2px;
 }
 .price-discounted.large {
