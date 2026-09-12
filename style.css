@@ -397,12 +397,12 @@ button:active {
   box-sizing: border-box;
 }
 
-/* 🔧 ปรับใหม่ (2026-09-12): ขนาดราคาหัวเพลย์ลิสต์ใหญ่กว่าราคารายการเพลงนิดหน่อย
-   ใหญ่ขึ้น + หนาขึ้นเพื่อให้สวยพอดีเมื่อใช้บน iPhone — เดิม 10.5px/700 ใหญ่เกินไปสำหรับมือถือ */
+/* 🔧 ปรับใหม่ (2026-09-12 รอบ 2): ขนาดราคาหัวเพลย์ลิสต์ใหญ่กว่าราคารายการเพลงนิดหน่อย
+   ขยายขึ้นอีก + หนาขึ้น (900) เพื่อให้สวยพอดีบน iPhone — เดิม 17px/800 */
 .playlist-folder-price {
   flex-shrink: 0;
-  font-size: 17px;
-  font-weight: 800;
+  font-size: 19px;
+  font-weight: 900;
   color: var(--success);
   white-space: nowrap;
   background: transparent;
@@ -449,6 +449,10 @@ button:active {
   gap: 0px !important;
 }
 
+/* 🔧 ปรับใหม่ (2026-09-12 รอบ 3): ขยายแถวเพลงในเพลย์ลิสต์ให้ใหญ่ขึ้น
+   - padding เพิ่มจาก 6px 10px → 10px 12px
+   - gap เพิ่มจาก 10px → 12px
+   - ให้พื้นที่เพียงพอสำหรับ cover และตัวหนังสือที่ใหญ่ขึ้น */
 .playlist-song-row {
   background: var(--surface);
   border: none;
@@ -458,8 +462,8 @@ button:active {
   display: flex;
   flex-direction: row;
   align-items: center;
-  padding: 6px 10px;
-  gap: 10px;
+  padding: 10px 12px;
+  gap: 12px;
   box-shadow: none;
   transition: all 0.2s ease;
   position: relative;
@@ -473,9 +477,11 @@ button:active {
   background: var(--surface-2);
 }
 
+/* 🔧 ปรับใหม่ (2026-09-12 รอบ 3): ขยาย cover ของเพลงในเพลย์ลิสต์จาก 50px → 58px
+   ให้สมดุลกับแถวที่ใหญ่ขึ้นและตัวหนังสือที่ขยายขึ้น */
 .playlist-cover {
-  width: 50px;
-  height: 50px;
+  width: 58px;
+  height: 58px;
   border-radius: 8px;
   background: var(--surface-2);
   position: relative;
@@ -537,39 +543,45 @@ button:active {
   padding: 0;
 }
 
+/* 🔧 ปรับใหม่ (2026-09-12 รอบ 3): ขยายชื่อเพลงในเพลย์ลิสต์จาก 13.5px → 15px
+   + เพิ่ม padding-right 135px ป้องกันป้ายราคาบังชื่อเพลง (เดิมไม่มี padding-right) */
 .playlist-item-name {
-  font-size: 13.5px;
+  font-size: 15px;
   font-weight: 700;
-  line-height: 1.25;
+  line-height: 1.3;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   display: block;
   color: var(--text);
   width: 100%;
+  padding-right: 135px;
+  box-sizing: border-box;
 }
 
+/* 🔧 ปรับใหม่ (2026-09-12 รอบ 3): ขยายขนาดตัวหนังสือรองของเพลงในเพลย์ลิสต์จาก 11.5px → 12.5px
+   + เพิ่ม padding-right จาก 130px → 135px ให้เท่ากับชื่อเพลง */
 .playlist-item-sub {
-  font-size: 11.5px;
+  font-size: 12.5px;
   color: var(--text-dim);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  margin-top: 1px;
+  margin-top: 2px;
   font-weight: 500;
   width: 100%;
-  padding-right: 130px;
+  padding-right: 135px;
   box-sizing: border-box;
 }
 
-/* 🔧 ปรับใหม่ (2026-09-12): ขนาดราคาในรายการเพลงของเพลย์ลิสต์ = ราคาเพลงเดี่ยว
-   ใหญ่ขึ้น + หนาขึ้น (เดิม 11px/700) เพื่อให้อ่านง่ายบน iPhone และสม่ำเสมอกับเพลงเดี่ยว */
+/* 🔧 ปรับใหม่ (2026-09-12 รอบ 2): ขนาดราคาในรายการเพลงของเพลย์ลิสต์ = ราคาเพลงเดี่ยว
+   ขยายขึ้นอีก + หนาขึ้น (900) (เดิม 15px/800) เพื่อให้อ่านง่ายบน iPhone */
 .playlist-item-price {
   position: absolute;
   right: 0px;
   bottom: 0px;
-  font-size: 15px;
-  font-weight: 800;
+  font-size: 17px;
+  font-weight: 900;
   color: var(--success);
   white-space: nowrap;
   background: var(--surface-2);
@@ -592,6 +604,10 @@ button:active {
   margin: 0 auto;
 }
 
+/* 🔧 ปรับใหม่ (2026-09-12 รอบ 3): ขยายแถวเพลงทั้งหมดให้ใหญ่ขึ้น
+   - padding เพิ่มจาก 6px 10px → 10px 12px
+   - gap เพิ่มจาก 10px → 12px
+   ให้สมดุลกับ cover และตัวหนังสือที่ขยายขึ้น */
 .song-card {
   background: var(--surface);
   border: none;
@@ -601,8 +617,8 @@ button:active {
   display: flex;
   flex-direction: row;
   align-items: center;
-  padding: 6px 10px;
-  gap: 10px;
+  padding: 10px 12px;
+  gap: 12px;
   box-shadow: none;
   transition: all 0.2s ease;
   position: relative; /* เพิ่มใหม่ (2026-09-10 รอบ 3): ให้ .song-footer ยึดมุมขวาล่างของการ์ดนี้ */
@@ -622,9 +638,11 @@ button:active {
   background: var(--surface-2);
 }
 
+/* 🔧 ปรับใหม่ (2026-09-12 รอบ 3): ขยาย cover ของเพลงเดี่ยวจาก 55px → 62px
+   ให้สมดุลกับแถวที่ใหญ่ขึ้นและราคาที่ใหญ่ขึ้น */
 .song-cover {
-  width: 55px !important;
-  height: 55px !important;
+  width: 62px !important;
+  height: 62px !important;
   flex-shrink: 0;
   border-radius: 8px;
   position: relative;
@@ -690,36 +708,44 @@ button:active {
   padding: 0;
 }
 
+/* 🔧 ปรับใหม่ (2026-09-12 รอบ 3): ขยายชื่อเพลงจาก 13.5px → 15px + เพิ่ม padding-right 140px
+   ป้องกันป้ายราคา (ที่อยู่มุมขวาล่าง) มาบังท้ายชื่อเพลง
+   เดิมมีแค่ width: 95% ไม่มี padding-right เลย ทำให้ชื่อเพลงยาวล้ำไปใต้ป้ายราคา */
 .song-name {
-  font-size: 13.5px;
+  font-size: 15px;
   font-weight: 700;
-  line-height: 1.25;
+  line-height: 1.3;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   display: block;
   color: var(--text);
-  width: 95%;
+  width: 100%;
+  padding-right: 140px;
+  box-sizing: border-box;
 }
 
+/* 🔧 ปรับใหม่ (2026-09-12 รอบ 3): ขยายตัวหนังสือรองจาก 11.5px → 12.5px
+   + เพิ่ม padding-right จาก 110px → 140px ให้เท่ากับชื่อเพลง กันบังเหมือนกัน */
 .song-artist {
-  font-size: 11.5px;
+  font-size: 12.5px;
   color: var(--text-dim);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  margin-top: 1px;
+  margin-top: 2px;
   font-weight: 500;
   width: 100%;
   /* เพิ่มใหม่ (2026-09-10 รอบ 3): เผื่อที่ด้านขวาให้ badge ราคาที่ย้ายไปมุมขวาล่างแล้ว */
-  padding-right: 110px;
+  padding-right: 140px;
   box-sizing: border-box;
 }
 
+/* 🔧 ปรับใหม่ (2026-09-12 รอบ 3): ขยายตัวหนังสือ DJ จาก 11px → 12px + เพิ่ม padding-right 140px */
 .song-dj {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--accent-2);
-  margin-top: 1px;
+  margin-top: 2px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -728,7 +754,7 @@ button:active {
   align-items: center;
   gap: 4px;
   /* เพิ่มใหม่ (2026-09-10 รอบ 3): เผื่อที่ด้านขวาให้ badge ราคาที่ย้ายไปมุมขวาล่างแล้ว */
-  padding-right: 110px;
+  padding-right: 140px;
   box-sizing: border-box;
 }
 
@@ -747,11 +773,11 @@ button:active {
   z-index: 1;
 }
 
-/* 🔧 ปรับใหม่ (2026-09-12): ขนาดราคาเพลงเดี่ยว = ราคารายการเพลงในเพลย์ลิสต์
-   ใหญ่ขึ้น + หนาขึ้น (เดิม 12px/700) ให้อ่านง่ายบน iPhone */
+/* 🔧 ปรับใหม่ (2026-09-12 รอบ 2): ขนาดราคาเพลงเดี่ยว = ราคารายการเพลงในเพลย์ลิสต์
+   ขยายขึ้นอีก + หนาขึ้น (900) (เดิม 15px/800) ให้อ่านง่ายบน iPhone */
 .song-price {
-  font-size: 15px;
-  font-weight: 800;
+  font-size: 17px;
+  font-weight: 900;
   color: var(--success);
   white-space: nowrap;
   background: transparent;
@@ -1398,28 +1424,28 @@ button:active {
    ===================================================================== */
 
 /* ---- ราคาปกติ (ขีดฆ่า) ---- */
-/* 🔧 ปรับใหม่ (2026-09-12): ราคาขีดฆ่าใหญ่ขึ้น + หนาขึ้นนิดหน่อย เพื่อให้อ่านง่ายบน iPhone
+/* 🔧 ปรับใหม่ (2026-09-12 รอบ 2): ราคาขีดฆ่าใหญ่ขึ้นอีก + หนาขึ้น (เดิม 13px/600)
    ยังคงเล็กกว่าราคาหลังลดอยู่ เพื่อรักษาลำดับชั้นภาพ */
 .price-original {
   color: var(--text);
   text-decoration: line-through;
-  font-size: 15px;
-  font-weight: 600;
+  font-size: 14.5px;
+  font-weight: 700;
   margin-right: 5px;
   opacity: 1;
 }
 
 /* ---- ราคาหลังลด/โปรโมชั่น ---- */
-/* 🔧 ปรับใหม่ (2026-09-12): ราคาหลังลดใหญ่ขึ้น + หนาขึ้น (เดิม 14px/800) เท่ากับราคาเพลงเดี่ยว/รายการเพลง
-   สำหรับ .price-discounted.large ที่ใช้ในหัวเพลย์ลิสต์ก็ขยายตามเพื่อรักษาสัดส่วนเดิม */
+/* 🔧 ปรับใหม่ (2026-09-12 รอบ 2): ราคาหลังลดขยายขึ้นอีก + หนาขึ้น (900) (เดิม 15px/800)
+   เท่ากับราคาเพลงเดี่ยว/รายการเพลง — .price-discounted.large สำหรับหัวเพลย์ลิสต์ก็ขยายตาม */
 .price-discounted {
   color: var(--accent-2, #ec4899);
-  font-weight: 800;
-  font-size: 15px;
+  font-weight: 900;
+  font-size: 17px;
   letter-spacing: -0.2px;
 }
 .price-discounted.large {
-  font-size: 17px;
+  font-size: 19px;
 }
 
 /* ---- badge ส่วนลดขนาดเล็ก ---- */
@@ -1599,59 +1625,87 @@ button:active {
 }
 
 /* =====================================================================
-   🔧 ปรับใหม่ (2026-09-12): responsive สำหรับราคาเพลงบน iPhone/มือถือขนาดเล็ก
+   🔧 ปรับใหม่ (2026-09-12 รอบ 3): responsive สำหรับ iPhone/มือถือขนาดเล็ก
    ------------------------------------------------------------------------
    - ปรับขนาดราคาให้พอดีกับหน้าจอ iPhone (375–480px)
    - หัวเพลย์ลิสต์ใหญ่กว่าราคารายการเพลงนิดหน่อยเสมอ (เพื่อให้ชัดว่าเป็นราคารวม)
    - ปรับ padding ของ badge ราคาในรายการเพลงเพลย์ลิสต์ให้ไม่บังชื่อเพลงมากเกินไป
+   - ลด padding-right ของชื่อเพลงลงบนจอแคบ เพื่อให้พอดีกับความกว้างจอ iPhone
    ===================================================================== */
 @media (max-width: 480px) {
   /* ราคาเพลงเดี่ยว / ราคารายการเพลงในเพลย์ลิสต์ — เท่ากัน */
   .song-price,
   .playlist-item-price {
-    font-size: 15px;
-    font-weight: 800;
+    font-size: 17px;
+    font-weight: 900;
   }
 
   /* ราคาหัวเพลย์ลิสต์ — ใหญ่กว่าราคารายการนิดหน่อย */
   .playlist-folder-price {
-    font-size: 17px;
-    font-weight: 800;
+    font-size: 19px;
+    font-weight: 900;
     letter-spacing: -0.4px;
   }
 
   /* ราคาหลังลด/โปรโมชั่น — เท่ากับราคาเพลงเดี่ยว */
   .price-discounted {
-    font-size: 16px;
-    font-weight: 800;
+    font-size: 17px;
+    font-weight: 900;
   }
 
   /* ราคาหลังลดขนาดใหญ่ (ใช้ในหัวเพลย์ลิสต์) */
   .price-discounted.large {
-    font-size: 16px;
-    font-weight: 800;
+    font-size: 19px;
+    font-weight: 900;
   }
 
   /* ราคาขีดฆ่า — ยังคงเล็กกว่าราคาหลังลด */
   .price-original {
-    font-size: 12.5px;
-    font-weight: 600;
+    font-size: 14.5px;
+    font-weight: 700;
   }
 
   /* badge ส่วนลด — ขยายนิดหน่อยให้อ่านง่ายบนมือถือ */
   .discount-badge {
-    font-size: 10.5px;
-    padding: 2px 7px;
+    font-size: 11px;
+    padding: 2px 8px;
   }
 
   /* ปรับ padding ของ badge ราคาในรายการเพลงเพลย์ลิสต์ — ไม่ให้บังชื่อเพลงมากเกินไป */
   .playlist-item-price {
-    padding: 4px 9px;
+    padding: 5px 11px;
   }
 
-  /* ลด padding-right ของชื่อเพลง/ชื่อเพลย์ลิสต์ เพื่อเผื่อพื้นที่ราคาที่ใหญ่ขึ้น */
+  /* 🔧 ปรับ padding-right ของชื่อเพลง/ชื่อรอง ให้พอดีกับ iPhone — ลดลงเล็กน้อยจาก default
+     เพื่อเผื่อพื้นที่ราคาที่ใหญ่ขึ้นแต่ยังไม่บังตัวหนังสือ */
+  .song-name,
+  .song-artist,
+  .song-dj {
+    padding-right: 130px;
+  }
+  .playlist-item-name,
+  .playlist-item-sub {
+    padding-right: 125px;
+  }
   .playlist-folder-count {
-    padding-right: 120px;
+    padding-right: 130px;
+  }
+
+  /* 🔧 ลดขนาด cover บนจอแคบนิดหน่อย เพื่อเผื่อพื้นที่ตัวหนังสือ */
+  .song-cover {
+    width: 58px !important;
+    height: 58px !important;
+  }
+  .playlist-cover {
+    width: 54px;
+    height: 54px;
+  }
+
+  /* 🔧 ลด padding แถวเพลงบนจอแคบนิดหน่อย */
+  .song-card,
+  .playlist-song-row {
+    padding: 9px 10px;
+    gap: 10px;
   }
 }
 
@@ -1659,18 +1713,44 @@ button:active {
 @media (max-width: 375px) {
   .song-price,
   .playlist-item-price {
-    font-size: 14px;
+    font-size: 16px;
+    font-weight: 900;
   }
   .playlist-folder-price {
-    font-size: 16px;
+    font-size: 18px;
+    font-weight: 900;
   }
   .price-discounted {
-    font-size: 14px;
+    font-size: 16px;
+    font-weight: 900;
   }
   .price-discounted.large {
-    font-size: 16px;
+    font-size: 18px;
+    font-weight: 900;
   }
   .price-original {
-    font-size: 12px;
+    font-size: 13.5px;
+    font-weight: 700;
+  }
+
+  /* 🔧 ลด cover ลงอีกบนจอเล็กมาก */
+  .song-cover {
+    width: 54px !important;
+    height: 54px !important;
+  }
+  .playlist-cover {
+    width: 50px;
+    height: 50px;
+  }
+
+  /* 🔧 ลด padding-right ลงอีกบนจอเล็กมาก */
+  .song-name,
+  .song-artist,
+  .song-dj {
+    padding-right: 115px;
+  }
+  .playlist-item-name,
+  .playlist-item-sub {
+    padding-right: 110px;
   }
 }
