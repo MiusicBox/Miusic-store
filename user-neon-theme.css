@@ -9,6 +9,10 @@
    override ค่าตัวแปรและสไตล์ของ component เดิมได้โดยไม่ต้องแก้ style.css,
    ไม่แตะ HTML structure/ID/Class ที่ app-user.js และ app-cart.js อ้างอิงอยู่
    (เปลี่ยนเฉพาะสี ฟอนต์ เงา ระยะห่าง ไม่เปลี่ยนโครงสร้าง DOM)
+
+   อัปเดตล่าสุด: แก้ป้ายราคาในการ์ดเพลงให้เล็กลง ไม่มีพื้นหลังทึบ ไม่บัง
+   ชื่อเพลง, ตรึงมุมขวาล่างของการ์ด, สีราคาโปรโมชัน = แดงอมชมพู, สีราคาปกติ
+   = เหลืองอมม่วง, ปรับรูปปกให้คมชัดขึ้น, และไล่สีพื้นหลังการ์ดตามลำดับ
    ===================================================================== */
 
 /* ---------- 1) COLOR SYSTEM: override ตัวแปรเดิมของ style.css ---------- */
@@ -137,7 +141,7 @@ html, body {
   box-shadow: 0 0 12px var(--accent-2-glow);
 }
 
-/* ---------- 6) SONG CARD / GRID (รายการเพลง) — PREMIUM REDESIGN v2 ---------- */
+/* ---------- 6) SONG CARD / GRID (รายการเพลง) — PREMIUM REDESIGN v3 ---------- */
 /* Mobile-first: การ์ดแนวนอน 1 แถว/เพลง (ตามสเปก "ONE PRODUCT = ONE ROW")
    ปรับเป็น CSS Grid หลายคอลัมน์เมื่อจอกว้างขึ้น โดยไม่เปลี่ยน DOM ที่ app-user.js สร้าง */
 .song-grid {
@@ -145,6 +149,7 @@ html, body {
 }
 
 .song-card {
+  position: relative !important; /* จำเป็นสำหรับ .song-footer แบบ absolute ด้านล่าง */
   background: linear-gradient(160deg, rgba(18, 17, 36, 0.94), rgba(9, 8, 20, 0.97)) !important;
   border: 1px solid rgba(139, 92, 255, 0.28) !important;
   border-radius: 18px !important;
@@ -152,7 +157,8 @@ html, body {
   padding: 10px 12px !important;
   gap: 12px !important;
   box-shadow: 0 0 0 rgba(0, 0, 0, 0);
-  transition: border-color 0.22s ease, box-shadow 0.22s ease, transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: border-color 0.22s ease, box-shadow 0.22s ease, transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), background 0.3s ease;
+  overflow: hidden;
 }
 
 .song-card:first-child,
@@ -179,6 +185,10 @@ html, body {
   border: 1px solid rgba(255, 255, 255, 0.10);
   box-shadow: 0 0 0 1px rgba(139, 92, 255, 0.18), 0 4px 14px rgba(0, 0, 0, 0.35);
   transition: box-shadow 0.22s ease;
+  /* เพิ่มใหม่: ลดการเบลอของรูปปกตอนย่อขนาด/ตอน hover */
+  image-rendering: -webkit-optimize-contrast;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 .song-card:hover .song-cover {
   box-shadow: 0 0 0 1px rgba(255, 43, 214, 0.35), 0 6px 18px rgba(0, 0, 0, 0.4);
@@ -199,6 +209,7 @@ html, body {
 }
 
 /* ---- Text block ---- */
+/* เผื่อพื้นที่ด้านขวาล่างให้ป้ายราคาที่ลอยอยู่ ไม่ให้ทับชื่อเพลงบรรทัดสุดท้าย */
 .song-name {
   color: var(--text);
   font-size: clamp(14.5px, 3.6vw, 16px);
@@ -209,11 +220,13 @@ html, body {
   -webkit-box-orient: vertical;
   overflow: hidden;
   line-height: 1.28;
+  padding-right: 78px; /* กันไม่ให้ข้อความชนป้ายราคาที่ลอยมุมขวาล่าง */
 }
 
 .song-artist {
   font-size: 12.5px;
   color: var(--text-dim);
+  padding-right: 78px;
 }
 
 .song-dj {
@@ -222,25 +235,82 @@ html, body {
   text-shadow: 0 0 8px rgba(0, 229, 255, 0.25);
 }
 
-/* ---- ราคา + ปุ่มซื้อ: มุมขวาล่างของการ์ด (ตำแหน่งเดิม แค่ยกระดับดีไซน์) ---- */
+/* ---- ราคา + ปุ่มซื้อ: ลอยที่มุมขวาล่างของการ์ดเสมอ ไม่มีพื้นหลัง ไม่บังชื่อเพลง ---- */
 .song-footer {
+  position: absolute !important;
+  bottom: 8px !important;
+  right: 10px !important;
+  left: auto !important;
   background: transparent !important;
   border: none !important;
-  bottom: 8px !important;
-  right: 8px !important;
+  box-shadow: none !important;
+  z-index: 3;
 }
 
-.price-original {
-  color: var(--text-dim);
-  opacity: 0.75;
-  font-size: 10.5px;
+/* ปุ่ม/แถบราคา ในการ์ดเพลงหลัก — เอาพื้นหลังทึบและคำว่า "ซื้อเลย" ออก
+   เหลือแค่ไอคอนตะกร้าเล็ก ๆ + ตัวเลขราคาสีชัดเจน กดเพื่อซื้อได้เหมือนเดิม */
+.song-card .cart-add-btn {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 4px;
+  min-height: 0 !important;
+  padding: 4px 6px !important;
+  border-radius: 8px;
+  background: transparent !important;
+  color: inherit;
+  box-shadow: none !important;
+  transition: transform 0.16s ease;
+}
+.song-card .cart-add-btn svg {
+  width: 13px;
+  height: 13px;
+  opacity: 0.85;
+  flex-shrink: 0;
+}
+.song-card .cart-add-btn::after {
+  content: none !important; /* ปิดคำว่า "ซื้อเลย" ที่เคยแทรกไว้ */
+}
+.song-card .cart-add-btn:hover {
+  transform: none;
+}
+.song-card .cart-add-btn:active {
+  transform: scale(0.92);
 }
 
-.song-price,
-.price-discounted {
-  color: var(--nx-gold) !important;
-  text-shadow: 0 0 10px rgba(255, 210, 31, 0.35);
+/* ราคาโปรโมชัน/ส่วนลด — โทนแดงอมชมพู ตัวหนา เด่นชัด */
+.song-card .cart-add-btn .price-discounted,
+.song-card .price-discounted {
+  background: linear-gradient(90deg, #ff2d55, #ff2bd6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: #ff2d55; /* fallback เผื่อเบราว์เซอร์ไม่รองรับ background-clip:text */
+  text-shadow: none;
   font-weight: 800;
+  font-size: 13px;
+  letter-spacing: 0.2px;
+}
+
+/* ราคาปกติ (ไม่มีส่วนลด) — โทนเหลืองอมม่วง ตัวหนา เด่นชัด */
+.song-card .cart-add-btn .song-price,
+.song-card .song-price {
+  background: linear-gradient(90deg, var(--nx-gold), var(--accent));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: var(--nx-gold); /* fallback */
+  text-shadow: none;
+  font-weight: 800;
+  font-size: 13px;
+  letter-spacing: 0.2px;
+}
+
+/* ราคาก่อนลด — ตัวเล็ก ขีดฆ่า จางกว่า ไม่แย่งซีน */
+.song-card .cart-add-btn .price-original,
+.song-card .price-original {
+  color: rgba(255, 255, 255, 0.5);
+  text-decoration: line-through;
+  font-size: 10px;
+  font-weight: 600;
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.5); /* กัน background-clip ของ selector อื่นมาทับ */
 }
 
 /* จุดสัญลักษณ์ "มีส่วนลด" — badge ตัวเลข % จริง คำนวณจากราคาที่ระบบ render ออกมาแล้วเท่านั้น
@@ -259,44 +329,6 @@ html, body {
   box-shadow: 0 0 10px rgba(255, 43, 214, 0.6);
   pointer-events: none;
   line-height: 1.3;
-}
-
-/* แก้บั๊ก: ของเดิมใช้ selector .cart-add-btn แบบไม่ scope ทำให้ปุ่มเล็กในเพลย์ลิสต์
-   (.playlist-folder-price / .playlist-add-cart) โดนบังคับ min-height 44px และมีคำว่า
-   "ซื้อเลย" ไปแทรกด้วยทั้งที่พื้นที่แถวเพลย์ลิสต์แคบเกินไป — แก้ให้ scope เฉพาะการ์ดเพลงหลักเท่านั้น */
-.song-card .cart-add-btn {
-  display: inline-flex !important;
-  align-items: center;
-  gap: 6px;
-  min-height: 44px;
-  padding: 0 14px 0 12px;
-  border-radius: 13px;
-  background: linear-gradient(90deg, var(--accent), var(--accent-2));
-  color: #fff !important;
-  font-size: 12.5px;
-  font-weight: 800;
-  box-shadow: 0 0 14px var(--accent-2-glow);
-  transition: transform 0.16s ease, box-shadow 0.16s ease;
-}
-.song-card .cart-add-btn::after {
-  content: "ซื้อเลย";
-  font-weight: 800;
-  margin-left: 2px;
-}
-.song-card .cart-add-btn:hover {
-  box-shadow: 0 0 20px var(--accent-2-glow);
-}
-.song-card .cart-add-btn:active {
-  transform: scale(0.95);
-}
-.song-card .cart-add-btn .price-discounted,
-.song-card .cart-add-btn .song-price {
-  color: #fff !important;
-  text-shadow: none;
-  font-weight: 800;
-}
-.song-card .cart-add-btn .price-original {
-  color: rgba(255, 255, 255, 0.7);
 }
 
 .discount-badge {
@@ -403,7 +435,7 @@ html, body {
   border: 1px solid rgba(139, 92, 255, 0.35);
 }
 
-/* ---------- 10) เพิ่มใหม่: HERO PROMOTION + FLASH SALE (UI-only, ไม่มี backend ใหม่) ---------- */
+/* ---------- 10) HERO PROMOTION + FLASH SALE (UI-only, ไม่มี backend ใหม่) ---------- */
 /* คลาสทั้งหมดในส่วนนี้ตั้งชื่อขึ้นใหม่ (คำนำหน้า mvx-) เพื่อไม่ชนกับคลาสเดิมของระบบ
    ข้อมูลเปอร์เซ็นต์ส่วนลด/เวลานับถอยหลัง เป็นค่าคงที่ฝั่ง UI เท่านั้น
    เมื่อระบบหลังบ้านมี Promotion/Countdown จริง ให้แทนที่ค่าคงที่ใน mvx-init.js ด้วยข้อมูลจาก API เดิม */
@@ -479,4 +511,18 @@ html, body {
   .mvx-hero-content { margin-left: 46%; }
   .mvx-hero-pct { font-size: 32px; }
   .mvx-hero-title, .mvx-hero-sub { font-size: 12px; }
+}
+
+/* ---------- 12) เพิ่มใหม่: ไล่สีพื้นหลังการ์ดเพลงจากเข้ม → จาง ตามลำดับแถว ---------- */
+/* ทำงานร่วมกับสคริปต์ mvx-row-gradient ใน index.html ที่จะ set inline style
+   ตัวแปร --mvx-row-t (0 = การ์ดแรก, 1 = การ์ดสุดท้าย) ให้แต่ละ .song-card
+   ไฟล์นี้ใช้ background เป็น fallback เผื่อสคริปต์ยังไม่ทำงาน */
+.song-card {
+  --mvx-row-t: 0;
+  background:
+    linear-gradient(
+      160deg,
+      hsl(255, 45%, calc(9% + 15% * var(--mvx-row-t) + 4%)),
+      hsl(255, 50%, calc(9% + 15% * var(--mvx-row-t)))
+    ) !important;
 }
