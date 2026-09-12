@@ -589,6 +589,51 @@
     });
   </script>
 
+  <!-- เพิ่มใหม่: badge ส่วนลด % จริง คำนวณจากราคาที่ระบบ render ออกมาแล้วเท่านั้น
+       ไม่ดึงข้อมูลใหม่ ไม่แตะ renderSongGrid/renderDiscountedPriceForSong เดิม
+       ใช้ MutationObserver เพื่อให้ทำงานต่อเนื่องตอนค้นหา/เปลี่ยนหมวดหมู่ (ซึ่งจะ re-render #songGrid) -->
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const grid = document.getElementById('songGrid');
+      if (!grid) return;
+
+      function parsePrice(text) {
+        const digits = String(text || '').replace(/[^\d]/g, '');
+        return digits ? parseInt(digits, 10) : NaN;
+      }
+
+      function applyDiscountBadges() {
+        grid.querySelectorAll('.song-card').forEach((card) => {
+          const cover = card.querySelector('.song-cover');
+          if (!cover) return;
+          const orig = card.querySelector('.price-original');
+          const disc = card.querySelector('.price-discounted');
+          let badge = cover.querySelector('.mvx-discount-badge');
+          if (orig && disc) {
+            const o = parsePrice(orig.textContent);
+            const d = parsePrice(disc.textContent);
+            if (o > 0 && d >= 0 && d < o) {
+              const pct = Math.round((1 - d / o) * 100);
+              if (pct > 0) {
+                if (!badge) {
+                  badge = document.createElement('span');
+                  badge.className = 'mvx-discount-badge';
+                  cover.appendChild(badge);
+                }
+                badge.textContent = '-' + pct + '%';
+                return;
+              }
+            }
+          }
+          if (badge) badge.remove();
+        });
+      }
+
+      applyDiscountBadges();
+      new MutationObserver(applyDiscountBadges).observe(grid, { childList: true });
+    });
+  </script>
+
   <!-- เปลี่ยนเลข v ทุกครั้งที่อัปโหลดไฟล์ใหม่ เพื่อไม่ให้มือถือใช้ไฟล์ JS จาก cache -->
   <script type="module" src="app-user.js?v=20261101-disc-promo1"></script>
 </body>
