@@ -1,450 +1,1591 @@
-/* ==========================================
-   MIIWICBOX STORE - FULL NEON CYBERPUNK CSS
-   ========================================== */
+/* ==========================================================================
+   MODERN MUSIC PLAYER UI STYLESHEET
+   - Fonts: IBM Plex Sans Thai & Plus Jakarta Sans
+   - Theme: Premium Modern Dark Mode with Neon Accents
+   ========================================================================== */
 
-@import url('https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 
 :root {
-  --bg-color: #0b061a;
-  --card-bg: rgba(20, 10, 35, 0.75);
-  --neon-purple: #c084fc;
-  --neon-pink: #ec4899;
-  --neon-blue: #38bdf8;
-  --neon-yellow: #facc15;
-  --neon-orange: #f97316;
-  --border-glow: rgba(192, 132, 252, 0.3);
+  /* Color Palette */
+  --bg: #0b0d14;
+  --surface: #131722;
+  --surface-2: #1c2234;
+  --surface-hover: #262e45;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-focus: rgba(139, 92, 246, 0.5);
+  
+  --text: #f8fafc;
+  --text-dim: #94a3b8;
+  --accent: #8b5cf6;
+  --accent-glow: rgba(139, 92, 246, 0.35);
+  --accent-2: #ec4899;
+  --accent-2-glow: rgba(236, 72, 153, 0.35);
+  
+  --success: #10b981;
+  --danger: #ef4444;
+  
+  /* Layout & Geometry */
+  --radius: 20px;
+  --radius-sm: 12px;
+  --radius-full: 9999px;
+  
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-top: env(safe-area-inset-top, 0px);
+  
+  /* Shadows */
+  --shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.25);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.45);
+  --shadow-accent: 0 8px 24px var(--accent-glow);
 }
 
 * {
   box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
   margin: 0;
   padding: 0;
+  background: var(--bg);
+  background-image: 
+    radial-gradient(circle at 50% 0%, rgba(139, 92, 246, 0.12) 0%, transparent 60%),
+    radial-gradient(circle at 100% 50%, rgba(236, 72, 153, 0.08) 0%, transparent 50%);
+  background-attachment: fixed;
+  color: var(--text);
+  font-family: 'Plus Jakarta Sans', 'IBM Plex Sans Thai', -apple-system, BlinkMacSystemFont, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 body {
-  background-color: var(--bg-color);
-  background-image: 
-    radial-gradient(circle at 10% 10%, rgba(120, 0, 255, 0.18) 0%, transparent 40%),
-    radial-gradient(circle at 90% 90%, rgba(236, 72, 153, 0.15) 0%, transparent 40%);
-  color: #ffffff;
-  font-family: 'Prompt', sans-serif;
-  padding-bottom: 90px;
-  min-height: 100vh;
+  padding-bottom: calc(105px + var(--safe-bottom));
 }
 
-/* --- ส่วนหัว (Navbar) --- */
-header, .navbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 16px;
-  background: rgba(11, 6, 26, 0.85);
-  backdrop-filter: blur(12px);
-  border-bottom: 1px solid rgba(192, 132, 252, 0.2);
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button, input, select, textarea {
+  font-family: inherit;
+}
+
+img {
+  max-width: 100%;
+  display: block;
+}
+
+button {
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+button:active {
+  transform: scale(0.95);
+}
+
+/* ---------- Container ---------- */
+.container {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+/* ---------- Top Bar ---------- */
+.topbar {
   position: sticky;
   top: 0;
-  z-index: 100;
+  z-index: 40;
+  background: rgba(11, 13, 20, 0.75);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  padding-top: var(--safe-top);
+  border-bottom: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
 }
 
-.logo, .brand-title {
+.topbar-inner {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 1.2rem;
-  font-weight: 700;
-  background: linear-gradient(90deg, #38bdf8, #c084fc, #ec4899);
+  gap: 16px;
+  padding: 14px 16px;
+  max-width: 1080px;
+  margin: 0 auto;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 800;
+  font-size: 20px;
+  letter-spacing: -0.3px;
+  background: linear-gradient(135deg, #fff 30%, var(--text-dim));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
-.header-icons, .nav-actions {
+.logo img {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.search-box {
+  flex: 1;
   display: flex;
   align-items: center;
-  gap: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  max-width: 1080px;
+  margin: 0 auto;
+  transition: all 0.25s ease;
+  border-radius: var(--radius-full);
+  padding: 10px 18px;
+  gap: 10px;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
-.icon-btn, .cart-icon, .profile-icon, .menu-icon {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(192, 132, 252, 0.3);
-  color: #fff;
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  cursor: pointer;
-  transition: all 0.3s ease;
+.search-box:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-glow), inset 0 2px 4px rgba(0, 0, 0, 0.2);
+  background: var(--surface-2);
 }
 
-.icon-btn:hover {
-  background: rgba(192, 132, 252, 0.2);
-  box-shadow: 0 0 10px var(--neon-purple);
-}
-
-.badge-count {
-  position: absolute;
-  top: -3px;
-  right: -3px;
-  background: #ec4899;
-  color: white;
-  font-size: 0.65rem;
-  padding: 2px 6px;
-  border-radius: 10px;
-  font-weight: bold;
-  box-shadow: 0 0 8px #ec4899;
-}
-
-/* --- ช่องค้นหา (Search Bar) --- */
-.search-container, .search-bar {
-  margin: 14px 16px;
-  position: relative;
-}
-
-.search-container input, .search-bar input {
-  width: 100%;
-  padding: 12px 16px 12px 45px;
-  background: rgba(20, 12, 40, 0.9);
-  border: 2px solid #8b5cf6;
-  border-radius: 30px;
-  color: #fff;
-  font-size: 0.9rem;
-  box-shadow: 0 0 12px rgba(139, 92, 246, 0.25);
+.search-box input {
+  flex: 1;
+  background: transparent;
+  border: none;
   outline: none;
-  transition: all 0.3s ease;
+  color: var(--text);
+  font-size: 14.5px;
+  font-weight: 500;
 }
 
-.search-container input:focus, .search-bar input:focus {
-  border-color: #ec4899;
-  box-shadow: 0 0 18px rgba(236, 72, 153, 0.5);
+.search-box input::placeholder {
+  color: var(--text-dim);
+  opacity: 0.7;
 }
 
-.search-container i, .search-bar .search-icon {
-  position: absolute;
-  left: 16px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: #94a3b8;
-}
-
-/* --- หมวดหมู่แบบเลื่อนได้ (Categories Scroll) --- */
-.categories-scroll, .filter-buttons {
+/* ---------- Chips (Categories) ---------- */
+.chip-row {
   display: flex;
   gap: 10px;
   overflow-x: auto;
-  padding: 6px 16px;
+  padding: 14px 16px;
   scrollbar-width: none;
+  max-width: 1080px;
+  margin: 0 auto;
 }
-.categories-scroll::-webkit-scrollbar {
+
+.chip-row::-webkit-scrollbar {
   display: none;
 }
 
-.category-btn, .filter-btn {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-width: 72px;
-  height: 82px;
-  background: linear-gradient(145deg, rgba(30, 18, 55, 0.85), rgba(15, 8, 30, 0.95));
-  border: 1px solid rgba(192, 132, 252, 0.25);
-  border-radius: 18px;
-  color: #cbd5e1;
-  font-size: 0.75rem;
-  cursor: pointer;
-  transition: all 0.3s ease;
+.chip {
   flex-shrink: 0;
+  padding: 8px 18px;
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 13.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: all 0.2s ease;
 }
 
-.category-btn.active, .category-btn:first-child {
-  border: 2px solid #ec4899;
-  background: linear-gradient(145deg, #581c87, #9d174d);
+.chip:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.chip.active {
+  background: linear-gradient(135deg, var(--accent), #7c3aed);
+  border-color: transparent;
   color: #fff;
-  box-shadow: 0 0 15px rgba(236, 72, 153, 0.5);
+  box-shadow: var(--shadow-accent);
 }
 
-.category-btn i, .category-btn img {
-  font-size: 1.3rem;
-  margin-bottom: 4px;
-}
-
-/* --- แบนเนอร์หลัก (Hero Banner) --- */
-.hero-banner {
-  margin: 14px 16px;
-  padding: 18px;
-  background: linear-gradient(135deg, #311060, #831843, #1e3a8a);
-  border-radius: 22px;
-  border: 1px solid rgba(236, 72, 153, 0.4);
-  box-shadow: 0 8px 25px rgba(131, 24, 67, 0.35);
-  position: relative;
-  overflow: hidden;
+/* ---------- DJ Section ---------- */
+.dj-row {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  gap: 16px;
+  overflow-x: auto;
+  padding: 6px 16px 20px;
+  scrollbar-width: none;
+  max-width: 1080px;
+  margin: 0 auto;
 }
 
-/* --- แบนเนอร์นับถอยหลัง / โปรโมชั่นพิเศษ --- */
-.promo-timer-banner {
-  margin: 14px 16px;
-  padding: 16px;
-  background: linear-gradient(90deg, #1e1b4b, #311060, #581c87);
-  border-radius: 20px;
-  border: 2px solid #f97316;
-  box-shadow: 0 0 15px rgba(249, 115, 22, 0.3);
+.dj-row::-webkit-scrollbar {
+  display: none;
 }
 
-.timer-boxes {
-  display: flex;
-  gap: 8px;
-  justify-content: center;
-  margin-top: 8px;
-}
-
-.timer-box {
-  background: #111827;
-  border: 1px solid #c084fc;
-  padding: 6px 10px;
-  border-radius: 8px;
+.dj-item {
+  flex-shrink: 0;
+  width: 76px;
   text-align: center;
-  font-weight: bold;
-  color: #facc15;
 }
 
-/* --- ส่วนหัวข้อส่วน (Section Titles) --- */
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin: 20px 16px 10px 16px;
-}
-
-.section-title {
-  font-size: 1.05rem;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: #fff;
-}
-
-.see-all-link {
-  font-size: 0.85rem;
-  color: #38bdf8;
-  text-decoration: none;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-/* --- การ์ดเพลง / สินค้า (Song & Product Cards) --- */
-.song-card, .product-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: linear-gradient(90deg, rgba(22, 14, 42, 0.95), rgba(35, 20, 65, 0.75));
-  margin: 10px 16px;
-  padding: 10px 14px;
-  border-radius: 18px;
-  border: 1px solid rgba(56, 189, 248, 0.25);
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+.dj-avatar {
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  border: 2px solid var(--border);
+  object-fit: cover;
+  margin: 0 auto 8px;
+  padding: 2px;
   transition: all 0.25s ease;
 }
 
-.song-card:hover {
+.dj-item:hover .dj-avatar {
+  border-color: var(--accent-2);
   transform: translateY(-2px);
-  border-color: rgba(56, 189, 248, 0.7);
-  box-shadow: 0 0 18px rgba(56, 189, 248, 0.35);
+  box-shadow: 0 6px 16px var(--accent-2-glow);
 }
 
-.song-info-left {
+.dj-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.section-title {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.3px;
+  margin: 10px auto 10px;
+  max-width: 1080px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* ---------- Playlist Dropdown Style ---------- */
+.playlist-wrapper {
+  max-width: 1080px;
+  margin: 0 auto 12px;
+  padding: 0 16px;
+}
+
+.playlist-header-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: transparent;
+  border: none;
+  padding: 8px 0;
+  color: var(--text);
+  outline: none;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 6px;
+}
+
+.playlist-header-title {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.3px;
+}
+
+.dropdown-icon {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  color: var(--text-dim);
+}
+
+.dropdown-icon.is-closed {
+  transform: rotate(-90deg);
+}
+
+.playlist-content-box {
+  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+  max-height: 2000px;
+  opacity: 1;
+}
+
+.playlist-content-box.is-closed {
+  max-height: 0;
+  opacity: 0;
+  margin: 0;
+  padding: 0;
+  pointer-events: none;
+}
+
+/* ---------- Playlist Row ---------- */
+.playlist-block {
+  margin-bottom: 10px;
+  max-width: 1080px;
+  margin-left: auto;
+  margin-right: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.playlist-folder-btn {
+  width: 100%;
   display: flex;
   align-items: center;
   gap: 12px;
+  background: transparent;
+  border: none;
+  padding: 10px 12px;
+  text-align: left;
+  cursor: pointer;
+  position: relative; /* เพิ่มใหม่ (2026-09-10): ให้ .playlist-folder-price ยึดมุมขวาล่างของแถวนี้ */
+}
+
+.playlist-folder-btn:hover {
+  background: var(--surface-2);
+}
+
+.playlist-folder-cover {
+  width: 54px;
+  height: 54px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  overflow: hidden;
+  flex-shrink: 0;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.playlist-folder-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.playlist-folder-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.playlist-folder-name {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
+}
+
+.playlist-folder-count {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-top: 2px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* เพิ่มใหม่ (2026-09-10): เผื่อพื้นที่ด้านขวาให้ badge ราคาที่ย้ายไปมุมขวาล่างแล้ว ไม่ทับตัวหนังสือ */
+  padding-right: 110px;
+  box-sizing: border-box;
+}
+
+/* เปลี่ยนใหม่ (2026-09-10 รอบ 2): ลดขนาดราคาลงอีกนิด (เดิม 12px) เพื่อให้ badge เล็กลง
+   ไม่ไปเบียดชื่อ/จำนวนเพลงในแถวหัวเพลย์ลิสต์ */
+.playlist-folder-price {
+  flex-shrink: 0;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--success);
+  white-space: nowrap;
+  background: transparent;
+  padding: 0;
+  border: none;
+  cursor: pointer;
+  margin-left: 8px;
+}
+
+/* เอาออก (2026-09-10 รอบ 3): ยกเลิกการย่อขนาดราคาโปรโมชั่น/ลดราคาในนี้ตามที่แจ้ง
+   ให้ตัวหนังสือราคาโปรโมชั่น/ลดราคาที่นี่มีขนาดเท่ากับราคาโปรโมชั่น/ลดราคาของเพลงเดี่ยว (ค่า default ของ .price-original/.price-discounted) */
+
+
+.playlist-folder-arrow {
+  flex-shrink: 0;
+  color: var(--text-dim);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  margin-left: 6px;
+}
+
+.playlist-folder-arrow.is-closed {
+  transform: rotate(-90deg);
+}
+
+.playlist-row-wrap {
+  max-height: 3000px;
+  opacity: 1;
+  overflow: hidden;
+  border-top: 1px solid var(--border);
+  transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s ease;
+}
+
+.playlist-row-wrap.is-closed {
+  max-height: 0;
+  opacity: 0;
+  border-top-color: transparent;
+  pointer-events: none;
+}
+
+.playlist-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0px !important;
+}
+
+.playlist-song-row {
+  background: var(--surface);
+  border: none;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0px !important;
+  overflow: hidden;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 6px 10px;
+  gap: 10px;
+  box-shadow: none;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.playlist-song-row:last-child {
+  border-bottom: none;
+}
+
+.playlist-song-row:hover {
+  background: var(--surface-2);
+}
+
+.playlist-cover {
+  width: 50px;
+  height: 50px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  position: relative;
+  overflow: hidden;
+  flex-shrink: 0;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.playlist-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.3s ease;
+}
+
+.playlist-song-row:hover .playlist-cover img {
+  transform: scale(1.06);
+}
+
+.playlist-play-btn {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(2px);
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.9;
+  transition: all 0.2s ease;
+}
+
+.playlist-song-row:hover .playlist-play-btn {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.playlist-play-btn svg {
+  width: 22px;
+  height: 22px;
+  fill: #fff;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.6));
+  transition: transform 0.2s ease;
+}
+
+.playlist-song-row:hover .playlist-play-btn svg {
+  transform: scale(1.15);
+}
+
+.playlist-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0;
+}
+
+.playlist-item-name {
+  font-size: 13.5px;
+  font-weight: 700;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+  color: var(--text);
+  width: 100%;
+}
+
+.playlist-item-sub {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 1px;
+  font-weight: 500;
+  width: 100%;
+  padding-right: 130px;
+  box-sizing: border-box;
+}
+
+.playlist-item-price {
+  position: absolute;
+  right: 0px;
+  bottom: 0px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--success);
+  white-space: nowrap;
+  background: var(--surface-2);
+  padding: 3px 8px;
+  border-radius: 8px 0 0 0;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  margin-left: 0;
+  z-index: 1;
+}
+
+/* ---------- Song List ---------- */
+.song-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0px !important;
+  padding: 0 16px 20px;
+  max-width: 1080px;
+  margin: 0 auto;
+}
+
+.song-card {
+  background: var(--surface);
+  border: none;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0px !important;
+  overflow: hidden;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 6px 10px;
+  gap: 10px;
+  box-shadow: none;
+  transition: all 0.2s ease;
+  position: relative; /* เพิ่มใหม่ (2026-09-10 รอบ 3): ให้ .song-footer ยึดมุมขวาล่างของการ์ดนี้ */
+}
+
+.song-card:first-child {
+  border-top-left-radius: var(--radius-sm) !important;
+  border-top-right-radius: var(--radius-sm) !important;
+}
+
+.song-card:last-child {
+  border-bottom-left-radius: var(--radius-sm) !important;
+  border-bottom-right-radius: var(--radius-sm) !important;
+}
+
+.song-card:hover {
+  background: var(--surface-2);
+}
+
+.song-cover {
+  width: 55px !important;
+  height: 55px !important;
+  flex-shrink: 0;
+  border-radius: 8px;
+  position: relative;
+  background: var(--surface-2);
+  overflow: hidden;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.song-cover img {
+  position: static;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.3s ease;
+}
+
+.song-card:hover .song-cover img {
+  transform: scale(1.08);
+}
+
+.song-cover .play-btn {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(1px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: none;
+  border: none;
+  top: 0;
+  left: 0;
+  opacity: 0.9;
+  transition: all 0.2s ease;
+}
+
+.song-card:hover .play-btn {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.song-card:hover .play-btn svg {
+  width: 22px;
+  height: 22px;
+  fill: #fff;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.6));
+  transition: transform 0.2s ease;
+}
+
+.song-card:hover .play-btn svg {
+  transform: scale(1.15);
+}
+
+.song-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0;
+}
+
+.song-name {
+  font-size: 13.5px;
+  font-weight: 700;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+  color: var(--text);
+  width: 95%;
+}
+
+.song-artist {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 1px;
+  font-weight: 500;
+  width: 100%;
+  /* เพิ่มใหม่ (2026-09-10 รอบ 3): เผื่อที่ด้านขวาให้ badge ราคาที่ย้ายไปมุมขวาล่างแล้ว */
+  padding-right: 110px;
+  box-sizing: border-box;
+}
+
+.song-dj {
+  font-size: 11px;
+  color: var(--accent-2);
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  /* เพิ่มใหม่ (2026-09-10 รอบ 3): เผื่อที่ด้านขวาให้ badge ราคาที่ย้ายไปมุมขวาล่างแล้ว */
+  padding-right: 110px;
+  box-sizing: border-box;
+}
+
+/* เปลี่ยนใหม่ (2026-09-10 รอบ 3): ย้ายราคาไปมุมขวาล่างของการ์ด + ใส่พื้นหลังเงา
+   เหมือนกับ .playlist-item-price ที่ใช้ในรายการเพลงของเพลย์ลิสต์ ตามที่แจ้ง */
+.song-footer {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface-2);
+  padding: 3px 8px;
+  border-radius: 8px 0 0 0;
+  z-index: 1;
+}
+
+.song-price {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--success);
+  white-space: nowrap;
+  background: transparent;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* เพิ่มใหม่ (แก้บั๊ก 2026-09-10): .cart-add-btn ไม่เคยมี CSS ของตัวเองมาก่อน
+   ทำให้ browser ใช้สไตล์ default ของ <button> (พื้นหลังขาว/เทาเป็นก้อน) จนไปบังชื่อเพลง
+   เพิ่ม base style นี้เพื่อล้าง default ของ browser เท่านั้น ไม่กระทบ class ที่ผสมอยู่แล้ว
+   (.playlist-folder-price / .playlist-add-cart ยังคงทำงานทับได้ตามเดิม) */
+.cart-add-btn {
+  background: transparent;
+  border: none;
+  margin: 0;
+  padding: 0;
+  -webkit-appearance: none;
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--success);
+  cursor: pointer;
+}
+
+.buy-btn {
+  font-size: 11.5px;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
+  padding: 5px 12px;
+  border-radius: var(--radius-full);
+  color: var(--text);
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.buy-btn:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  box-shadow: 0 4px 12px var(--accent-glow);
+}
+
+/* ---------- Bottom Navigation ---------- */
+.bottom-nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 50;
+  background: rgba(19, 23, 34, 0.88);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-top: 1px solid var(--border);
+  display: flex;
+  padding-bottom: var(--safe-bottom);
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.bottom-nav button {
+  flex: 1;
+  background: none;
+  border: none;
+  padding: 8px 0 6px;
+  color: var(--text-dim);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  font-size: 10.5px;
+  font-weight: 600;
+  transition: color 0.2s ease;
+}
+
+.bottom-nav button:hover {
+  color: var(--text);
+}
+
+.bottom-nav button.active {
+  color: var(--accent);
+}
+
+/* ---------- Music Player Bar ---------- */
+.player-bar {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(100% - 24px);
+  max-width: 465px;
+  bottom: calc(54px + var(--safe-bottom));
+  z-index: 60;
+  background: rgba(19, 23, 34, 0.94);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  padding: 8px 12px 7px;
+  display: none;
+  flex-direction: column;
+  gap: 3px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6), 0 0 12px var(--accent-glow);
+}
+
+.player-bar.show {
+  display: flex;
+  animation: slideUpPlayer 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideUpPlayer {
+  from {
+    transform: translate(-50%, 100%);
+    opacity: 0;
+  }
+  to {
+    transform: translate(-50%, 0);
+    opacity: 1;
+  }
+}
+
+.player-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.player-bar img {
+  width: 34px;
+  height: 34px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: var(--surface);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+}
+
+.player-meta {
   flex: 1;
   min-width: 0;
 }
 
-.song-thumbnail-wrapper {
-  position: relative;
-  width: 52px;
-  height: 52px;
-  flex-shrink: 0;
+.player-meta .t1 {
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text);
+  line-height: 1.2;
 }
 
-.song-thumbnail {
-  width: 100%;
-  height: 100%;
-  border-radius: 12px;
-  object-fit: cover;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+.player-meta .t2 {
+  font-size: 10.5px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 1px;
+  font-weight: 500;
 }
 
-.play-overlay-btn {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  background: rgba(0, 0, 0, 0.6);
-  border: none;
-  color: #fff;
+.player-bar .ctrl {
+  background: linear-gradient(135deg, var(--accent), #7c3aed);
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
-  width: 26px;
-  height: 26px;
+  border: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.7rem;
-  cursor: pointer;
-}
-
-.song-details {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-}
-
-.song-name {
-  font-size: 0.9rem;
-  font-weight: 600;
+  flex-shrink: 0;
   color: #fff;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  box-shadow: var(--shadow-accent);
+  transform: scale(1.05);
 }
 
-.song-artist {
-  font-size: 0.75rem;
-  color: #94a3b8;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.player-bar .ctrl:hover {
+  transform: scale(1.12);
 }
 
-.tag-hot {
-  background: #ef4444;
-  color: white;
-  font-size: 0.6rem;
-  padding: 1px 6px;
-  border-radius: 6px;
-  font-weight: bold;
+.player-bar .ctrl svg {
+  width: 14px;
+  height: 14px;
 }
 
-.tag-category {
-  background: #8b5cf6;
-  color: white;
-  font-size: 0.65rem;
-  padding: 2px 8px;
-  border-radius: 10px;
-  display: inline-block;
-  margin-top: 2px;
-  width: fit-content;
-}
-
-/* --- ส่วนราคาและปุ่มซื้อ --- */
-.song-action-right {
+.player-seek-row {
   display: flex;
   align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.player-seek-row .time {
+  font-size: 9.5px;
+  color: var(--text-dim);
+  width: 24px;
+  flex-shrink: 0;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.player-seek-row input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: 1;
+  height: 22px !important;
+  background: transparent;
+  margin: 0;
+  cursor: pointer;
+  touch-action: pan-x;
+}
+
+.player-seek-row input[type="range"]::-webkit-slider-runnable-track {
+  height: 6px !important;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.player-seek-row input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px !important;
+  height: 14px !important;
+  border-radius: 50%;
+  background: #fff;
+  margin-top: -4px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6), 0 0 6px var(--accent);
+  transition: transform 0.1s ease;
+}
+
+.player-seek-row input[type="range"]:active::-webkit-slider-thumb {
+  transform: scale(1.3);
+}
+
+/* ---------- Common Buttons & Elements ---------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: linear-gradient(135deg, var(--accent), #7c3aed);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 12px 20px;
+  font-size: 14.5px;
+  font-weight: 700;
+  width: 100%;
+  min-height: 48px;
+  box-shadow: var(--shadow-accent);
+}
+
+.btn:hover {
+  opacity: 0.95;
+  transform: translateY(-1px);
+}
+
+.btn.secondary {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  box-shadow: none;
+}
+
+.btn.secondary:hover {
+  background: var(--surface-hover);
+}
+
+.btn.danger {
+  background: linear-gradient(135deg, var(--danger), #dc2626);
+  box-shadow: 0 4px 16px rgba(239, 68, 68, 0.35);
+}
+
+.btn.whatsapp {
+  background: linear-gradient(135deg, #25d366, #16a34a);
+  box-shadow: 0 4px 16px rgba(37, 211, 102, 0.35);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+/* ---------- Modal & Form Elements ---------- */
+.field {
+  margin-bottom: 16px;
+}
+
+.field label {
+  display: block;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.field input, .field select, .field textarea {
+  width: 100%;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+  color: var(--text);
+  font-size: 14.5px;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.field input:focus, .field select:focus, .field textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.field textarea {
+  resize: vertical;
+  min-height: 90px;
+}
+
+.file-picker {
+  display: block;
+  border: 2px dashed var(--border);
+  border-radius: var(--radius-sm);
+  padding: 24px 16px;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 13.5px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  background: rgba(255, 255, 255, 0.01);
+}
+
+.file-picker:hover {
+  border-color: var(--accent);
+  color: var(--text);
+  background: rgba(139, 92, 246, 0.04);
+}
+
+.file-picker.filled {
+  border-color: var(--success);
+  color: var(--success);
+  background: rgba(16, 185, 129, 0.04);
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 100;
+  display: none;
+  align-items: flex-end;
+  justify-content: center;
+  animation: fadeIn 0.2s ease;
+}
+
+.modal-backdrop.show {
+  display: flex;
+}
+
+.modal {
+  background: var(--surface);
+  width: 100%;
+  max-width: 560px;
+  max-height: 90vh;
+  overflow-y: auto;
+  border-radius: var(--radius) var(--radius) 0 0;
+  border: 1px solid var(--border);
+  border-bottom: none;
+  padding: 22px 20px calc(24px + var(--safe-bottom));
+  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: var(--shadow-lg);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { transform: translateY(30px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@media (min-width: 640px) {
+  .modal-backdrop {
+    align-items: center;
+  }
+  .modal {
+    border-radius: var(--radius);
+    border-bottom: 1px solid var(--border);
+  }
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 800;
+}
+
+.modal-close {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  color: var(--text-dim);
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-close:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+/* ---------- Admin Panel UI ---------- */
+.admin-shell {
+  min-height: 100vh;
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
   gap: 12px;
+  padding: 16px;
+}
+
+.stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 16px 12px;
+  text-align: center;
+  box-shadow: var(--shadow-sm);
+}
+
+.stat-card .num {
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--accent);
+}
+
+.stat-card .label {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  margin-top: 4px;
+  font-weight: 600;
+}
+
+.quick-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  padding: 0 16px 16px;
+}
+
+.quick-actions button {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 18px 12px;
+  color: var(--text);
+  font-size: 13.5px;
+  font-weight: 700;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.quick-actions button:hover {
+  background: var(--surface-2);
+  border-color: var(--accent);
+}
+
+.list-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  margin: 0 16px 10px;
+}
+
+.list-row img {
+  width: 52px;
+  height: 52px;
+  border-radius: 10px;
+  object-fit: cover;
+  background: var(--surface-2);
   flex-shrink: 0;
 }
 
-.price-box {
-  text-align: right;
+.list-row .info {
+  flex: 1;
+  min-width: 0;
 }
 
-.old-price {
-  font-size: 0.7rem;
-  color: #64748b;
-  text-decoration: line-through;
-  display: block;
-}
-
-.current-price {
-  font-size: 1rem;
+.list-row .info .n1 {
+  font-size: 14.5px;
   font-weight: 700;
-  color: #facc15;
-  text-shadow: 0 0 8px rgba(250, 204, 21, 0.4);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.discount-tag {
-  background: #ec4899;
-  color: #fff;
-  font-size: 0.7rem;
-  font-weight: bold;
-  padding: 2px 6px;
-  border-radius: 12px;
-  box-shadow: 0 0 8px rgba(236, 72, 153, 0.5);
+.list-row .info .n2 {
+  font-size: 12.5px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
 }
 
-.btn-buy, .btn-neon {
-  background: linear-gradient(135deg, #ec4899, #8b5cf6);
-  color: white;
-  border: none;
-  padding: 8px 14px;
-  border-radius: 20px;
-  font-weight: 600;
-  font-size: 0.8rem;
-  cursor: pointer;
-  box-shadow: 0 0 12px rgba(236, 72, 153, 0.4);
+.row-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.icon-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
   display: flex;
   align-items: center;
-  gap: 5px;
-  transition: all 0.3s ease;
+  justify-content: center;
+  color: var(--text-dim);
 }
 
-.btn-buy:hover {
-  filter: brightness(1.15);
-  box-shadow: 0 0 20px rgba(236, 72, 153, 0.7);
+.icon-btn:hover {
+  color: var(--text);
+  background: var(--surface-hover);
 }
 
-/* --- แบนเนอร์สมัครสมาชิกท้ายหน้า --- */
-.vip-banner {
-  margin: 20px 16px;
-  padding: 16px;
-  background: linear-gradient(135deg, #2e1065, #701a75, #111827);
-  border-radius: 20px;
-  border: 1px solid #c084fc;
-  box-shadow: 0 0 20px rgba(192, 132, 252, 0.25);
+.icon-btn.danger {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.25);
+  color: var(--danger);
+}
+
+.icon-btn.danger:hover {
+  background: rgba(239, 68, 68, 0.2);
+}
+
+.progress-outer {
+  background: var(--surface-2);
+  border-radius: var(--radius-full);
+  height: 8px;
+  overflow: hidden;
+  margin-top: 12px;
+}
+
+.progress-inner {
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  height: 100%;
+  width: 0%;
+  transition: width 0.3s ease;
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(100px + var(--safe-bottom));
+  transform: translateX(-50%) translateY(10px);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 12px 22px;
+  border-radius: var(--radius-full);
+  font-size: 13.5px;
+  font-weight: 600;
+  z-index: 200;
+  opacity: 0;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: none;
+  box-shadow: var(--shadow-lg);
+}
+
+.toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.toast.error {
+  background: rgba(239, 68, 68, 0.9);
+  border-color: transparent;
+  color: #fff;
+}
+
+.toast.success {
+  background: rgba(16, 185, 129, 0.9);
+  border-color: transparent;
+  color: #fff;
+}
+
+.empty-state {
+  text-align: center;
+  color: var(--text-dim);
+  padding: 60px 20px;
+  font-size: 14.5px;
+  font-weight: 500;
+}
+
+.spinner {
+  width: 20px;
+  height: 20px;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  border: 2.5px solid rgba(255, 255, 255, 0.25);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* =====================================================================
+   เพิ่มใหม่: utility classes สำหรับระบบลดราคา + โปรโมชั่น + ออเดอร์ของฉัน
+   ใช้ร่วมกันทั้งฝั่งลูกค้า (index.html) และฝั่งแอดมิน (admin.html)
+   ===================================================================== */
+
+/* ---- ราคาปกติ (ขีดฆ่า) ---- */
+/* เปลี่ยนใหม่ (2026-09-10 รอบ 2): ราคาที่ขีดฆ่าเปลี่ยนเป็นสีขาวตามที่แจ้ง (เดิมเป็นสีเทาจาง) */
+.price-original {
+  color: var(--text);
+  text-decoration: line-through;
+  font-size: 11px;
+  font-weight: 500;
+  margin-right: 4px;
+  opacity: 1;
+}
+
+/* ---- ราคาหลังลด/โปรโมชั่น ---- */
+/* เปลี่ยนใหม่ (2026-09-10 รอบ 2): กลับไปใช้สีชมพู-แดง (--accent-2) ตามสีเดิมของระบบ
+   ส่วนราคาปกติ (ไม่มีส่วนลด) ยังเป็นสีเขียวอยู่ — มาจาก .cart-add-btn ที่ตั้ง color เขียวไว้เป็น base */
+.price-discounted {
+  color: var(--accent-2, #ec4899);
+  font-weight: 800;
+  font-size: 14px;
+}
+.price-discounted.large {
+  font-size: 16px;
+}
+
+/* ---- badge ส่วนลดขนาดเล็ก ---- */
+.discount-badge {
+  display: inline-block;
+  background: rgba(236, 72, 153, .15);
+  color: var(--accent-2, #ec4899);
+  border-radius: var(--radius-full, 9999px);
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  margin-left: 4px;
+}
+
+/* ---- สถานะ discount/promotion ใน list ของแอดมิน ---- */
+.discount-status-badge {
+  display: inline-block;
+  border-radius: var(--radius-full, 9999px);
+  padding: 2px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+/* ---- แถวใน receipt สำหรับส่วนลด/โปรโมชั่น ---- */
+.receipt-discount-row,
+.receipt-promo-row {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  padding: 4px 0;
+  font-size: 12px;
+  color: #555;
+  border-bottom: 1px dashed #ddd;
+}
+.receipt-promo-row {
+  color: #2e7d32;
+  font-weight: 600;
+}
+.receipt-discount-row {
+  color: #c2185b;
 }
 
-/* --- แถบเมนูด้านล่างสุด (Bottom Navigation) --- */
-.bottom-nav {
-  position: fixed;
-  bottom: 0;
-  left: 0;
+/* ---- หน้า "ออเดอร์ของฉัน" (ฝั่งลูกค้า) ---- */
+.my-orders-header {
+  margin-bottom: 16px;
+}
+.my-orders-header h2 {
+  font-size: 20px;
+  font-weight: 800;
+  margin: 0 0 4px;
+}
+.my-orders-header p {
+  color: var(--text-dim);
+  font-size: 13px;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.my-orders-form {
+  background: var(--surface, #131722);
+  border-radius: var(--radius, 20px);
+  padding: 18px;
+  margin-bottom: 16px;
+  border: 1px solid var(--border, rgba(255,255,255,.08));
+}
+.my-orders-form .field {
+  margin-bottom: 12px;
+}
+.my-orders-form .field label {
+  display: block;
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+.my-orders-form .field input {
   width: 100%;
-  height: 68px;
-  background: rgba(12, 7, 25, 0.95);
-  backdrop-filter: blur(15px);
-  border-top: 1px solid rgba(192, 132, 252, 0.2);
-  display: flex;
-  justify-content: space-around;
-  align-items: center;
-  z-index: 1000;
-  box-shadow: 0 -5px 20px rgba(0, 0, 0, 0.6);
+  padding: 12px 14px;
+  background: var(--surface-2, #1c2234);
+  border: 1px solid var(--border, rgba(255,255,255,.08));
+  border-radius: var(--radius-sm, 12px);
+  color: var(--text, #f8fafc);
+  font-size: 14px;
+  box-sizing: border-box;
+}
+.my-orders-form .field input:focus {
+  outline: none;
+  border-color: var(--accent, #8b5cf6);
 }
 
-.nav-item {
+.my-orders-feedback {
+  margin-top: 10px;
+  font-size: 13px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm, 12px);
+  background: rgba(239, 68, 68, .08);
+}
+
+.my-orders-list-header {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  color: #64748b;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.my-orders-list-header span {
+  flex: 1;
+  min-width: 0;
+}
+
+.my-order-card {
+  background: var(--surface, #131722);
+  border-radius: var(--radius, 20px);
+  padding: 14px;
+  margin-bottom: 10px;
+  border: 1px solid var(--border, rgba(255,255,255,.08));
+  transition: border-color 0.2s;
+}
+.my-order-card.expanded {
+  border-color: rgba(139, 92, 246, .3);
+}
+.my-order-card-header {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.my-order-status-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: var(--radius-full, 9999px);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.my-order-discount-badge {
+  font-size: 11px;
+  font-weight: 600;
+}
+.my-order-item-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border, rgba(255,255,255,.04));
+}
+.my-order-item-row:last-child {
+  border-bottom: none;
+}
+.my-order-zip-info a {
   text-decoration: none;
-  font-size: 0.72rem;
-  gap: 3px;
-  transition: color 0.3s ease;
 }
 
-.nav-item i {
-  font-size: 1.2rem;
+/* ---- responsive: 6 ปุ่ม bottom-nav บนจอแคบ ---- */
+@media (max-width: 480px) {
+  .bottom-nav button {
+    font-size: 10px;
+    padding: 6px 4px;
+  }
+  .bottom-nav button svg {
+    width: 18px;
+    height: 18px;
+  }
 }
 
-.nav-item.active, .nav-item:hover {
-  color: #c084fc;
-  text-shadow: 0 0 10px rgba(192, 132, 252, 0.8);
+/* ---- ปุ่ม quick action grid ที่รองรับ 11 ปุ่ม (เพิ่ม discount/promotion) ---- */
+.quick-actions {
+  /* ถ้า grid มีปุ่มเยอะ ให้แสดง 2 คอลัมน์บนมือถือ / 3 คอลัมน์บนจอกว้าง */
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+@media (min-width: 480px) {
+  .quick-actions { grid-template-columns: repeat(3, 1fr); }
+}
+@media (min-width: 720px) {
+  .quick-actions { grid-template-columns: repeat(4, 1fr); }
 }
