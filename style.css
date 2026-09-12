@@ -262,7 +262,7 @@ button:active {
   font-size: 18px;
   font-weight: 800;
   letter-spacing: -0.3px;
-  margin: 10px auto 10px;
+  margin: 10px auto;
   max-width: 1080px;
   padding: 0 16px;
   display: flex;
@@ -323,10 +323,8 @@ button:active {
 
 /* ---------- Playlist Row ---------- */
 .playlist-block {
-  margin-bottom: 10px;
+  margin: 0 auto 10px;
   max-width: 1080px;
-  margin-left: auto;
-  margin-right: auto;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   overflow: hidden;
@@ -343,7 +341,7 @@ button:active {
   padding: 10px 12px;
   text-align: left;
   cursor: pointer;
-  position: relative; /* เพิ่มใหม่ (2026-09-10): ให้ .playlist-folder-price ยึดมุมขวาล่างของแถวนี้ */
+  position: relative;
 }
 
 .playlist-folder-btn:hover {
@@ -392,17 +390,15 @@ button:active {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  /* เพิ่มใหม่ (2026-09-10): เผื่อพื้นที่ด้านขวาให้ badge ราคาที่ย้ายไปมุมขวาล่างแล้ว ไม่ทับตัวหนังสือ */
   padding-right: 110px;
   box-sizing: border-box;
 }
 
-/* เปลี่ยนใหม่ (2026-09-10 รอบ 2): ลดขนาดราคาลงอีกนิด (เดิม 12px) เพื่อให้ badge เล็กลง
-   ไม่ไปเบียดชื่อ/จำนวนเพลงในแถวหัวเพลย์ลิสต์ */
+/* 4) ราคาเหมาเพลย์ลิสต์ (badge มุมขวาล่างของแถวเพลย์ลิสต์) */
 .playlist-folder-price {
   flex-shrink: 0;
-  font-size: 10.5px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 800;
   color: var(--success);
   white-space: nowrap;
   background: transparent;
@@ -411,10 +407,6 @@ button:active {
   cursor: pointer;
   margin-left: 8px;
 }
-
-/* เอาออก (2026-09-10 รอบ 3): ยกเลิกการย่อขนาดราคาโปรโมชั่น/ลดราคาในนี้ตามที่แจ้ง
-   ให้ตัวหนังสือราคาโปรโมชั่น/ลดราคาที่นี่มีขนาดเท่ากับราคาโปรโมชั่น/ลดราคาของเพลงเดี่ยว (ค่า default ของ .price-original/.price-discounted) */
-
 
 .playlist-folder-arrow {
   flex-shrink: 0;
@@ -445,14 +437,14 @@ button:active {
 .playlist-row {
   display: flex;
   flex-direction: column;
-  gap: 0px !important;
+  gap: 0 !important;
 }
 
 .playlist-song-row {
   background: var(--surface);
   border: none;
   border-bottom: 1px solid var(--border);
-  border-radius: 0px !important;
+  border-radius: 0 !important;
   overflow: hidden;
   display: flex;
   flex-direction: row;
@@ -563,8 +555,8 @@ button:active {
 
 .playlist-item-price {
   position: absolute;
-  right: 0px;
-  bottom: 0px;
+  right: 0;
+  bottom: 0;
   font-size: 11px;
   font-weight: 700;
   color: var(--success);
@@ -575,7 +567,6 @@ button:active {
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
-  margin-left: 0;
   z-index: 1;
 }
 
@@ -583,7 +574,7 @@ button:active {
 .song-grid {
   display: flex;
   flex-direction: column;
-  gap: 0px !important;
+  gap: 0 !important;
   padding: 0 16px 20px;
   max-width: 1080px;
   margin: 0 auto;
@@ -593,7 +584,7 @@ button:active {
   background: var(--surface);
   border: none;
   border-bottom: 1px solid var(--border);
-  border-radius: 0px !important;
+  border-radius: 0 !important;
   overflow: hidden;
   display: flex;
   flex-direction: row;
@@ -602,7 +593,7 @@ button:active {
   gap: 10px;
   box-shadow: none;
   transition: all 0.2s ease;
-  position: relative; /* เพิ่มใหม่ (2026-09-10 รอบ 3): ให้ .song-footer ยึดมุมขวาล่างของการ์ดนี้ */
+  position: relative;
 }
 
 .song-card:first-child {
@@ -655,8 +646,6 @@ button:active {
   justify-content: center;
   box-shadow: none;
   border: none;
-  top: 0;
-  left: 0;
   opacity: 0.9;
   transition: all 0.2s ease;
 }
@@ -671,10 +660,6 @@ button:active {
   height: 22px;
   fill: #fff;
   filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.6));
-  transition: transform 0.2s ease;
-}
-
-.song-card:hover .play-btn svg {
   transform: scale(1.15);
 }
 
@@ -708,7 +693,6 @@ button:active {
   margin-top: 1px;
   font-weight: 500;
   width: 100%;
-  /* เพิ่มใหม่ (2026-09-10 รอบ 3): เผื่อที่ด้านขวาให้ badge ราคาที่ย้ายไปมุมขวาล่างแล้ว */
   padding-right: 110px;
   box-sizing: border-box;
 }
@@ -724,13 +708,10 @@ button:active {
   display: flex;
   align-items: center;
   gap: 4px;
-  /* เพิ่มใหม่ (2026-09-10 รอบ 3): เผื่อที่ด้านขวาให้ badge ราคาที่ย้ายไปมุมขวาล่างแล้ว */
   padding-right: 110px;
   box-sizing: border-box;
 }
 
-/* เปลี่ยนใหม่ (2026-09-10 รอบ 3): ย้ายราคาไปมุมขวาล่างของการ์ด + ใส่พื้นหลังเงา
-   เหมือนกับ .playlist-item-price ที่ใช้ในรายการเพลงของเพลย์ลิสต์ ตามที่แจ้ง */
 .song-footer {
   position: absolute;
   right: 0;
@@ -744,9 +725,10 @@ button:active {
   z-index: 1;
 }
 
+/* 3) ราคาต่อเพลง ในการ์ดเพลง */
 .song-price {
-  font-size: 12px;
-  font-weight: 700;
+  font-size: 13.5px;
+  font-weight: 800;
   color: var(--success);
   white-space: nowrap;
   background: transparent;
@@ -755,10 +737,6 @@ button:active {
   align-items: center;
 }
 
-/* เพิ่มใหม่ (แก้บั๊ก 2026-09-10): .cart-add-btn ไม่เคยมี CSS ของตัวเองมาก่อน
-   ทำให้ browser ใช้สไตล์ default ของ <button> (พื้นหลังขาว/เทาเป็นก้อน) จนไปบังชื่อเพลง
-   เพิ่ม base style นี้เพื่อล้าง default ของ browser เท่านั้น ไม่กระทบ class ที่ผสมอยู่แล้ว
-   (.playlist-folder-price / .playlist-add-cart ยังคงทำงานทับได้ตามเดิม) */
 .cart-add-btn {
   background: transparent;
   border: none;
@@ -1070,31 +1048,6 @@ button:active {
   min-height: 90px;
 }
 
-.file-picker {
-  display: block;
-  border: 2px dashed var(--border);
-  border-radius: var(--radius-sm);
-  padding: 24px 16px;
-  text-align: center;
-  color: var(--text-dim);
-  font-size: 13.5px;
-  font-weight: 500;
-  transition: all 0.2s ease;
-  background: rgba(255, 255, 255, 0.01);
-}
-
-.file-picker:hover {
-  border-color: var(--accent);
-  color: var(--text);
-  background: rgba(139, 92, 246, 0.04);
-}
-
-.file-picker.filled {
-  border-color: var(--success);
-  color: var(--success);
-  background: rgba(16, 185, 129, 0.04);
-}
-
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -1177,11 +1130,7 @@ button:active {
   background: var(--surface-hover);
 }
 
-/* ---------- Admin Panel UI ---------- */
-.admin-shell {
-  min-height: 100vh;
-}
-
+/* ---------- Admin Panel & Utilities ---------- */
 .stat-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -1213,9 +1162,16 @@ button:active {
 
 .quick-actions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
   padding: 0 16px 16px;
+}
+
+@media (min-width: 480px) {
+  .quick-actions { grid-template-columns: repeat(3, 1fr); }
+}
+@media (min-width: 720px) {
+  .quick-actions { grid-template-columns: repeat(4, 1fr); }
 }
 
 .quick-actions button {
@@ -1237,94 +1193,36 @@ button:active {
   border-color: var(--accent);
 }
 
-.list-row {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 12px;
-  margin: 0 16px 10px;
-}
-
-.list-row img {
-  width: 52px;
-  height: 52px;
-  border-radius: 10px;
-  object-fit: cover;
-  background: var(--surface-2);
-  flex-shrink: 0;
-}
-
-.list-row .info {
-  flex: 1;
-  min-width: 0;
-}
-
-.list-row .info .n1 {
-  font-size: 14.5px;
-  font-weight: 700;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.list-row .info .n2 {
-  font-size: 12.5px;
-  color: var(--text-dim);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  margin-top: 2px;
-}
-
-.row-actions {
-  display: flex;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
-.icon-btn {
-  width: 38px;
-  height: 38px;
-  border-radius: 10px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-dim);
-}
-
-.icon-btn:hover {
+/* ---- Pricing & Utility Classes ---- */
+/* 1) ราคาปกติที่ถูกขีดฆ่า */
+.price-original {
   color: var(--text);
-  background: var(--surface-hover);
+  text-decoration: line-through;
+  font-size: 12.5px;
+  font-weight: 600;
+  margin-right: 4px;
+  opacity: 1;
 }
 
-.icon-btn.danger {
-  background: rgba(239, 68, 68, 0.12);
-  border-color: rgba(239, 68, 68, 0.25);
-  color: var(--danger);
+/* 2) ราคาหลังลด/โปรโมชั่น */
+.price-discounted {
+  color: var(--accent-2, #ec4899);
+  font-weight: 800;
+  font-size: 15.5px;
+}
+.price-discounted.large {
+  font-size: 17.5px;
 }
 
-.icon-btn.danger:hover {
-  background: rgba(239, 68, 68, 0.2);
-}
-
-.progress-outer {
-  background: var(--surface-2);
-  border-radius: var(--radius-full);
-  height: 8px;
-  overflow: hidden;
-  margin-top: 12px;
-}
-
-.progress-inner {
-  background: linear-gradient(90deg, var(--accent), var(--accent-2));
-  height: 100%;
-  width: 0%;
-  transition: width 0.3s ease;
+.discount-badge {
+  display: inline-block;
+  background: rgba(236, 72, 153, 0.15);
+  color: var(--accent-2, #ec4899);
+  border-radius: var(--radius-full, 9999px);
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  margin-left: 4px;
 }
 
 .toast {
@@ -1353,239 +1251,10 @@ button:active {
 
 .toast.error {
   background: rgba(239, 68, 68, 0.9);
-  border-color: transparent;
   color: #fff;
 }
 
 .toast.success {
   background: rgba(16, 185, 129, 0.9);
-  border-color: transparent;
   color: #fff;
-}
-
-.empty-state {
-  text-align: center;
-  color: var(--text-dim);
-  padding: 60px 20px;
-  font-size: 14.5px;
-  font-weight: 500;
-}
-
-.spinner {
-  width: 20px;
-  height: 20px;
-  box-sizing: border-box;
-  flex-shrink: 0;
-  border: 2.5px solid rgba(255, 255, 255, 0.25);
-  border-top-color: #fff;
-  border-radius: 50%;
-  animation: spin 0.7s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-/* =====================================================================
-   เพิ่มใหม่: utility classes สำหรับระบบลดราคา + โปรโมชั่น + ออเดอร์ของฉัน
-   ใช้ร่วมกันทั้งฝั่งลูกค้า (index.html) และฝั่งแอดมิน (admin.html)
-   ===================================================================== */
-
-/* ---- ราคาปกติ (ขีดฆ่า) ---- */
-/* เปลี่ยนใหม่ (2026-09-10 รอบ 2): ราคาที่ขีดฆ่าเปลี่ยนเป็นสีขาวตามที่แจ้ง (เดิมเป็นสีเทาจาง) */
-.price-original {
-  color: var(--text);
-  text-decoration: line-through;
-  font-size: 11px;
-  font-weight: 500;
-  margin-right: 4px;
-  opacity: 1;
-}
-
-/* ---- ราคาหลังลด/โปรโมชั่น ---- */
-/* เปลี่ยนใหม่ (2026-09-10 รอบ 2): กลับไปใช้สีชมพู-แดง (--accent-2) ตามสีเดิมของระบบ
-   ส่วนราคาปกติ (ไม่มีส่วนลด) ยังเป็นสีเขียวอยู่ — มาจาก .cart-add-btn ที่ตั้ง color เขียวไว้เป็น base */
-.price-discounted {
-  color: var(--accent-2, #ec4899);
-  font-weight: 800;
-  font-size: 14px;
-}
-.price-discounted.large {
-  font-size: 16px;
-}
-
-/* ---- badge ส่วนลดขนาดเล็ก ---- */
-.discount-badge {
-  display: inline-block;
-  background: rgba(236, 72, 153, .15);
-  color: var(--accent-2, #ec4899);
-  border-radius: var(--radius-full, 9999px);
-  padding: 2px 8px;
-  font-size: 10px;
-  font-weight: 700;
-  margin-left: 4px;
-}
-
-/* ---- สถานะ discount/promotion ใน list ของแอดมิน ---- */
-.discount-status-badge {
-  display: inline-block;
-  border-radius: var(--radius-full, 9999px);
-  padding: 2px 10px;
-  font-size: 11px;
-  font-weight: 700;
-  margin-left: 6px;
-  vertical-align: middle;
-}
-
-/* ---- แถวใน receipt สำหรับส่วนลด/โปรโมชั่น ---- */
-.receipt-discount-row,
-.receipt-promo-row {
-  display: flex;
-  justify-content: space-between;
-  padding: 4px 0;
-  font-size: 12px;
-  color: #555;
-  border-bottom: 1px dashed #ddd;
-}
-.receipt-promo-row {
-  color: #2e7d32;
-  font-weight: 600;
-}
-.receipt-discount-row {
-  color: #c2185b;
-}
-
-/* ---- หน้า "ออเดอร์ของฉัน" (ฝั่งลูกค้า) ---- */
-.my-orders-header {
-  margin-bottom: 16px;
-}
-.my-orders-header h2 {
-  font-size: 20px;
-  font-weight: 800;
-  margin: 0 0 4px;
-}
-.my-orders-header p {
-  color: var(--text-dim);
-  font-size: 13px;
-  margin: 0;
-  line-height: 1.5;
-}
-
-.my-orders-form {
-  background: var(--surface, #131722);
-  border-radius: var(--radius, 20px);
-  padding: 18px;
-  margin-bottom: 16px;
-  border: 1px solid var(--border, rgba(255,255,255,.08));
-}
-.my-orders-form .field {
-  margin-bottom: 12px;
-}
-.my-orders-form .field label {
-  display: block;
-  font-size: 12px;
-  color: var(--text-dim);
-  margin-bottom: 6px;
-}
-.my-orders-form .field input {
-  width: 100%;
-  padding: 12px 14px;
-  background: var(--surface-2, #1c2234);
-  border: 1px solid var(--border, rgba(255,255,255,.08));
-  border-radius: var(--radius-sm, 12px);
-  color: var(--text, #f8fafc);
-  font-size: 14px;
-  box-sizing: border-box;
-}
-.my-orders-form .field input:focus {
-  outline: none;
-  border-color: var(--accent, #8b5cf6);
-}
-
-.my-orders-feedback {
-  margin-top: 10px;
-  font-size: 13px;
-  padding: 8px 12px;
-  border-radius: var(--radius-sm, 12px);
-  background: rgba(239, 68, 68, .08);
-}
-
-.my-orders-list-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
-  flex-wrap: wrap;
-}
-.my-orders-list-header span {
-  flex: 1;
-  min-width: 0;
-}
-
-.my-order-card {
-  background: var(--surface, #131722);
-  border-radius: var(--radius, 20px);
-  padding: 14px;
-  margin-bottom: 10px;
-  border: 1px solid var(--border, rgba(255,255,255,.08));
-  transition: border-color 0.2s;
-}
-.my-order-card.expanded {
-  border-color: rgba(139, 92, 246, .3);
-}
-.my-order-card-header {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-}
-.my-order-status-badge {
-  display: inline-block;
-  padding: 3px 10px;
-  border-radius: var(--radius-full, 9999px);
-  font-size: 11px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-.my-order-discount-badge {
-  font-size: 11px;
-  font-weight: 600;
-}
-.my-order-item-row {
-  display: flex;
-  justify-content: space-between;
-  padding: 6px 0;
-  font-size: 13px;
-  border-bottom: 1px solid var(--border, rgba(255,255,255,.04));
-}
-.my-order-item-row:last-child {
-  border-bottom: none;
-}
-.my-order-zip-info a {
-  text-decoration: none;
-}
-
-/* ---- responsive: 6 ปุ่ม bottom-nav บนจอแคบ ---- */
-@media (max-width: 480px) {
-  .bottom-nav button {
-    font-size: 10px;
-    padding: 6px 4px;
-  }
-  .bottom-nav button svg {
-    width: 18px;
-    height: 18px;
-  }
-}
-
-/* ---- ปุ่ม quick action grid ที่รองรับ 11 ปุ่ม (เพิ่ม discount/promotion) ---- */
-.quick-actions {
-  /* ถ้า grid มีปุ่มเยอะ ให้แสดง 2 คอลัมน์บนมือถือ / 3 คอลัมน์บนจอกว้าง */
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
-}
-@media (min-width: 480px) {
-  .quick-actions { grid-template-columns: repeat(3, 1fr); }
-}
-@media (min-width: 720px) {
-  .quick-actions { grid-template-columns: repeat(4, 1fr); }
 }
