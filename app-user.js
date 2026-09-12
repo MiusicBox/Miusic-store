@@ -484,11 +484,11 @@ function togglePlaylistsVisibility() {
 function setView(view) {
   STATE.currentView = view;
   const showCategory = view === "home" || view === "category";
-  // แสดง DJ เฉพาะหน้าแรก (เมื่อเลือก "ทั้งหมด") หรือแท็บ DJ เท่านั้น
-  // แท็บ "หมวดหมู่" ให้ซ่อนส่วน DJ เสมอ เหมือนเมนูอื่น
+  // แสดง DJ ในหน้า "ทั้งหมด" หรือหน้า DJ เท่านั้น
+  // เมื่อเลือกหมวดหมู่เฉพาะ ให้ซ่อนส่วน DJ ออกจากหน้านั้น
   const showDj =
     view === "dj" ||
-    (view === "home" && STATE.currentCategory === "all");
+    ((view === "home" || view === "category") && STATE.currentCategory === "all");
   // แท็บ DJ ต้องแสดงเพลงของ DJ ทุกคน หรือเพลงของ DJ ที่เลือก
   const showSongs = view === "home" || view === "category" || view === "dj";
 
@@ -499,10 +499,22 @@ function setView(view) {
   if (djSection) djSection.style.display = showDj ? "" : "none";
 
   // แท็บเพลย์ลิสต์และ DJ ซ่อนรายการเพลงทั้งหมด ส่วนหมวดหมู่ยังดูเพลงที่กรองได้
-  ["#gridTitle", "#songGrid", "#emptyState"].forEach(selector => {
+  // หมายเหตุ (แก้บั๊ก 2026-09-13): เอา "#emptyState" ออกจาก loop นี้ เพราะเดิมมันไป
+  // set display="" ทับค่าที่ renderSongGrid() เพิ่งเซ็ตไว้ถูกต้อง (none ตอนมีเพลง)
+  // ทำให้กล่อง "ไม่พบเพลงที่ค้นหา" โผล่ค้างอยู่ใต้รายการเพลงเสมอ ไม่ว่าจะมีผลลัพธ์หรือไม่
+  ["#gridTitle", "#songGrid"].forEach(selector => {
     const el = document.querySelector(selector);
     if (el) el.style.display = showSongs ? "" : "none";
   });
+
+  // ให้ renderSongGrid() เป็นคนเดียวที่ตัดสินใจแสดง/ซ่อน emptyState เสมอ
+  // (ถ้าไม่ได้อยู่หน้าที่โชว์เพลง ก็ซ่อน emptyState ไปด้วยตรงๆ)
+  if (showSongs) {
+    renderSongGrid();
+  } else {
+    const emptyStateEl = document.getElementById("emptyState");
+    if (emptyStateEl) emptyStateEl.style.display = "none";
+  }
 
   togglePlaylistsVisibility();
 
