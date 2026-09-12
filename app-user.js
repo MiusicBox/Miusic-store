@@ -42,12 +42,15 @@ function formatPrice(v) { return Number(v || 0).toLocaleString("en-US") + " LAK"
 // ราคาปกติ (ขีดฆ่า) + ราคาลด (เน้นสี) ถ้ามี discount active
 // ถ้าไม่มี discount → แสดงราคาปกติเหมือนเดิม (back-compat)
 function renderDiscountedPriceForSong(song) {
-  if (!song) return formatPrice(0);
+  // แก้บั๊ก (2026-09-13): เดิมกรณีไม่มีส่วนลด return ตัวเลขราคาเปล่าๆ ไม่มี class ครอบ
+  // ทำให้ .song-price ใน style.css ไม่เคยถูกใช้จริง ปรับ font-size เท่าไหร่ก็ไม่มีผล
+  // ครอบด้วย <span class="song-price"> เพื่อให้ควบคุมขนาด/สไตล์ผ่าน CSS ได้ตรงจุด
+  if (!song) return `<span class="song-price">${formatPrice(0)}</span>`;
   const original = Number(song.price) || 0;
   const discount = findActiveDiscountFor({ targetType: "song", targetId: song.id, discounts: STATE.discounts });
-  if (!discount) return formatPrice(original);
+  if (!discount) return `<span class="song-price">${formatPrice(original)}</span>`;
   const { finalPrice, hasDiscount } = applyDiscountToPrice(original, discount);
-  if (!hasDiscount) return formatPrice(original);
+  if (!hasDiscount) return `<span class="song-price">${formatPrice(original)}</span>`;
   return `<span class="price-original">${formatPrice(original)}</span> <span class="price-discounted">${formatPrice(finalPrice)}</span>`;
 }
 
@@ -317,7 +320,7 @@ function renderSongGrid() {
         ${s.dj_name ? `<div class="song-dj">DJ: ${escapeHtml(s.dj_name)}</div>` : ""}
         <div class="song-footer" style="display: flex; justify-content: flex-end; align-items: center; margin-top: auto;">
           <button class="cart-add-btn" type="button" data-add-cart="${s.id}" aria-label="เพิ่ม ${escapeHtml(s.song_name)} ลงตะกร้า">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
             ${renderDiscountedPriceForSong(s)}
           </button>
         </div>
@@ -379,7 +382,7 @@ function renderPlaylists() {
           <!-- แก้ไข (2026-09-10 รอบ 2): ลดขนาดไอคอน + ชิดมุมขวาล่างของแถวมากขึ้น (right:12px ชิดขอบเดียวกับลูกศร) -->
           <div style="position: absolute; right: 12px; bottom: 5px; display: flex; flex-direction: column; align-items: flex-end; justify-content: flex-end; z-index: 1;">
             ${pl.price ? `<button type="button" class="cart-add-btn playlist-folder-price" data-add-cart-playlist="${pl.id}" aria-label="เพิ่มเพลย์ลิสต์ ${escapeHtml(pl.playlist_name)} ลงตะกร้า">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
               ${renderDiscountedPriceForPlaylist(pl)}
             </button>` : ""}
           </div>
@@ -402,7 +405,7 @@ function renderPlaylists() {
                 <div class="playlist-item-price" style="display: flex; flex-direction: column; align-items: flex-end; justify-content: flex-end; position: absolute; right: 0; bottom: 0;">
                   <div style="display: inline-flex; align-items: center; gap: 4px;">
                     <button class="cart-add-btn playlist-add-cart" type="button" data-add-cart-song="${s.id}" aria-label="เพิ่ม ${escapeHtml(s.song_name)} ลงตะกร้า">
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
                       ${renderDiscountedPriceForSong(s)}
                     </button>
                   </div>
@@ -499,10 +502,22 @@ function setView(view) {
   if (djSection) djSection.style.display = showDj ? "" : "none";
 
   // แท็บเพลย์ลิสต์และ DJ ซ่อนรายการเพลงทั้งหมด ส่วนหมวดหมู่ยังดูเพลงที่กรองได้
-  ["#gridTitle", "#songGrid", "#emptyState"].forEach(selector => {
+  // หมายเหตุ (แก้บั๊ก 2026-09-13): เอา "#emptyState" ออกจาก loop นี้ เพราะเดิมมันไป
+  // set display="" ทับค่าที่ renderSongGrid() เพิ่งเซ็ตไว้ถูกต้อง (none ตอนมีเพลง)
+  // ทำให้กล่อง "ไม่พบเพลงที่ค้นหา" โผล่ค้างอยู่ใต้รายการเพลงเสมอ ไม่ว่าจะมีผลลัพธ์หรือไม่
+  ["#gridTitle", "#songGrid"].forEach(selector => {
     const el = document.querySelector(selector);
     if (el) el.style.display = showSongs ? "" : "none";
   });
+
+  // ให้ renderSongGrid() เป็นคนเดียวที่ตัดสินใจแสดง/ซ่อน emptyState เสมอ
+  // (ถ้าไม่ได้อยู่หน้าที่โชว์เพลง ก็ซ่อน emptyState ไปด้วยตรงๆ)
+  if (showSongs) {
+    renderSongGrid();
+  } else {
+    const emptyStateEl = document.getElementById("emptyState");
+    if (emptyStateEl) emptyStateEl.style.display = "none";
+  }
 
   togglePlaylistsVisibility();
 
