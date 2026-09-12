@@ -360,14 +360,10 @@ button:active {
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
 }
 
-/* 🔧 ปรับใหม่ (2026-09-12 รอบ 8): ลด filter ในรูปปกหัวเพลย์ลิสต์
-   เอา filter ออก ใช้ image-rendering: auto + bicubic แทน */
 .playlist-folder-cover img {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  image-rendering: auto;
-  -ms-interpolation-mode: bicubic;
 }
 
 .playlist-folder-info {
@@ -481,9 +477,8 @@ button:active {
   background: var(--surface-2);
 }
 
-/* 🔧 ปรับใหม่ (2026-09-13): เพิ่มความคมชัดของรูปปกในรายการเพลงของเพลย์ลิสต์
-   ขนาด cover 58px แต่รูปต้นฉบับอาจมี resolution ต่ำ → เบลอ
-   เพิ่ม image-rendering: high-quality และ backface-visibility เพื่อบังคับ render คมชัด */
+/* 🔧 ปรับใหม่ (2026-09-12 รอบ 3): ขยาย cover ของเพลงในเพลย์ลิสต์จาก 50px → 58px
+   ให้สมดุลกับแถวที่ใหญ่ขึ้นและตัวหนังสือที่ขยายขึ้น */
 .playlist-cover {
   width: 58px;
   height: 58px;
@@ -493,25 +488,13 @@ button:active {
   overflow: hidden;
   flex-shrink: 0;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
-  /* บังคับให้ browser render รูปที่คมชัดที่สุด */
-  transform: translateZ(0);
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
 }
 
-/* 🔧 ปรับใหม่ (2026-09-13): ใช้ image-rendering: high-quality สำหรับรูปปกในเพลย์ลิสต์
-   รองรับหน้าจอ Retina ของ iPhone ให้คมชัดขึ้น */
 .playlist-cover img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   transition: transform 0.3s ease;
-  image-rendering: high-quality;
-  image-rendering: -webkit-optimize-contrast;
-  -ms-interpolation-mode: bicubic;
-  /* บังคับ GPU rendering สำหรับความคมชัด */
-  transform: translateZ(0);
-  backface-visibility: hidden;
 }
 
 .playlist-song-row:hover .playlist-cover img {
@@ -524,19 +507,36 @@ button:active {
   width: 100%;
   height: 100%;
   border-radius: 0;
-  background: rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(2px);
+  background: transparent;
+  backdrop-filter: none;
   border: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  opacity: 0.9;
+  opacity: 1;
   transition: all 0.2s ease;
 }
 
-.playlist-song-row:hover .playlist-play-btn {
-  opacity: 1;
-  background: rgba(0, 0, 0, 0.2);
+/* 🔧 แก้ (2026-09-13 ตามคำขอ: รูปปกเพลงดูมัว) — เดิมปุ่มเล่นคลุมทับรูปเต็มแผ่นด้วยสีดำ+เบลอตลอดเวลา
+   ทำให้รูปปกดูมัวกว่าที่ควร เปลี่ยนเป็นวงกลมเล็กๆ ตรงกลางแทน ให้เห็นรูปปกชัดเต็มๆ */
+.playlist-play-btn::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  margin: auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(2px);
+  transition: background 0.2s ease;
+}
+
+.playlist-song-row:hover .playlist-play-btn::before {
+  background: rgba(0, 0, 0, 0.6);
 }
 
 .playlist-play-btn svg {
@@ -671,18 +671,12 @@ button:active {
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
 }
 
-/* 🔧 ปรับใหม่ (2026-09-12 รอบ 8): ลด filter ที่อาจทำให้รูปเบลอเด่นขึ้น
-   เดิมใช้ contrast(1.05) saturate(1.08) — เอาออก เพราะถ้ารูปต้นฉบับเบลออยู่แล้ว
-   filter จะยิ่งเน้น artifacts ให้เห็นชัด ละเอาดีกว่า
-   เปลี่ยนไปใช้ image-rendering: auto ให้ browser เลือกวิธี render ที่ดีที่สุดเอง */
 .song-cover img {
   position: static;
   width: 100%;
   height: 100%;
   object-fit: cover;
   transition: transform 0.3s ease;
-  image-rendering: auto;
-  -ms-interpolation-mode: bicubic;
 }
 
 .song-card:hover .song-cover img {
@@ -695,8 +689,8 @@ button:active {
   width: 100%;
   height: 100%;
   border-radius: 0;
-  background: rgba(0, 0, 0, 0.35);
-  backdrop-filter: blur(1px);
+  background: transparent;
+  backdrop-filter: none;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -704,13 +698,30 @@ button:active {
   border: none;
   top: 0;
   left: 0;
-  opacity: 0.9;
+  opacity: 1;
   transition: all 0.2s ease;
 }
 
-.song-card:hover .play-btn {
-  opacity: 1;
-  background: rgba(0, 0, 0, 0.2);
+/* 🔧 แก้ (2026-09-13 ตามคำขอ: รูปปกเพลงดูมัว) — เดิมปุ่มเล่นคลุมทับรูปเต็มแผ่นด้วยสีดำ+เบลอตลอดเวลา
+   ทำให้รูปปกดูมัวกว่าที่ควร เปลี่ยนเป็นวงกลมเล็กๆ ตรงกลางแทน ให้เห็นรูปปกชัดเต็มๆ */
+.song-cover .play-btn::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  margin: auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(2px);
+  transition: background 0.2s ease;
+}
+
+.song-card:hover .play-btn::before {
+  background: rgba(0, 0, 0, 0.6);
 }
 
 .song-card:hover .play-btn svg {
