@@ -6,8 +6,6 @@
 <meta name="description" content="ร้านเพลงออนไลน์ ฟังเพลงฟรี สั่งซื้อง่ายผ่าน WhatsApp">
 <title>Music Store</title>
 <link rel="stylesheet" href="style.css?v=4">
-<!-- เพิ่มใหม่: ธีม Neon RGB เฉพาะฝั่ง USER เท่านั้น (ไม่ลิงก์ใน admin.html) ไม่แก้ style.css เดิม -->
-<link rel="stylesheet" href="user-neon-theme.css?v=1">
 <style>
   /* โครงสร้าง Cart เดิมที่ app-cart.js ใช้งาน — คงไว้ในหน้า User */
   .cart-toggle-wrap { position:relative; margin-left:auto; display:flex; align-items:center; gap:8px; flex-shrink:0; flex-wrap:nowrap; }
@@ -235,40 +233,6 @@
       </div>
     </div>
     <div class="chip-row" id="categoryChips"></div>
-  </div>
-
-  <!-- ===== เพิ่มใหม่: Hero Promotion + Flash Sale (UI-only ตาม design brief) =====
-       ไม่เรียก API ใหม่ ไม่สร้าง backend ใหม่ ไม่แตะ element/JS เดิม
-       ถ้าระบบมี Promotion/Countdown จริงในอนาคต ให้แก้เฉพาะค่าคงที่ใน mvx-init.js -->
-  <div class="mvx-hero-wrap">
-    <div class="mvx-hero">
-      <div class="mvx-hero-figure" aria-hidden="true"></div>
-      <div class="mvx-hero-crown">👑</div>
-      <div class="mvx-hero-content">
-        <span class="mvx-hero-eyebrow">✨ โปรโมชั่นสุดคุ้ม</span>
-        <p class="mvx-hero-title">ลดสูงสุด</p>
-        <p class="mvx-hero-pct">50%</p>
-        <p class="mvx-hero-sub">เพลงไทย REMIX</p>
-        <button class="mvx-hero-cta" type="button" id="mvxHeroCta">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h2l2.4 12.4a2 2 0 0 0 2 1.6h8.2a2 2 0 0 0 2-1.6L21 8H6"/></svg>
-          ซื้อเลย
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <div class="mvx-flash">
-    <div class="mvx-flash-inner">
-      <div>
-        <div class="mvx-flash-title">⚡ ลดพิเศษ! เฉพาะวันนี้</div>
-        <div class="mvx-flash-timer" id="mvxFlashTimer">
-          <span class="u" id="mvxFH">--</span><span class="c">:</span>
-          <span class="u" id="mvxFM">--</span><span class="c">:</span>
-          <span class="u" id="mvxFS">--</span>
-        </div>
-      </div>
-      <div class="mvx-flash-pct">50%</div>
-    </div>
   </div>
 
   <div id="djSection">
@@ -554,83 +518,6 @@
           icon.classList.toggle('is-closed');
         });
       }
-    });
-  </script>
-
-  <!-- เพิ่มใหม่: สคริปต์เฉพาะ Hero/Flash Sale (UI-only) — ไม่แตะ state/cart/order เดิม -->
-  <script>
-    document.addEventListener('DOMContentLoaded', () => {
-      // ปุ่ม "ซื้อเลย" ในแบนเนอร์: เลื่อนไปยังรายการเพลง (ใช้ element เดิม #songGrid)
-      const heroCta = document.getElementById('mvxHeroCta');
-      const songGrid = document.getElementById('songGrid');
-      if (heroCta && songGrid) {
-        heroCta.addEventListener('click', () => {
-          songGrid.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        });
-      }
-
-      // นับถอยหลัง Flash Sale — เป็นตัวเลข UI เท่านั้น ไม่ผูกกับ backend
-      // TODO (เมื่อมีระบบ Promotion Countdown จริง): แทนที่ remaining ด้วยเวลาสิ้นสุดจริงจาก API เดิม
-      const fH = document.getElementById('mvxFH');
-      const fM = document.getElementById('mvxFM');
-      const fS = document.getElementById('mvxFS');
-      if (fH && fM && fS) {
-        let remaining = 12 * 3600 + 41 * 60 + 33;
-        const tick = () => {
-          if (remaining <= 0) return;
-          remaining--;
-          fH.textContent = String(Math.floor(remaining / 3600)).padStart(2, '0');
-          fM.textContent = String(Math.floor((remaining % 3600) / 60)).padStart(2, '0');
-          fS.textContent = String(Math.floor(remaining % 60)).padStart(2, '0');
-        };
-        tick();
-        setInterval(tick, 1000);
-      }
-    });
-  </script>
-
-  <!-- เพิ่มใหม่: badge ส่วนลด % จริง คำนวณจากราคาที่ระบบ render ออกมาแล้วเท่านั้น
-       ไม่ดึงข้อมูลใหม่ ไม่แตะ renderSongGrid/renderDiscountedPriceForSong เดิม
-       ใช้ MutationObserver เพื่อให้ทำงานต่อเนื่องตอนค้นหา/เปลี่ยนหมวดหมู่ (ซึ่งจะ re-render #songGrid) -->
-  <script>
-    document.addEventListener('DOMContentLoaded', () => {
-      const grid = document.getElementById('songGrid');
-      if (!grid) return;
-
-      function parsePrice(text) {
-        const digits = String(text || '').replace(/[^\d]/g, '');
-        return digits ? parseInt(digits, 10) : NaN;
-      }
-
-      function applyDiscountBadges() {
-        grid.querySelectorAll('.song-card').forEach((card) => {
-          const cover = card.querySelector('.song-cover');
-          if (!cover) return;
-          const orig = card.querySelector('.price-original');
-          const disc = card.querySelector('.price-discounted');
-          let badge = cover.querySelector('.mvx-discount-badge');
-          if (orig && disc) {
-            const o = parsePrice(orig.textContent);
-            const d = parsePrice(disc.textContent);
-            if (o > 0 && d >= 0 && d < o) {
-              const pct = Math.round((1 - d / o) * 100);
-              if (pct > 0) {
-                if (!badge) {
-                  badge = document.createElement('span');
-                  badge.className = 'mvx-discount-badge';
-                  cover.appendChild(badge);
-                }
-                badge.textContent = '-' + pct + '%';
-                return;
-              }
-            }
-          }
-          if (badge) badge.remove();
-        });
-      }
-
-      applyDiscountBadges();
-      new MutationObserver(applyDiscountBadges).observe(grid, { childList: true });
     });
   </script>
 
