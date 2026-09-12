@@ -1,546 +1,299 @@
 /* =====================================================================
-   user-neon-theme.css
+   user-neon-theme.css  —  DARK PREMIUM NEON RGB  (USER side ONLY)
    ---------------------------------------------------------------------
-   ธีม "Neon RGB / Cyberpunk Premium Music Store" สำหรับหน้าฝั่ง USER เท่านั้น
-   (ไฟล์นี้ลิงก์อยู่ใน index.html เพียงไฟล์เดียว — ไม่ลิงก์ใน admin.html
-   จึงไม่กระทบหน้าตาฝั่งแอดมินเลยแม้จะ override ตัวแปรร่วมกับ style.css)
+   ไฟล์นี้โหลดต่อจาก style.css ใน index.html เท่านั้น (ไม่ลิงก์ใน admin.html)
+   จึง override ตัวแปรและสไตล์ได้โดยไม่ต้องแก้ style.css
+   ไม่เปลี่ยน DOM/ID/Class ที่ app-user.js / app-cart.js อ้างอิง
+   เปลี่ยนเฉพาะ: สี / ฟอนต์ / เงา / ระยะ / glow / animation เบาๆ
 
-   วิธีทำงาน: ไฟล์นี้ถูกโหลด "ต่อจาก" style.css เสมอ (ดู index.html) จึง
-   override ค่าตัวแปรและสไตล์ของ component เดิมได้โดยไม่ต้องแก้ style.css,
-   ไม่แตะ HTML structure/ID/Class ที่ app-user.js และ app-cart.js อ้างอิงอยู่
-   (เปลี่ยนเฉพาะสี ฟอนต์ เงา ระยะห่าง ไม่เปลี่ยนโครงสร้าง DOM)
-
-   อัปเดตล่าสุด (2026-09-12): เพิ่มแพตช์ท้ายไฟล์ —
-   - รูปปกคมชัดขึ้น (image-rendering ใส่ตรงตัว <img> จริง)
-   - เผื่อพื้นที่ด้านขวาให้ราคาตัวใหญ่ ไม่บังชื่อเพลง/เพลย์ลิสต์
-   - ฟอนต์ราคาใหญ่ขึ้น + ตัวหนา ให้เพลย์ลิสต์กับเพลงทั้งหมดเหมือนกัน
-   - สลับสี: ราคาปกติ = ชมพูเข้ม, ราคาลด/โปรโมชัน = ทอง
+   หลักการสำคัญ:
+   - ไม่แตะ Backend / API / Auth / Cart Logic / Function เดิม
+   - ไม่เปลี่ยนชื่อ class/id/function/props เดิม
+   - ไม่สร้าง mock data
+   - ใช้ !important เฉพาะจุดที่จำเป็นเพื่อให้ cascade ทับ style.css ได้แน่นอน
    ===================================================================== */
 
-/* ---------- 1) COLOR SYSTEM: override ตัวแปรเดิมของ style.css ---------- */
+/* =====================================================================
+   1) COLOR SYSTEM (override style.css)
+   ===================================================================== */
 :root {
-  --bg: #070711;
-  --surface: #101020;
-  --surface-2: #171730;
-  --surface-hover: #201f42;
-  --border: rgba(139, 92, 255, 0.28);
-  --border-focus: rgba(0, 229, 255, 0.55);
+  /* background surfaces */
+  --bg: #06060f;
+  --surface: #0d0c1c;
+  --surface-2: #14132a;
+  --surface-hover: #1c1a3a;
+  --border: rgba(139, 92, 255, 0.30);
+  --border-focus: rgba(0, 229, 255, 0.60);
 
-  --text: #f3f1ff;
-  --text-dim: #a9a3d6;
+  /* text */
+  --text: #f5f3ff;
+  --text-dim: #b4aedf;
 
-  --accent: #8b5cff;         /* Neon Purple */
-  --accent-glow: rgba(139, 92, 255, 0.45);
-  --accent-2: #ff2bd6;       /* Neon Pink */
-  --accent-2-glow: rgba(255, 43, 214, 0.45);
+  /* accents */
+  --accent: #a347ff;            /* Neon Purple */
+  --accent-glow: rgba(163, 71, 255, 0.45);
+  --accent-2: #ff3dd6;          /* Neon Pink */
+  --accent-2-glow: rgba(255, 61, 214, 0.45);
 
-  --success: #22e6a8;        /* Green สำหรับราคา/สถานะ */
+  --success: #22e6a8;
   --danger: #ff4d6d;
 
-  --shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.55);
-  --shadow-accent: 0 0 22px var(--accent-2-glow);
+  /* shadows */
+  --shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 16px 44px rgba(0, 0, 0, 0.6);
+  --shadow-accent: 0 0 24px var(--accent-2-glow);
 
-  /* ตัวแปรเสริมเฉพาะธีมนี้ (ไม่ชนกับของเดิม) */
-  --nx-cyan: #00e5ff;
-  --nx-blue: #246bff;
+  /* ตัวแปรเสริมเฉพาะธีม */
+  --nx-cyan: #1ff0ff;
+  --nx-blue: #2f7bff;
   --nx-gold: #ffd21f;
+  --nx-gold-2: #ffb84d;
+  --nx-pink: #ff3dd6;
+  --nx-purple: #a347ff;
+
+  /* radii */
+  --nx-radius-card: 16px;
+  --nx-radius-pill: 999px;
+}
+
+/* ปิด horizontal scroll ที่อาจเกิดจาก glow ใหญ่เกิน */
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
 }
 
 html, body {
-  background: var(--bg);
+  background: var(--bg) !important;
   background-image:
-    radial-gradient(60% 40% at 12% -5%, rgba(139, 92, 255, 0.20) 0%, transparent 60%),
-    radial-gradient(55% 38% at 105% 0%, rgba(0, 229, 255, 0.14) 0%, transparent 55%),
-    radial-gradient(60% 45% at 50% 100%, rgba(255, 43, 214, 0.10) 0%, transparent 60%);
-  background-attachment: fixed;
+    radial-gradient(60% 42% at 12% -5%, rgba(163, 71, 255, 0.22) 0%, transparent 60%),
+    radial-gradient(55% 38% at 105% 0%, rgba(31, 240, 255, 0.15) 0%, transparent 55%),
+    radial-gradient(60% 45% at 50% 105%, rgba(255, 61, 214, 0.12) 0%, transparent 60%) !important;
+  background-attachment: fixed !important;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-/* ---------- 2) HEADER / SEARCH ---------- */
+/* =====================================================================
+   2) HEADER / TOPBAR + LOGO
+   ===================================================================== */
 .topbar {
-  background: rgba(9, 8, 20, 0.86);
-  border-bottom: 1px solid rgba(139, 92, 255, 0.35);
-  box-shadow: 0 1px 26px rgba(139, 92, 255, 0.12);
+  background: linear-gradient(180deg, rgba(9, 8, 20, 0.92), rgba(9, 8, 20, 0.78)) !important;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid rgba(163, 71, 255, 0.4) !important;
+  box-shadow: 0 1px 28px rgba(163, 71, 255, 0.16), 0 1px 0 rgba(31, 240, 255, 0.10) inset !important;
 }
 
-.logo span {
-  background: linear-gradient(90deg, #efe9ff, var(--nx-cyan) 65%, var(--accent-2));
+.logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.logo svg, .logo img { filter: drop-shadow(0 0 8px rgba(163, 71, 255, 0.65)); }
+.logo span, .logo b {
+  background: linear-gradient(90deg, #efe9ff 0%, var(--nx-cyan) 55%, var(--nx-pink) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  filter: drop-shadow(0 0 10px rgba(139, 92, 255, 0.25));
+  background-clip: text;
+  filter: drop-shadow(0 0 12px rgba(163, 71, 255, 0.30));
+  font-weight: 800;
+  letter-spacing: 0.3px;
 }
 
-.cart-toggle-btn, #trackOrderBtn.icon-btn {
-  background: rgba(20, 18, 40, 0.65);
-  border: 1px solid rgba(139, 92, 255, 0.4);
-  border-radius: 12px;
-  width: 40px;
-  height: 40px;
+/* ปุ่มไอคอนฝั่งขวาบน */
+.cart-toggle-btn,
+#trackOrderBtn.icon-btn,
+.icon-btn {
+  background: rgba(20, 18, 40, 0.7) !important;
+  border: 1px solid rgba(163, 71, 255, 0.45) !important;
+  border-radius: 12px !important;
+  width: 40px !important;
+  height: 40px !important;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  color: var(--text) !important;
+  box-shadow: 0 0 0 rgba(0,0,0,0), inset 0 0 0 1px rgba(31, 240, 255, 0.05);
+  transition: border-color 0.22s ease, box-shadow 0.22s ease, transform 0.18s ease;
 }
+.cart-toggle-btn:hover,
+#trackOrderBtn.icon-btn:hover,
+.icon-btn:hover {
+  border-color: var(--nx-cyan) !important;
+  box-shadow: 0 0 16px rgba(31, 240, 255, 0.45), inset 0 0 0 1px rgba(31, 240, 255, 0.2) !important;
+  transform: translateY(-1px);
+}
+.cart-toggle-btn:active,
+.icon-btn:active { transform: scale(0.94); }
 
 .cart-badge {
-  background: linear-gradient(135deg, var(--accent-2), #ff00a8);
-  box-shadow: 0 0 10px rgba(255, 43, 214, 0.7);
+  background: linear-gradient(135deg, var(--nx-pink), #ff00a8) !important;
+  color: #fff !important;
+  font-weight: 800;
+  box-shadow: 0 0 12px rgba(255, 61, 214, 0.75), 0 0 0 2px rgba(7, 6, 16, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
+/* =====================================================================
+   3) SEARCH BAR — Neon glow 2 ชั้น
+   ===================================================================== */
 .search-box {
-  background: rgba(16, 16, 32, 0.8);
-  border: 1px solid rgba(0, 229, 255, 0.35);
-  border-radius: 22px;
-  min-height: 52px;
-  box-shadow: inset 0 0 0 1px rgba(139, 92, 255, 0.12), 0 0 18px rgba(0, 229, 255, 0.08);
+  background: rgba(13, 12, 28, 0.85) !important;
+  border: 1.5px solid rgba(31, 240, 255, 0.40) !important;
+  border-radius: 24px !important;
+  min-height: 52px !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(163, 71, 255, 0.18),
+    0 0 22px rgba(31, 240, 255, 0.18),
+    0 4px 18px rgba(0, 0, 0, 0.45) !important;
+  transition: border-color 0.22s ease, box-shadow 0.22s ease, background 0.22s ease;
 }
-
 .search-box:focus-within {
-  border-color: var(--nx-cyan);
-  box-shadow: 0 0 0 3px rgba(0, 229, 255, 0.18), 0 0 20px rgba(0, 229, 255, 0.25);
-  background: rgba(20, 18, 40, 0.85);
+  border-color: var(--nx-cyan) !important;
+  background: rgba(20, 18, 40, 0.92) !important;
+  box-shadow:
+    0 0 0 3px rgba(31, 240, 255, 0.22),
+    0 0 28px rgba(31, 240, 255, 0.32),
+    inset 0 0 0 1px rgba(31, 240, 255, 0.25) !important;
 }
+.search-box svg,
+.search-box input::placeholder { color: var(--text-dim); }
+.search-box svg { color: var(--nx-cyan); filter: drop-shadow(0 0 6px rgba(31, 240, 255, 0.55)); }
+.search-box input { color: var(--text) !important; font-weight: 500; }
 
-.search-box svg { color: var(--nx-cyan); }
-
-/* ---------- 3) CATEGORY CHIPS ---------- */
+/* =====================================================================
+   4) CATEGORY — เปลี่ยนจาก chip แบนๆ → Neon Card (ยังใช้ class .chip เดิม)
+   ===================================================================== */
+.chip-row,
+.chips,
+.chip-list {
+  gap: 10px !important;
+  padding: 4px 0 6px;
+}
 .chip {
-  background: rgba(16, 16, 32, 0.75);
-  border: 1px solid rgba(139, 92, 255, 0.3);
-  color: var(--text-dim);
+  display: inline-flex !important;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(160deg, rgba(20, 18, 40, 0.85), rgba(13, 12, 28, 0.9)) !important;
+  border: 1px solid rgba(163, 71, 255, 0.38) !important;
+  border-radius: 14px !important;
+  padding: 10px 14px !important;
+  font-size: 12.5px !important;
+  font-weight: 700 !important;
+  color: var(--text-dim) !important;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(31, 240, 255, 0.05);
+  transition: border-color 0.22s ease, box-shadow 0.22s ease, transform 0.18s ease, color 0.22s ease;
+  position: relative;
+  overflow: hidden;
 }
-
+.chip::before {
+  /* glow เล็กๆ ด้านใน */
+  content: "";
+  position: absolute; inset: 0;
+  background: radial-gradient(120% 100% at 50% -20%, rgba(163, 71, 255, 0.22), transparent 60%);
+  pointer-events: none;
+}
+.chip:hover {
+  border-color: var(--nx-cyan) !important;
+  color: var(--text) !important;
+  box-shadow: 0 0 18px rgba(31, 240, 255, 0.35), 0 4px 12px rgba(0,0,0,0.4) !important;
+  transform: translateY(-1px);
+}
 .chip.active {
-  background: linear-gradient(120deg, var(--accent), var(--accent-2));
-  box-shadow: 0 0 16px var(--accent-2-glow);
-  color: #fff;
+  background: linear-gradient(120deg, var(--nx-purple), var(--nx-pink)) !important;
+  border-color: transparent !important;
+  color: #fff !important;
+  box-shadow: 0 0 22px var(--accent-2-glow), 0 0 0 1px rgba(255, 255, 255, 0.15) inset !important;
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.45);
 }
+.chip.active::before { background: none; }
 
-/* ---------- 4) DJ ROW ---------- */
+/* =====================================================================
+   5) DJ ROW
+   ===================================================================== */
 .dj-avatar {
-  border: 2px solid rgba(139, 92, 255, 0.35);
+  border: 2px solid rgba(163, 71, 255, 0.45) !important;
   box-shadow: 0 0 0 rgba(0,0,0,0);
+  transition: border-color 0.22s ease, box-shadow 0.22s ease;
 }
-
 .dj-item:hover .dj-avatar,
 .dj-item:focus-within .dj-avatar {
-  border-color: var(--accent-2);
-  box-shadow: 0 0 16px var(--accent-2-glow);
+  border-color: var(--nx-pink) !important;
+  box-shadow: 0 0 18px var(--accent-2-glow) !important;
 }
 
 .section-title {
-  text-shadow: 0 0 18px rgba(139, 92, 255, 0.18);
+  text-shadow: 0 0 20px rgba(163, 71, 255, 0.25);
+  font-weight: 800;
+  letter-spacing: 0.2px;
 }
 
-/* ---------- 5) PLAYLIST DROPDOWN ---------- */
+/* =====================================================================
+   6) PLAYLIST DROPDOWN
+   ===================================================================== */
 .playlist-folder-btn {
-  border-color: rgba(139, 92, 255, 0.25) !important;
+  border-color: rgba(163, 71, 255, 0.30) !important;
 }
 .playlist-folder-btn:hover {
   border-color: var(--nx-cyan) !important;
+  box-shadow: 0 0 16px rgba(31, 240, 255, 0.28) !important;
 }
 .playlist-play-btn {
-  background: linear-gradient(135deg, var(--accent), var(--accent-2)) !important;
-  box-shadow: 0 0 12px var(--accent-2-glow);
+  background: linear-gradient(135deg, var(--nx-purple), var(--nx-pink)) !important;
+  box-shadow: 0 0 14px var(--accent-2-glow);
 }
 
-/* ---------- 6) SONG CARD / GRID (รายการเพลง) — PREMIUM REDESIGN v3 ---------- */
-/* Mobile-first: การ์ดแนวนอน 1 แถว/เพลง (ตามสเปก "ONE PRODUCT = ONE ROW")
-   ปรับเป็น CSS Grid หลายคอลัมน์เมื่อจอกว้างขึ้น โดยไม่เปลี่ยน DOM ที่ app-user.js สร้าง */
+/* =====================================================================
+   7) SONG CARD — PREMIUM REDESIGN
+   ไม่มีเลขลำดับเพลง (ระบบเดิมไม่ได้ render เลขอยู่แล้ว แต่กันพวงซ้อนทับ)
+   ===================================================================== */
 .song-grid {
   gap: 12px !important;
 }
 
 .song-card {
-  position: relative !important; /* จำเป็นสำหรับ .song-footer แบบ absolute ด้านล่าง */
-  background: linear-gradient(160deg, rgba(18, 17, 36, 0.94), rgba(9, 8, 20, 0.97)) !important;
-  border: 1px solid rgba(139, 92, 255, 0.28) !important;
-  border-radius: 18px !important;
-  margin-bottom: 0;
-  padding: 10px 12px !important;
+  position: relative !important;
+  background:
+    linear-gradient(160deg,
+      hsla(258, 55%, calc(11% + 14% * var(--mvx-row-t, 0) + 3%), 0.96),
+      hsla(258, 60%, calc(9% + 14% * var(--mvx-row-t, 0)), 0.98)) !important;
+  border: 1px solid rgba(163, 71, 255, 0.32) !important;
+  border-radius: var(--nx-radius-card) !important;
+  margin-bottom: 0 !important;
+  padding: 11px 13px !important;
   gap: 12px !important;
-  box-shadow: 0 0 0 rgba(0, 0, 0, 0);
-  transition: border-color 0.22s ease, box-shadow 0.22s ease, transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), background 0.3s ease;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(31, 240, 255, 0.04);
+  transition: border-color 0.22s ease, box-shadow 0.22s ease, transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
   overflow: hidden;
 }
-
-.song-card:first-child,
-.song-card:last-child {
-  border-radius: 18px !important;
-}
-
 .song-card:hover {
-  border-color: rgba(255, 43, 214, 0.5) !important;
-  box-shadow: 0 6px 22px rgba(139, 92, 255, 0.16), 0 0 0 1px rgba(255, 43, 214, 0.12);
-  transform: translateY(-1px);
+  border-color: rgba(255, 61, 214, 0.55) !important;
+  box-shadow: 0 8px 26px rgba(163, 71, 255, 0.22), 0 0 0 1px rgba(255, 61, 214, 0.20), inset 0 0 0 1px rgba(31, 240, 255, 0.06) !important;
+  transform: translateY(-2px);
 }
-
 .song-card:focus-within {
   outline: 2px solid var(--nx-cyan);
   outline-offset: 2px;
 }
 
-/* ---- Cover: ขนาด responsive ตามสเปก 72–86 (มือถือ) / ~90 (แท็บเล็ต) / 90–100 (เดสก์ท็อป) ---- */
+/* ปกเพลง — ใหญ่ขึ้น คมชัด มุมโค้ง */
 .song-cover {
-  width: clamp(72px, 20vw, 86px) !important;
-  height: clamp(72px, 20vw, 86px) !important;
-  border-radius: 15px;
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  box-shadow: 0 0 0 1px rgba(139, 92, 255, 0.18), 0 4px 14px rgba(0, 0, 0, 0.35);
-  transition: box-shadow 0.22s ease;
-  /* เพิ่มใหม่: ลดการเบลอของรูปปกตอนย่อขนาด/ตอน hover */
+  width: clamp(76px, 22vw, 88px) !important;
+  height: clamp(76px, 22vw, 88px) !important;
+  border-radius: 14px !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 0 0 1px rgba(163, 71, 255, 0.22), 0 6px 16px rgba(0, 0, 0, 0.4) !important;
+  transition: box-shadow 0.22s ease, transform 0.22s ease;
   image-rendering: -webkit-optimize-contrast;
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
-}
-.song-card:hover .song-cover {
-  box-shadow: 0 0 0 1px rgba(255, 43, 214, 0.35), 0 6px 18px rgba(0, 0, 0, 0.4);
-}
-
-/* ปุ่ม Preview (▶) — วงแหวน Neon แทนวงกลมทึบเดิม ไม่เปลี่ยนตำแหน่ง/ฟังก์ชัน แค่ทำให้ดูพรีเมียมขึ้น */
-.song-cover .play-btn {
-  background: rgba(7, 6, 16, 0.38);
-  box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.35);
-  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.18s ease;
-}
-.song-card:hover .song-cover .play-btn {
-  background: rgba(139, 92, 255, 0.28);
-  box-shadow: inset 0 0 0 1.5px var(--nx-cyan), 0 0 14px rgba(0, 229, 255, 0.45);
-}
-.song-card:hover .song-cover .play-btn svg {
-  filter: drop-shadow(0 0 6px rgba(0, 229, 255, 0.8));
-}
-
-/* ---- Text block ---- */
-/* เผื่อพื้นที่ด้านขวาล่างให้ป้ายราคาที่ลอยอยู่ ไม่ให้ทับชื่อเพลงบรรทัดสุดท้าย */
-.song-name {
-  color: var(--text);
-  font-size: clamp(14.5px, 3.6vw, 16px);
-  font-weight: 700;
-  white-space: normal !important;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  line-height: 1.28;
-  padding-right: 78px; /* กันไม่ให้ข้อความชนป้ายราคาที่ลอยมุมขวาล่าง */
-}
-
-.song-artist {
-  font-size: 12.5px;
-  color: var(--text-dim);
-  padding-right: 78px;
-}
-
-.song-dj {
-  color: var(--nx-cyan);
-  font-size: 11.5px;
-  text-shadow: 0 0 8px rgba(0, 229, 255, 0.25);
-}
-
-/* ---- ราคา + ปุ่มซื้อ: ลอยที่มุมขวาล่างของการ์ดเสมอ ไม่มีพื้นหลัง ไม่บังชื่อเพลง ---- */
-.song-footer {
-  position: absolute !important;
-  bottom: 8px !important;
-  right: 10px !important;
-  left: auto !important;
-  background: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
-  z-index: 3;
-}
-
-/* ปุ่ม/แถบราคา ในการ์ดเพลงหลัก — เอาพื้นหลังทึบและคำว่า "ซื้อเลย" ออก
-   เหลือแค่ไอคอนตะกร้าเล็ก ๆ + ตัวเลขราคาสีชัดเจน กดเพื่อซื้อได้เหมือนเดิม */
-.song-card .cart-add-btn {
-  display: inline-flex !important;
-  align-items: center;
-  gap: 4px;
-  min-height: 0 !important;
-  padding: 4px 6px !important;
-  border-radius: 8px;
-  background: transparent !important;
-  color: inherit;
-  box-shadow: none !important;
-  transition: transform 0.16s ease;
-}
-.song-card .cart-add-btn svg {
-  width: 13px;
-  height: 13px;
-  opacity: 0.85;
   flex-shrink: 0;
 }
-.song-card .cart-add-btn::after {
-  content: none !important; /* ปิดคำว่า "ซื้อเลย" ที่เคยแทรกไว้ */
+.song-card:hover .song-cover {
+  box-shadow: 0 0 0 1px rgba(255, 61, 214, 0.45), 0 8px 20px rgba(0, 0, 0, 0.45) !important;
+  transform: scale(1.02);
 }
-.song-card .cart-add-btn:hover {
-  transform: none;
-}
-.song-card .cart-add-btn:active {
-  transform: scale(0.92);
-}
-
-/* ราคาโปรโมชัน/ส่วนลด — โทนแดงอมชมพู ตัวหนา เด่นชัด */
-.song-card .cart-add-btn .price-discounted,
-.song-card .price-discounted {
-  background: linear-gradient(90deg, #ff2d55, #ff2bd6);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  color: #ff2d55; /* fallback เผื่อเบราว์เซอร์ไม่รองรับ background-clip:text */
-  text-shadow: none;
-  font-weight: 800;
-  font-size: 13px;
-  letter-spacing: 0.2px;
-}
-
-/* ราคาปกติ (ไม่มีส่วนลด) — โทนเหลืองอมม่วง ตัวหนา เด่นชัด */
-.song-card .cart-add-btn .song-price,
-.song-card .song-price {
-  background: linear-gradient(90deg, var(--nx-gold), var(--accent));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  color: var(--nx-gold); /* fallback */
-  text-shadow: none;
-  font-weight: 800;
-  font-size: 13px;
-  letter-spacing: 0.2px;
-}
-
-/* ราคาก่อนลด — ตัวเล็ก ขีดฆ่า จางกว่า ไม่แย่งซีน */
-.song-card .cart-add-btn .price-original,
-.song-card .price-original {
-  color: rgba(255, 255, 255, 0.5);
-  text-decoration: line-through;
-  font-size: 10px;
-  font-weight: 600;
-  -webkit-text-fill-color: rgba(255, 255, 255, 0.5); /* กัน background-clip ของ selector อื่นมาทับ */
-}
-
-/* จุดสัญลักษณ์ "มีส่วนลด" — badge ตัวเลข % จริง คำนวณจากราคาที่ระบบ render ออกมาแล้วเท่านั้น
-   (ดูสคริปต์ mvx-discount-badge ใน index.html) ไม่ใช่ค่าคงที่/mock */
-.mvx-discount-badge {
-  position: absolute;
-  top: 6px;
-  left: 6px;
-  z-index: 2;
-  background: linear-gradient(135deg, var(--accent-2), #ff00a8);
-  color: #fff;
-  font-size: 10.5px;
-  font-weight: 800;
-  padding: 3px 7px;
-  border-radius: 8px;
-  box-shadow: 0 0 10px rgba(255, 43, 214, 0.6);
-  pointer-events: none;
-  line-height: 1.3;
-}
-
-.discount-badge {
-  background: rgba(255, 43, 214, 0.14);
-  color: var(--accent-2, #ff2bd6);
-  border: 1px solid rgba(255, 43, 214, 0.4);
-}
-
-.buy-btn {
-  background: rgba(139, 92, 255, 0.1);
-  border: 1px solid rgba(139, 92, 255, 0.4);
-  color: var(--text);
-}
-
-.buy-btn:hover {
-  background: linear-gradient(90deg, var(--accent), var(--accent-2));
-  border-color: transparent;
-  box-shadow: 0 0 14px var(--accent-2-glow);
-}
-
-/* ---- Reduced motion: ปิด micro-interaction ที่เป็น transform/transition ---- */
-@media (prefers-reduced-motion: reduce) {
-  .song-card, .song-cover, .song-cover .play-btn, .cart-add-btn {
-    transition: none !important;
-  }
-}
-
-/* ---- Responsive breakpoints: Tablet / Desktop / Large Desktop -----------------
-   Mobile (< 768px): 1 คอลัมน์ (ONE PRODUCT = ONE ROW ตามสเปก) — ค่าเริ่มต้นด้านบน
-   ไม่แก้ DOM ที่ app-user.js สร้าง เปลี่ยนแค่ display จาก flex-column → grid ---- */
-@media (min-width: 768px) and (max-width: 1023.98px) {
-  .song-grid {
-    display: grid !important;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 14px !important;
-  }
-  .song-card { padding: 12px 14px !important; }
-}
-
-@media (min-width: 1024px) {
-  .song-grid {
-    display: grid !important;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 16px !important;
-    max-width: 1200px;
-  }
-  .song-card { padding: 14px 16px !important; }
-  .song-cover { width: 92px !important; height: 92px !important; }
-  .song-name { font-size: 16px; }
-}
-
-@media (min-width: 1440px) {
-  .song-grid {
-    grid-template-columns: repeat(4, 1fr);
-    max-width: 1480px;
-  }
-}
-
-/* ---------- 7) BOTTOM NAVIGATION ---------- */
-.bottom-nav {
-  background: rgba(10, 9, 20, 0.88);
-  border-top: 1px solid rgba(139, 92, 255, 0.4);
-  box-shadow: 0 -6px 24px rgba(139, 92, 255, 0.14), 0 -1px 0 rgba(0, 229, 255, 0.2);
-}
-
-.bottom-nav button.active {
-  color: var(--accent-2);
-}
-.bottom-nav button.active svg {
-  filter: drop-shadow(0 0 6px rgba(255, 43, 214, 0.8));
-}
-
-/* ---------- 8) PLAYER BAR ---------- */
-.player-bar {
-  background: rgba(16, 16, 32, 0.95);
-  border: 1px solid rgba(139, 92, 255, 0.35);
-  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.6), 0 0 16px var(--accent-2-glow);
-}
-
-.player-bar .ctrl {
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  box-shadow: 0 0 14px var(--accent-2-glow);
-}
-
-/* ---------- 9) BUTTONS / MODALS ---------- */
-.btn {
-  background: linear-gradient(90deg, var(--accent), var(--accent-2));
-  box-shadow: 0 0 16px var(--accent-2-glow);
-}
-
-.btn.secondary {
-  background: rgba(20, 18, 40, 0.75);
-  border: 1px solid rgba(139, 92, 255, 0.35);
-}
-
-.modal {
-  background: linear-gradient(180deg, rgba(16, 16, 32, 0.98), rgba(10, 9, 20, 0.99));
-  border: 1px solid rgba(139, 92, 255, 0.35);
-  box-shadow: 0 0 40px rgba(139, 92, 255, 0.15), var(--shadow-lg);
-}
-
-.modal-close {
-  background: rgba(139, 92, 255, 0.12);
-  border: 1px solid rgba(139, 92, 255, 0.35);
-}
-
-/* ---------- 10) HERO PROMOTION + FLASH SALE (UI-only, ไม่มี backend ใหม่) ---------- */
-/* คลาสทั้งหมดในส่วนนี้ตั้งชื่อขึ้นใหม่ (คำนำหน้า mvx-) เพื่อไม่ชนกับคลาสเดิมของระบบ
-   ข้อมูลเปอร์เซ็นต์ส่วนลด/เวลานับถอยหลัง เป็นค่าคงที่ฝั่ง UI เท่านั้น
-   เมื่อระบบหลังบ้านมี Promotion/Countdown จริง ให้แทนที่ค่าคงที่ใน mvx-init.js ด้วยข้อมูลจาก API เดิม */
-.mvx-hero-wrap { max-width: 1080px; margin: 0 auto; padding: 4px 16px 0; }
-.mvx-hero {
-  position: relative;
-  overflow: hidden;
-  border-radius: 20px;
-  aspect-ratio: 16 / 9.5;
-  background:
-    radial-gradient(65% 85% at 105% -10%, rgba(0, 229, 255, 0.30), transparent 55%),
-    radial-gradient(70% 90% at -10% 105%, rgba(255, 43, 214, 0.40), transparent 60%),
-    linear-gradient(120deg, #1a0f3d 0%, #2b0f45 45%, #14243f 100%);
-  border: 1px solid rgba(255, 43, 214, 0.4);
-  box-shadow: 0 0 30px rgba(139, 92, 255, 0.22);
-  padding: 16px;
-}
-.mvx-hero-figure {
-  position: absolute; left: -6%; bottom: -6%; width: 50%; height: 112%;
-  background: linear-gradient(200deg, rgba(255,255,255,0.08), rgba(20,16,40,0) 70%);
-  border-radius: 0 60% 40% 0 / 0 50% 50% 0;
-}
-.mvx-hero-crown {
-  position: absolute; top: 10px; right: 12px; font-size: 26px;
-  filter: drop-shadow(0 0 8px rgba(255, 210, 31, 0.7));
-}
-.mvx-hero-content { position: relative; z-index: 2; margin-left: 42%; display: flex; flex-direction: column; justify-content: center; height: 100%; }
-.mvx-hero-eyebrow {
-  display: inline-flex; align-self: flex-start; font-size: 11px; font-weight: 800;
-  color: var(--nx-gold); background: rgba(255, 210, 31, 0.12);
-  border: 1px solid rgba(255, 210, 31, 0.5); padding: 4px 10px; border-radius: 999px;
-  margin-bottom: 8px;
-}
-.mvx-hero-title { font-size: 14px; font-weight: 700; color: var(--text); margin: 0; }
-.mvx-hero-pct {
-  font-size: 40px; font-weight: 800; line-height: 0.95; margin: 2px 0 4px;
-  background: linear-gradient(90deg, var(--nx-gold), #ffb84d, var(--accent-2));
-  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-}
-.mvx-hero-sub { font-size: 13px; font-weight: 700; color: var(--nx-cyan); margin-bottom: 10px; }
-.mvx-hero-cta {
-  align-self: flex-start; display: inline-flex; align-items: center; gap: 7px;
-  padding: 10px 18px; border-radius: 14px; font-weight: 800; font-size: 13px; color: #1a0a2e;
-  background: linear-gradient(90deg, var(--nx-gold), var(--accent-2)); border: none;
-  box-shadow: 0 0 18px var(--accent-2-glow);
-}
-
-.mvx-flash {
-  max-width: 1080px; margin: 12px auto 0; padding: 0 16px;
-}
-.mvx-flash-inner {
-  border-radius: 16px; padding: 12px 14px;
-  display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  background: linear-gradient(90deg, rgba(139, 92, 255, 0.20), rgba(255, 43, 214, 0.16));
-  border: 1px solid rgba(255, 43, 214, 0.4);
-}
-.mvx-flash-title { font-size: 13.5px; font-weight: 800; color: var(--text); }
-.mvx-flash-note { font-size: 10.5px; color: var(--text-dim); font-weight: 600; margin-top: 1px; }
-.mvx-flash-timer { display: flex; align-items: center; gap: 4px; margin-top: 4px; }
-.mvx-flash-timer .u {
-  background: rgba(0,0,0,0.35); border: 1px solid rgba(0, 229, 255, 0.4);
-  border-radius: 7px; padding: 3px 6px; font-weight: 800; font-size: 12px; min-width: 24px;
-  text-align: center; color: var(--nx-cyan);
-}
-.mvx-flash-timer .c { color: var(--text-dim); font-weight: 800; }
-.mvx-flash-pct {
-  font-size: 22px; font-weight: 800; color: var(--nx-gold);
-  text-shadow: 0 0 14px rgba(255, 210, 31, 0.45);
-}
-
-/* ---------- 11) RESPONSIVE: 375 / 390 / 414 / 430px ---------- */
-@media (max-width: 380px) {
-  .mvx-hero-content { margin-left: 46%; }
-  .mvx-hero-pct { font-size: 32px; }
-  .mvx-hero-title, .mvx-hero-sub { font-size: 12px; }
-}
-
-/* ---------- 12) เพิ่มใหม่: ไล่สีพื้นหลังการ์ดเพลงจากเข้ม → จาง ตามลำดับแถว ---------- */
-/* ทำงานร่วมกับสคริปต์ mvx-row-gradient ใน index.html ที่จะ set inline style
-   ตัวแปร --mvx-row-t (0 = การ์ดแรก, 1 = การ์ดสุดท้าย) ให้แต่ละ .song-card
-   ไฟล์นี้ใช้ background เป็น fallback เผื่อสคริปต์ยังไม่ทำงาน */
-.song-card {
-  --mvx-row-t: 0;
-  background:
-    linear-gradient(
-      160deg,
-      hsl(255, 45%, calc(9% + 15% * var(--mvx-row-t) + 4%)),
-      hsl(255, 50%, calc(9% + 15% * var(--mvx-row-t)))
-    ) !important;
-}
-
-/* =====================================================================
-   13) PATCH ใหม่ (2026-09-12): รูปคมชัดขึ้น / ราคาไม่บังชื่อ / สลับสีราคา
-   ---------------------------------------------------------------------
-   - รูปปกคมชัดขึ้น: ใส่ image-rendering ตรงที่ตัว <img> จริง (เดิมใส่ที่
-     div ครอบ .song-cover เท่านั้น ตัวรูปเลยไม่ได้ผล)
-   - เผื่อพื้นที่ขวาให้ราคาตัวใหญ่ ไม่ให้ทับชื่อเพลง/เพลย์ลิสต์
-   - ฟอนต์ราคาใหญ่ขึ้น + ตัวหนา ให้ "เพลย์ลิสต์" กับ "เพลงทั้งหมด" เหมือนกัน
-   - สลับสี: ราคาปกติ = ชมพูเข้ม, ราคาลด/โปรโมชัน = ทอง
-   วางไว้ท้ายไฟล์เพื่อให้ลำดับ cascade ทับกฎเดิมด้านบนได้แน่นอน
-   ===================================================================== */
-
-/* 13.1) รูปปกคมชัดขึ้น — ใส่ตรงตัว <img> จริง ไม่ใช่แค่ div ครอบ */
 .song-cover img,
 .playlist-cover img,
 .playlist-folder-cover img {
@@ -549,60 +302,533 @@ html, body {
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
   transform: translateZ(0);
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
 }
 
-/* 13.2) เผื่อที่ด้านขวาให้พอกับราคาตัวใหญ่ตัวหนา ไม่ให้ทับชื่อเพลง/เพลย์ลิสต์ */
-.song-name, .song-artist, .song-dj,
-.playlist-item-sub, .playlist-folder-count {
-  padding-right: 120px !important;
+/* ปุ่ม ▶ Preview — วงแหวน neon */
+.song-cover .play-btn {
+  background: rgba(7, 6, 16, 0.45) !important;
+  box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.4), 0 0 10px rgba(0, 0, 0, 0.4) !important;
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.18s ease, box-shadow 0.18s ease;
+}
+.song-card:hover .song-cover .play-btn {
+  background: rgba(163, 71, 255, 0.35) !important;
+  box-shadow: inset 0 0 0 1.5px var(--nx-cyan), 0 0 16px rgba(31, 240, 255, 0.55) !important;
+  transform: scale(1.06);
+}
+.song-card:hover .song-cover .play-btn svg {
+  filter: drop-shadow(0 0 6px rgba(31, 240, 255, 0.85));
 }
 
-/* 13.3) ขนาด/น้ำหนักฟอนต์ราคา — เท่ากันทั้งเพลย์ลิสต์และเพลงทั้งหมด */
-.song-price,
-.playlist-item-price,
-.playlist-folder-price,
-.price-original,
-.price-discounted {
-  font-size: 15px !important;
+/* ข้อความ */
+.song-name {
+  color: var(--text) !important;
+  font-size: clamp(14.5px, 3.6vw, 16px) !important;
+  font-weight: 700 !important;
+  white-space: normal !important;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.28;
+  padding-right: 92px; /* เผื่อพื้นที่ราคาที่ลอยมุมขวา */
+}
+.song-artist {
+  font-size: 12.5px !important;
+  color: var(--text-dim) !important;
+  padding-right: 92px;
+  margin-top: 2px;
+}
+.song-dj {
+  color: var(--nx-cyan) !important;
+  font-size: 11.5px !important;
+  text-shadow: 0 0 8px rgba(31, 240, 255, 0.30);
+  margin-top: 2px;
+}
+
+/* footer ลอยมุมขวาล่าง */
+.song-footer {
+  position: absolute !important;
+  bottom: 9px !important;
+  right: 11px !important;
+  left: auto !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ปุ่ม 🛒 ซื้อเลย — Neon glass pill เด่น กดง่าย
+   ราคาอยู่ข้างในปุ่ม (ตาม DOM เดิมของ app-user.js) จึงใช้พื้นโปร่ง
+   ให้ราคาทอง/ชมพูโดดเด่น เห็นชัด */
+.song-card .cart-add-btn,
+.song-card .buy-btn {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px !important;
+  padding: 6px 12px !important;
+  border-radius: 999px !important;
+  background: linear-gradient(135deg, rgba(163, 71, 255, 0.25), rgba(255, 61, 214, 0.18)) !important;
+  color: #fff !important;
+  font-size: 12px !important;
   font-weight: 800 !important;
+  border: 1px solid rgba(255, 61, 214, 0.55) !important;
+  box-shadow:
+    0 0 14px rgba(255, 61, 214, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15) !important;
+  transition: transform 0.16s ease, box-shadow 0.18s ease, filter 0.18s ease, background 0.18s ease;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
-.price-original { font-size: 12px !important; }
-
-/* 13.4) สีราคา: ปกติ = ชมพูเข้ม / ลดราคา-โปรโมชัน = ทอง */
-.song-card .cart-add-btn .song-price,
-.song-card .song-price,
-.playlist-item-price,
-.playlist-folder-price {
-  background: none !important;
-  color: #c2185b !important;
-  -webkit-text-fill-color: #c2185b !important;
+.song-card .cart-add-btn svg,
+.song-card .buy-btn svg {
+  width: 14px !important;
+  height: 14px !important;
+  opacity: 1 !important;
+  flex-shrink: 0;
+  color: #fff !important;
+  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.5));
+}
+.song-card .cart-add-btn:hover,
+.song-card .buy-btn:hover {
+  background: linear-gradient(135deg, var(--nx-purple), var(--nx-pink)) !important;
+  filter: brightness(1.08);
+  box-shadow: 0 0 22px var(--accent-2-glow), inset 0 1px 0 rgba(255, 255, 255, 0.25) !important;
+  transform: translateY(-1px);
+}
+.song-card .cart-add-btn:active,
+.song-card .buy-btn:active {
+  transform: scale(0.93);
+}
+/* ป้าย "ซื้อเลย" เล็กๆ ต่อท้ายในปุ่ม — ซ่อนบนจอเล็กสุดเพื่อกันล้น */
+.song-card .cart-add-btn::after,
+.song-card .buy-btn::after {
+  content: "ซื้อเลย";
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  color: #fff;
+  font-size: 11px;
+  margin-left: 2px;
 }
 
-.song-card .cart-add-btn .price-discounted,
+/* ราคาปกติ — ขีดฆ่า จาง ตัวเล็ก */
+.song-card .price-original,
+.price-original {
+  color: rgba(255, 255, 255, 0.5) !important;
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.5) !important;
+  text-decoration: line-through !important;
+  text-decoration-color: rgba(255, 77, 109, 0.7) !important;
+  text-decoration-thickness: 1.5px !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.2px;
+  display: inline-block;
+  margin-right: 4px;
+}
+
+/* ราคาโปรโมชัน — ทอง ใหญ่ หนา เด่น */
 .song-card .price-discounted,
 .price-discounted {
   background: none !important;
-  color: var(--nx-gold, #ffd21f) !important;
-  -webkit-text-fill-color: var(--nx-gold, #ffd21f) !important;
-  text-shadow: 0 0 8px rgba(255, 210, 31, .35);
+  color: var(--nx-gold) !important;
+  -webkit-text-fill-color: var(--nx-gold) !important;
+  text-shadow: 0 0 10px rgba(255, 210, 31, 0.45), 0 0 2px rgba(255, 184, 77, 0.4) !important;
+  font-weight: 800 !important;
+  font-size: 17px !important;
+  letter-spacing: 0.3px;
+  line-height: 1;
 }
 
-.discount-badge,
-.mvx-discount-badge {
-  background: linear-gradient(135deg, var(--nx-gold, #ffd21f), #ffb84d) !important;
-  color: #1a0a2e !important;
-  -webkit-text-fill-color: #1a0a2e !important;
-  box-shadow: 0 0 10px rgba(255, 210, 31, .5) !important;
+/* ราคาปกติ (ไม่มีลด) — ชมพูเข้ม */
+.song-card .song-price,
+.song-card .cart-add-btn .song-price,
+.playlist-item-price,
+.playlist-folder-price {
+  background: none !important;
+  color: #ff6ec7 !important;
+  -webkit-text-fill-color: #ff6ec7 !important;
+  text-shadow: 0 0 8px rgba(255, 110, 199, 0.4) !important;
+  font-weight: 800 !important;
+  font-size: 17px !important;
+  letter-spacing: 0.3px;
+  line-height: 1;
 }
 
-.song-card .cart-add-btn .price-original,
-.song-card .price-original,
+/* Badge ส่วนลด % */
+.mvx-discount-badge,
+.discount-badge {
+  position: absolute;
+  top: 7px;
+  left: 7px;
+  z-index: 4;
+  background: linear-gradient(135deg, var(--nx-pink), #ff00a8) !important;
+  color: #fff !important;
+  -webkit-text-fill-color: #fff !important;
+  font-size: 10.5px !important;
+  font-weight: 800 !important;
+  padding: 3px 8px !important;
+  border-radius: 8px !important;
+  box-shadow: 0 0 12px rgba(255, 61, 214, 0.65), inset 0 1px 0 rgba(255,255,255,0.2) !important;
+  pointer-events: none;
+  line-height: 1.3;
+  letter-spacing: 0.3px;
+}
+
+/* ปุ่ม buy-btn แบบเดี่ยว */
+.buy-btn {
+  background: linear-gradient(90deg, var(--nx-purple), var(--nx-pink)) !important;
+  border: none !important;
+  color: #fff !important;
+  box-shadow: 0 0 18px var(--accent-2-glow) !important;
+  font-weight: 800 !important;
+}
+.buy-btn:hover {
+  filter: brightness(1.08);
+  box-shadow: 0 0 26px var(--accent-2-glow) !important;
+}
+
+/* =====================================================================
+   8) HERO PROMOTION
+   ===================================================================== */
+.mvx-hero-wrap { max-width: 1080px; margin: 0 auto; padding: 6px 16px 0; }
+.mvx-hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: 22px !important;
+  aspect-ratio: 16 / 8.2;
+  background:
+    radial-gradient(65% 90% at 105% -10%, rgba(31, 240, 255, 0.35), transparent 55%),
+    radial-gradient(70% 95% at -10% 110%, rgba(255, 61, 214, 0.45), transparent 60%),
+    linear-gradient(120deg, #1a0f3d 0%, #2b0f45 45%, #14243f 100%);
+  border: 1.5px solid rgba(255, 61, 214, 0.5);
+  box-shadow: 0 0 36px rgba(163, 71, 255, 0.28), 0 8px 28px rgba(0,0,0,0.45);
+  padding: 18px;
+}
+.mvx-hero-figure {
+  position: absolute; left: -6%; bottom: -6%; width: 50%; height: 112%;
+  background: linear-gradient(200deg, rgba(255,255,255,0.10), rgba(20,16,40,0) 70%);
+  border-radius: 0 60% 40% 0 / 0 50% 50% 0;
+  pointer-events: none;
+}
+.mvx-hero-crown {
+  position: absolute; top: 10px; right: 14px; font-size: 28px;
+  filter: drop-shadow(0 0 10px rgba(255, 210, 31, 0.85));
+}
+.mvx-hero-content {
+  position: relative; z-index: 2;
+  margin-left: 42%;
+  display: flex; flex-direction: column; justify-content: center;
+  height: 100%;
+}
+.mvx-hero-eyebrow {
+  display: inline-flex; align-self: flex-start;
+  font-size: 11px; font-weight: 800;
+  color: var(--nx-gold);
+  background: rgba(255, 210, 31, 0.14);
+  border: 1px solid rgba(255, 210, 31, 0.55);
+  padding: 4px 11px; border-radius: 999px;
+  margin-bottom: 8px;
+  letter-spacing: 0.3px;
+}
+.mvx-hero-title { font-size: 14px; font-weight: 700; color: var(--text); margin: 0; }
+.mvx-hero-pct {
+  font-size: 44px; font-weight: 800; line-height: 0.95; margin: 4px 0 4px;
+  background: linear-gradient(90deg, var(--nx-gold), var(--nx-gold-2), var(--nx-pink));
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 14px rgba(255, 210, 31, 0.45));
+}
+.mvx-hero-sub { font-size: 13px; font-weight: 700; color: var(--nx-cyan); margin-bottom: 12px; text-shadow: 0 0 10px rgba(31, 240, 255, 0.35); }
+.mvx-hero-cta {
+  align-self: flex-start;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 11px 20px;
+  border-radius: 999px;
+  font-weight: 800; font-size: 13px; color: #1a0a2e;
+  background: linear-gradient(90deg, var(--nx-gold), var(--nx-pink));
+  border: none;
+  box-shadow: 0 0 22px var(--accent-2-glow), inset 0 1px 0 rgba(255,255,255,0.3);
+  cursor: pointer;
+  transition: transform 0.18s ease, filter 0.18s ease, box-shadow 0.18s ease;
+}
+.mvx-hero-cta:hover {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+  box-shadow: 0 0 30px var(--accent-2-glow), inset 0 1px 0 rgba(255,255,255,0.35);
+}
+.mvx-hero-cta:active { transform: scale(0.96); }
+
+/* =====================================================================
+   9) FLASH SALE
+   ===================================================================== */
+.mvx-flash { max-width: 1080px; margin: 14px auto 0; padding: 0 16px; }
+.mvx-flash-inner {
+  border-radius: 18px;
+  padding: 12px 14px;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background:
+    linear-gradient(90deg, rgba(163, 71, 255, 0.22), rgba(255, 61, 214, 0.18));
+  border: 1.5px solid rgba(255, 61, 214, 0.5);
+  box-shadow: 0 0 24px rgba(163, 71, 255, 0.18), 0 4px 14px rgba(0,0,0,0.4);
+  position: relative;
+  overflow: hidden;
+}
+.mvx-flash-inner::before {
+  content: "⚡";
+  position: absolute;
+  left: -8px; top: 50%; transform: translateY(-50%);
+  font-size: 36px;
+  color: var(--nx-gold);
+  text-shadow: 0 0 16px rgba(255, 210, 31, 0.7);
+  opacity: 0.35;
+  pointer-events: none;
+}
+.mvx-flash-title { font-size: 13.5px; font-weight: 800; color: var(--text); display: flex; align-items: center; gap: 6px; }
+.mvx-flash-title .bolt { color: var(--nx-gold); text-shadow: 0 0 10px rgba(255,210,31,0.7); font-size: 15px; }
+.mvx-flash-note { font-size: 10.5px; color: var(--text-dim); font-weight: 600; margin-top: 1px; }
+.mvx-flash-timer { display: flex; align-items: center; gap: 4px; margin-top: 5px; }
+.mvx-flash-timer .u {
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(31, 240, 255, 0.45);
+  border-radius: 7px;
+  padding: 3px 7px;
+  font-weight: 800; font-size: 12px;
+  min-width: 26px;
+  text-align: center;
+  color: var(--nx-cyan);
+  box-shadow: 0 0 8px rgba(31, 240, 255, 0.25), inset 0 0 0 1px rgba(31, 240, 255, 0.15);
+}
+.mvx-flash-timer .c { color: var(--text-dim); font-weight: 800; }
+.mvx-flash-pct {
+  font-size: 22px; font-weight: 800;
+  background: linear-gradient(90deg, var(--nx-gold), var(--nx-gold-2));
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 12px rgba(255, 210, 31, 0.5));
+  padding: 4px 10px;
+  border-radius: 10px;
+  background-color: rgba(255, 61, 214, 0.12);
+  border: 1px solid rgba(255, 61, 214, 0.45);
+  white-space: nowrap;
+}
+
+/* =====================================================================
+   10) BOTTOM NAVIGATION — Neon
+   ===================================================================== */
+.bottom-nav {
+  background: linear-gradient(180deg, rgba(13, 12, 28, 0.92), rgba(9, 8, 20, 0.96)) !important;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-top: 1px solid rgba(163, 71, 255, 0.45) !important;
+  box-shadow: 0 -6px 26px rgba(163, 71, 255, 0.18), 0 -1px 0 rgba(31, 240, 255, 0.20) !important;
+}
+.bottom-nav button {
+  position: relative;
+  color: var(--text-dim) !important;
+  transition: color 0.22s ease;
+}
+.bottom-nav button.active {
+  color: var(--nx-pink) !important;
+}
+.bottom-nav button.active svg {
+  filter: drop-shadow(0 0 8px rgba(255, 61, 214, 0.85));
+}
+.bottom-nav button.active::after {
+  content: "";
+  position: absolute;
+  bottom: 4px; left: 50%;
+  transform: translateX(-50%);
+  width: 22px; height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--nx-purple), var(--nx-pink));
+  box-shadow: 0 0 10px var(--accent-2-glow);
+}
+
+/* =====================================================================
+   11) PLAYER BAR
+   ===================================================================== */
+.player-bar {
+  background: linear-gradient(180deg, rgba(20, 18, 40, 0.96), rgba(13, 12, 28, 0.98)) !important;
+  border: 1px solid rgba(163, 71, 255, 0.4) !important;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.6), 0 0 22px var(--accent-2-glow) !important;
+}
+.player-bar .ctrl {
+  background: linear-gradient(135deg, var(--nx-purple), var(--nx-pink)) !important;
+  box-shadow: 0 0 16px var(--accent-2-glow) !important;
+}
+
+/* =====================================================================
+   12) BUTTONS / MODALS
+   ===================================================================== */
+.btn {
+  background: linear-gradient(90deg, var(--nx-purple), var(--nx-pink)) !important;
+  color: #fff !important;
+  box-shadow: 0 0 18px var(--accent-2-glow) !important;
+  font-weight: 700 !important;
+  border: none !important;
+}
+.btn:hover { filter: brightness(1.08); box-shadow: 0 0 26px var(--accent-2-glow) !important; }
+.btn.secondary {
+  background: rgba(20, 18, 40, 0.8) !important;
+  border: 1px solid rgba(163, 71, 255, 0.4) !important;
+  color: var(--text) !important;
+  box-shadow: none !important;
+}
+
+.modal {
+  background: linear-gradient(180deg, rgba(20, 18, 40, 0.98), rgba(9, 8, 20, 0.99)) !important;
+  border: 1px solid rgba(163, 71, 255, 0.4) !important;
+  box-shadow: 0 0 44px rgba(163, 71, 255, 0.2), var(--shadow-lg) !important;
+}
+.modal-close {
+  background: rgba(163, 71, 255, 0.14) !important;
+  border: 1px solid rgba(163, 71, 255, 0.4) !important;
+}
+
+/* =====================================================================
+   13) SAFETY — ป้องกัน horizontal scroll / ล้น / ทับกัน
+   ===================================================================== */
+img, video, .song-cover, .playlist-cover, .playlist-folder-cover {
+  max-width: 100%;
+}
+.song-card, .playlist-item, .playlist-folder-btn {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.song-name, .song-artist, .song-dj,
+.playlist-item-sub, .playlist-folder-count {
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+/* เผื่อพื้นที่ล่างสำหรับ bottom nav บนจอมือถือ */
+main, .main, #app, .app-content {
+  padding-bottom: calc(82px + env(safe-area-inset-bottom, 0px));
+}
+
+/* =====================================================================
+   14) REDUCED MOTION
+   ===================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* =====================================================================
+   15) RESPONSIVE — Mobile-first
+   ===================================================================== */
+
+/* 375 / 390 / 414 / 430 — มือถือเล็ก → ใหญ่ */
+@media (max-width: 380px) {
+  .mvx-hero-content { margin-left: 44%; }
+  .mvx-hero-pct { font-size: 34px; }
+  .mvx-hero-title, .mvx-hero-sub { font-size: 12px; }
+  .mvx-hero-cta { padding: 9px 16px; font-size: 12px; }
+  .song-cover { width: 72px !important; height: 72px !important; }
+  .song-name { font-size: 13.5px !important; padding-right: 80px; }
+  .song-artist { padding-right: 80px; }
+  .song-card .price-discounted,
+  .price-discounted,
+  .song-card .song-price,
+  .playlist-item-price { font-size: 14px !important; }
+  .song-card .cart-add-btn,
+  .song-card .buy-btn { padding: 5px 9px; font-size: 11px; min-height: 30px !important; }
+  .song-card .cart-add-btn::after,
+  .song-card .buy-btn::after { content: ""; }
+  .song-name, .song-artist, .song-dj { padding-right: 90px !important; }
+}
+
+@media (min-width: 381px) and (max-width: 430px) {
+  .song-cover { width: 80px !important; height: 80px !important; }
+  .song-name { font-size: 14.5px; padding-right: 92px; }
+  .song-artist { padding-right: 92px; }
+  .song-card .cart-add-btn::after,
+  .song-card .buy-btn::after { content: ""; }
+  .song-name, .song-artist, .song-dj { padding-right: 100px !important; }
+}
+
+/* 768 — Tablet: grid 2 คอลัมน์ */
+@media (min-width: 768px) and (max-width: 1023.98px) {
+  .song-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px !important;
+  }
+  .song-card { padding: 13px 15px !important; }
+  .song-cover { width: 90px !important; height: 90px !important; }
+  .song-name { font-size: 15px !important; padding-right: 100px; }
+  .song-artist { padding-right: 100px; }
+  .mvx-hero-pct { font-size: 50px; }
+}
+
+/* 1024 — Desktop: grid 3 คอลัมน์ */
+@media (min-width: 1024px) {
+  .song-grid {
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px !important;
+    max-width: 1200px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .song-card { padding: 14px 16px !important; }
+  .song-cover { width: 92px !important; height: 92px !important; }
+  .song-name { font-size: 16px !important; padding-right: 110px; }
+  .song-artist { padding-right: 110px; }
+  .mvx-hero { aspect-ratio: 16 / 7.5; }
+  .mvx-hero-pct { font-size: 56px; }
+  .mvx-hero-title { font-size: 15px; }
+  .mvx-hero-sub { font-size: 14px; }
+}
+
+/* 1280 — Large desktop */
+@media (min-width: 1280px) {
+  .song-grid {
+    grid-template-columns: repeat(3, 1fr);
+    max-width: 1280px;
+  }
+}
+
+/* 1440 — Wide desktop: grid 4 คอลัมน์ */
+@media (min-width: 1440px) {
+  .song-grid {
+    grid-template-columns: repeat(4, 1fr);
+    max-width: 1480px;
+  }
+  .mvx-hero-wrap, .mvx-flash { max-width: 1280px; }
+}
+
+/* =====================================================================
+   16) PATCH — ราคา/ขนาด สอดคล้องกับสคริปต์เดิม
+   ===================================================================== */
+/* ปรับฟอนต์ราคาให้เท่ากันทั้งเพลงและเพลย์ลิสต์ */
+.song-price,
+.playlist-item-price,
+.playlist-folder-price,
+.price-discounted {
+  font-weight: 800 !important;
+}
 .price-original {
-  color: rgba(255,255,255,.55) !important;
-  -webkit-text-fill-color: rgba(255,255,255,.55) !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
 }
 
-/* 13.5) กล่องพื้นหลังราคา ไม่ให้ล้นขอบการ์ดตอนฟอนต์ใหญ่ขึ้น */
-.song-footer, .playlist-item-price {
-  padding: 4px 10px !important;
+/* กล่องราคา/ปุ่ม ไม่ให้ล้นขอบการ์ด */
+.song-footer {
+  padding: 0 !important;
+  max-width: calc(100% - 22px);
+}
+
+/* กันไม่ให้ข้อความชนปุ่มซื้อเลย */
+.song-name, .song-artist, .song-dj {
+  padding-right: 100px;
 }
