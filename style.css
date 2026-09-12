@@ -543,23 +543,26 @@ button:active {
   padding: 0;
 }
 
-/* 🔧 ปรับใหม่ (2026-09-12 รอบ 4): ขยายชื่อเพลงในเพลย์ลิสต์ 15px + เพิ่ม padding-right 105px
-   ป้องกันป้ายราคาบังชื่อเพลง (เดิม 135px มากเกินไป เพราะป้ายราคาเล็กลงแล้ว) */
+/* 🔧 ปรับใหม่ (2026-09-12 รอบ 5): ชื่อเพลงในเพลย์ลิสต์ยืดออก + ตัดเป็น 2 แถว
+   - ลด padding-right จาก 105px → 80px ให้ชื่อยืดยาวขึ้น
+   - เปลี่ยนจาก nowrap (1 แถว) เป็น -webkit-line-clamp: 2 (2 แถว + ตัดด้วย ...) */
 .playlist-item-name {
   font-size: 15px;
   font-weight: 700;
   line-height: 1.3;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
   text-overflow: ellipsis;
-  display: block;
   color: var(--text);
   width: 100%;
-  padding-right: 105px;
+  padding-right: 80px;
   box-sizing: border-box;
+  word-break: break-word;
 }
 
-/* 🔧 ปรับใหม่ (2026-09-12 รอบ 4): ขนาดตัวหนังสือรอง 12.5px + padding-right 105px ให้เท่ากับชื่อเพลง */
+/* 🔧 ปรับใหม่ (2026-09-12 รอบ 5): ตัวหนังสือรองของเพลงในเพลย์ลิสต์ยืดออก + padding-right 80px */
 .playlist-item-sub {
   font-size: 12.5px;
   color: var(--text-dim);
@@ -569,7 +572,7 @@ button:active {
   margin-top: 2px;
   font-weight: 500;
   width: 100%;
-  padding-right: 105px;
+  padding-right: 80px;
   box-sizing: border-box;
 }
 
@@ -708,23 +711,28 @@ button:active {
   padding: 0;
 }
 
-/* 🔧 ปรับใหม่ (2026-09-12 รอบ 4): ขยายชื่อเพลง 15px + เพิ่ม padding-right 105px
-   ป้องกันป้ายราคาบังชื่อเพลง — เดิม 140px มากเกินไป เพราะป้ายราคาเล็กลงแล้ว */
+/* 🔧 ปรับใหม่ (2026-09-12 รอบ 5): ชื่อเพลงยืดออก + ตัดเป็น 2 แถว
+   - ลด padding-right จาก 105px → 80px ให้ชื่อยืดยาวขึ้น
+   - เปลี่ยนจาก nowrap (1 แถว) เป็น -webkit-line-clamp: 2 (2 แถว + ตัดด้วย ...)
+   ใช้ได้กับทุก browser รวมถึง Safari/iOS */
 .song-name {
   font-size: 15px;
   font-weight: 700;
   line-height: 1.3;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
   text-overflow: ellipsis;
-  display: block;
   color: var(--text);
   width: 100%;
-  padding-right: 105px;
+  padding-right: 80px;
   box-sizing: border-box;
+  word-break: break-word;
 }
 
-/* 🔧 ปรับใหม่ (2026-09-12 รอบ 4): ขยายตัวหนังสือรอง 12.5px + padding-right 105px ให้เท่ากับชื่อเพลง */
+/* 🔧 ปรับใหม่ (2026-09-12 รอบ 5): ตัวหนังสือรองชื่อศิลปินยืดออก + ตัดเป็น 1 แถว
+   - ลด padding-right จาก 105px → 80px ให้เท่ากับชื่อเพลง */
 .song-artist {
   font-size: 12.5px;
   color: var(--text-dim);
@@ -734,12 +742,11 @@ button:active {
   margin-top: 2px;
   font-weight: 500;
   width: 100%;
-  /* เพิ่มใหม่ (2026-09-10 รอบ 3): เผื่อที่ด้านขวาให้ badge ราคาที่ย้ายไปมุมขวาล่างแล้ว */
-  padding-right: 105px;
+  padding-right: 80px;
   box-sizing: border-box;
 }
 
-/* 🔧 ปรับใหม่ (2026-09-12 รอบ 4): ตัวหนังสือ DJ 12px + padding-right 105px ให้เท่ากับชื่อเพลง */
+/* 🔧 ปรับใหม่ (2026-09-12 รอบ 5): ตัวหนังสือ DJ ยืดออก + padding-right 80px ให้เท่ากับชื่อเพลง */
 .song-dj {
   font-size: 12px;
   color: var(--accent-2);
@@ -751,8 +758,7 @@ button:active {
   display: flex;
   align-items: center;
   gap: 4px;
-  /* เพิ่มใหม่ (2026-09-10 รอบ 3): เผื่อที่ด้านขวาให้ badge ราคาที่ย้ายไปมุมขวาล่างแล้ว */
-  padding-right: 105px;
+  padding-right: 80px;
   box-sizing: border-box;
 }
 
@@ -1678,14 +1684,14 @@ button:active {
   .song-name,
   .song-artist,
   .song-dj {
-    padding-right: 95px;
+    padding-right: 75px;
   }
   .playlist-item-name,
   .playlist-item-sub {
-    padding-right: 95px;
+    padding-right: 75px;
   }
   .playlist-folder-count {
-    padding-right: 100px;
+    padding-right: 95px;
   }
 
   /* 🔧 ลดขนาด cover บนจอแคบนิดหน่อย เพื่อเผื่อพื้นที่ตัวหนังสือ */
@@ -1744,10 +1750,10 @@ button:active {
   .song-name,
   .song-artist,
   .song-dj {
-    padding-right: 85px;
+    padding-right: 70px;
   }
   .playlist-item-name,
   .playlist-item-sub {
-    padding-right: 85px;
+    padding-right: 70px;
   }
 }
