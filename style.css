@@ -517,13 +517,13 @@ button:active {
   transition: all 0.2s ease;
 }
 
-/* 🔧 แก้ (2026-09-13 รอบ 2 ตามคำขอ: เอาพื้นหลังสีดำออกหมด เหลือแต่ไอคอนสามเหลี่ยม/สี่เหลี่ยมสีขาว)
-   ใช้ drop-shadow แทนวงกลมพื้นหลัง เพื่อให้ไอคอนยังมองเห็นชัดบนรูปพื้นหลังทุกสี */
+/* 🔧 แก้ (2026-09-13 รอบ 3 ตามคำขอ: ไอคอนเล่น/หยุดใหญ่ขึ้น + เปลี่ยนสีให้โดดเด่นขึ้น
+   ใช้สี accent ของเว็บ (ม่วง) แทนสีขาวเดิม + ขยายขนาดจาก 22px → 30px */
 .playlist-play-btn svg {
-  width: 22px;
-  height: 22px;
-  fill: #fff;
-  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.9)) drop-shadow(0 0 4px rgba(0, 0, 0, 0.7));
+  width: 30px;
+  height: 30px;
+  fill: var(--accent, #7a5cff);
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.9)) drop-shadow(0 0 3px rgba(255, 255, 255, 0.9));
   transition: transform 0.2s ease;
 }
 
@@ -682,17 +682,13 @@ button:active {
   transition: all 0.2s ease;
 }
 
-/* 🔧 แก้ (2026-09-13 รอบ 2 ตามคำขอ: เอาพื้นหลังสีดำออกหมด เหลือแต่ไอคอนสามเหลี่ยม/สี่เหลี่ยมสีขาว)
-   ใช้ drop-shadow แทนวงกลมพื้นหลัง เพื่อให้ไอคอนยังมองเห็นชัดบนรูปพื้นหลังทุกสี */
+/* 🔧 แก้ (2026-09-13 รอบ 3 ตามคำขอ: ไอคอนเล่น/หยุดใหญ่ขึ้น + เปลี่ยนสีให้โดดเด่นขึ้น
+   ใช้สี accent ของเว็บ (ม่วง) แทนสีขาวเดิม + ขยายขนาดจาก 16px → 30px ให้เห็นชัดตลอดเวลา (ไม่ต้องรอ hover) */
 .song-cover .play-btn svg {
-  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.9)) drop-shadow(0 0 4px rgba(0, 0, 0, 0.7));
-}
-
-.song-card:hover .play-btn svg {
-  width: 22px;
-  height: 22px;
-  fill: #fff;
-  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.9)) drop-shadow(0 0 4px rgba(0, 0, 0, 0.7));
+  width: 30px;
+  height: 30px;
+  fill: var(--accent, #7a5cff);
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.9)) drop-shadow(0 0 3px rgba(255, 255, 255, 0.9));
   transition: transform 0.2s ease;
 }
 
